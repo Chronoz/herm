@@ -1,8 +1,8 @@
-# Angelia - A Modern TUI for Hermes Agent
+# Herm - A Modern TUI for Hermes Agent
 
-Angelia is a beautiful terminal user interface (TUI) for the Hermes Agent, built with OpenTUI and React. It provides a modern chat interface with an integrated avatar, tool status display, and streaming responses via the Hermes API server.
+Herm is a beautiful terminal user interface (TUI) for the Hermes Agent, built with OpenTUI and React. It provides a modern chat interface with an integrated avatar, tool status display, and streaming responses via the Hermes API server.
 
-![Angelia TUI](docs/screenshot.png)
+![Herm TUI](docs/screenshot.png)
 
 ## Features
 
@@ -17,7 +17,7 @@ Angelia is a beautiful terminal user interface (TUI) for the Hermes Agent, built
 
 ```
 ┌─────────────┐      HTTP/SSE      ┌────────────────┐     ┌─────────────┐
-│ Angelia TUI │ ←─────────────────→ │   API Server   │ ←──→ │   Hermes    │
+│ Herm TUI │ ←─────────────────→ │   API Server   │ ←──→ │   Hermes    │
 │  (React)    │    localhost:8642   │   (Platform)   │     │   Agent     │
 └─────────────┘                     └────────────────┘     └─────────────┘
 ```
@@ -32,8 +32,8 @@ Angelia is a beautiful terminal user interface (TUI) for the Hermes Agent, built
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/angelia.git
-   cd angelia
+   git clone https://github.com/yourusername/herm.git
+   cd herm
    ```
 
 2. Install dependencies:
@@ -55,12 +55,12 @@ Angelia is a beautiful terminal user interface (TUI) for the Hermes Agent, built
 
    Note: The API server is enabled via the config file. If you don't see it start, check the [Configuration](#configuration) section.
 
-2. In another terminal, run Angelia:
+2. In another terminal, run Herm:
    ```bash
    bun run src/index.tsx
    ```
 
-Angelia will automatically connect to the Hermes API server at `http://localhost:8642`.
+Herm will automatically connect to the Hermes API server at `http://localhost:8642`.
 
 ## Configuration
 
@@ -106,7 +106,7 @@ export API_SERVER_API_KEY=your-secret-key
 ### Project Structure
 
 ```
-angelia/
+herm/
 ├── src/
 │   ├── index.tsx               # Main application component
 │   └── hermes-api-client.ts    # Hermes API client
@@ -121,7 +121,7 @@ angelia/
 To build a standalone executable:
 
 ```bash
-bun build src/index.tsx --compile --outfile angelia
+bun build src/index.tsx --compile --outfile herm
 ```
 
 ### Testing
@@ -134,7 +134,7 @@ bun test
 
 ## ASCII Art
 
-Angelia includes multiple ASCII art versions of the Nous avatar:
+Herm includes multiple ASCII art versions of the Nous avatar:
 
 - `docs/nous-girl-ascii-32w.txt` - Compact 32-character wide version
 - `docs/nous-girl-ascii-48w.txt` - Main 48-character wide version (used in UI)
@@ -189,7 +189,7 @@ If you don't see `✓ api_server connected` when starting the gateway:
 
 ### Session Persistence
 
-Sessions are automatically persisted using the `X-Hermes-Session-Id` header. Each Angelia instance generates a unique session ID that allows conversation continuity even after restarting.
+Sessions are automatically persisted using the `X-Hermes-Session-Id` header. Each Herm instance generates a unique session ID that allows conversation continuity even after restarting.
 
 ### Display Issues
 

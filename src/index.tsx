@@ -17,7 +17,7 @@ const App = () => {
   const [memoryCount] = useState(0);
   const [hermesReady, setHermesReady] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionId] = useState(`angelia-${Date.now()}`);
+  const [sessionId] = useState(`herm-${Date.now()}`);
   
   const renderer = useRenderer();
   const clientRef = useRef<HermesApiClient | null>(null);
@@ -212,7 +212,7 @@ const App = () => {
         paddingRight={1}
       >
         <text>
-          <strong>Angelia</strong>
+          <strong>Herm</strong>
         </text>
         <text> | Model: {currentModel}</text>
         <box flexGrow={1} />
@@ -232,7 +232,7 @@ const App = () => {
             <box flexGrow={1} justifyContent="center" alignItems="center">
               <box flexDirection="column" alignItems="center">
                 <text>
-                  <span fg="gray">Welcome to Angelia</span>
+                  <span fg="gray">Welcome to Herm</span>
                 </text>
                 <text>
                   <span fg="gray">Type your message below to start...</span>

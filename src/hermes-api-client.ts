@@ -38,7 +38,7 @@ export class HermesApiClient extends EventEmitter {
     super();
     this.baseUrl = config.baseUrl || "http://localhost:8642/v1";
     this.apiKey = config.apiKey;
-    this.sessionId = config.sessionId || `angelia-${Date.now()}`;
+    this.sessionId = config.sessionId || `herm-${Date.now()}`;
     this.model = config.model || "hermes-agent";
   }
 
