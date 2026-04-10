@@ -1,0 +1,12 @@
+[install]
+peer = false
+
+[install.cache]
+disable = false
+dir = "~/.bun/install/cache"
+
+[install.lockfile]
+save = true
+
+[test]
+preload = "./happydom.ts"
