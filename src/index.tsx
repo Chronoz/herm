@@ -19,7 +19,8 @@ const App = () => {
   const [hermesReady, setHermesReady] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId] = useState(`herm-${Date.now()}`);
-  
+  const [activeTab, setActiveTab] = useState(0);
+
   const renderer = useRenderer();
   const clientRef = useRef<HermesApiClient | null>(null);
   const currentAssistantMessage = useRef<string>("");
@@ -49,7 +50,7 @@ const App = () => {
       client.on("content", (chunk: string) => {
         // Accumulate streaming content
         currentAssistantMessage.current += chunk;
-        
+
         // Update the last assistant message or create a new one
         setMessages((prev) => {
           const lastMessage = prev[prev.length - 1];
@@ -108,7 +109,6 @@ const App = () => {
 
       // Connect
       await client.connect();
-      
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
@@ -119,7 +119,8 @@ const App = () => {
         },
         {
           role: "system",
-          content: "Make sure the gateway is running with: API_SERVER_ENABLED=true hermes gateway run",
+          content:
+            "Make sure the gateway is running with: API_SERVER_ENABLED=true hermes gateway run",
           timestamp: Date.now() / 1000,
         },
       ]);
@@ -140,17 +141,20 @@ const App = () => {
     const msg = input.trim();
     if (!msg || !hermesReady) return;
 
-    setMessages((prev) => [...prev, { 
-      role: "user", 
-      content: msg,
-      timestamp: Date.now() / 1000,
-    }]);
-    
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: msg,
+        timestamp: Date.now() / 1000,
+      },
+    ]);
+
     // Send message via WebSocket
     if (clientRef.current) {
       clientRef.current.sendMessage(msg);
     }
-    
+
     setInput("");
   };
 
@@ -174,114 +178,137 @@ const App = () => {
 
   const allTools = ["web", "file", "terminal", "code", "vision", "browser"];
 
+  const tabs = [
+    { name: "Chat", description: "Main chat interface" },
+    { name: "Context", description: "Context and session info" },
+  ];
+
+  // Render content based on active tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 0: // Chat tab
+        return (
+          <box
+            flexGrow={1}
+            padding={1}
+            flexDirection="column"
+            backgroundColor="black"
+          >
+            {messages.length === 0 ? (
+              <box flexGrow={1} justifyContent="center" alignItems="center">
+                <box flexDirection="column" alignItems="center">
+                  <text>
+                    <span fg="gray">Welcome to Herm</span>
+                  </text>
+                  <text>
+                    <span fg="gray">Type your message below to start...</span>
+                  </text>
+                </box>
+              </box>
+            ) : (
+              <scrollbox flexGrow={1} focused>
+                <box flexDirection="column">
+                  {messages.map((msg, index) => (
+                    <box
+                      key={index}
+                      padding={1}
+                      marginBottom={1}
+                      backgroundColor={
+                        msg.role === "user"
+                          ? "#004488"
+                          : msg.role === "assistant"
+                            ? "#006644"
+                            : "#444400"
+                      }
+                    >
+                      <text>
+                        <strong>
+                          {msg.role === "user"
+                            ? "You"
+                            : msg.role === "assistant"
+                              ? "Hermes"
+                              : "System"}
+                          :
+                        </strong>
+                        <span> {msg.content}</span>
+                      </text>
+                    </box>
+                  ))}
+
+                  {/* Typing indicator */}
+                  {isTyping && (
+                    <box padding={1} marginBottom={1} backgroundColor="#006644">
+                      <text>
+                        <strong>Hermes:</strong>
+                        <span> </span>
+                        <span fg="#90EE90">typing...</span>
+                      </text>
+                    </box>
+                  )}
+                </box>
+              </scrollbox>
+            )}
+
+            {/* Input area */}
+            <box
+              height={3}
+              border
+              borderStyle="single"
+              paddingLeft={1}
+              marginTop={1}
+            >
+              <text>
+                {">"} {input}_
+              </text>
+            </box>
+
+            {/* Help text */}
+            <text>
+              <span fg="gray">
+                Ctrl+C: Exit | Enter: Send |{" "}
+                {hermesReady ? "Connected" : "Connecting..."}
+              </span>
+            </text>
+          </box>
+        );
+
+      case 1: // Context tab
+        return (
+          <box flexGrow={1} padding={2}>
+            <text>{tabs[activeTab].description}</text>
+          </box>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
-    <box width="100%" height="100%" flexDirection="column">
-      {/* Header */}
-      <box
-        width="100%"
-        height={3}
-        backgroundColor="magenta"
-        flexDirection="row"
-        alignItems="center"
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <text>
-          <strong>Herm</strong>
-        </text>
-        <text> | Model: {currentModel}</text>
-        <box flexGrow={1} />
-        <text>Session: {sessionId.slice(-8)}</text>
+    <box
+      width="100%"
+      height="100%"
+      flexDirection="column"
+      backgroundColor="black"
+    >
+      {/* Tab Bar */}
+      <box width="100%" flexDirection="column">
+        <tab-select
+          options={tabs}
+          selectedIndex={activeTab}
+          onChange={(index) => setActiveTab(index)}
+          focused={true}
+          tabWidth={15}
+          height={1}
+        />
       </box>
 
       {/* Main content */}
       <box flexGrow={1} flexDirection="row">
-        {/* Chat area */}
-        <box
-          flexGrow={1}
-          padding={1}
-          flexDirection="column"
-          backgroundColor="black"
-        >
-          {messages.length === 0 ? (
-            <box flexGrow={1} justifyContent="center" alignItems="center">
-              <box flexDirection="column" alignItems="center">
-                <text>
-                  <span fg="gray">Welcome to Herm</span>
-                </text>
-                <text>
-                  <span fg="gray">Type your message below to start...</span>
-                </text>
-              </box>
-            </box>
-          ) : (
-            <scrollbox flexGrow={1} focused>
-              <box flexDirection="column">
-                {messages.map((msg, index) => (
-                  <box
-                    key={index}
-                    padding={1}
-                    marginBottom={1}
-                    backgroundColor={
-                      msg.role === "user"
-                        ? "#004488"
-                        : msg.role === "assistant"
-                          ? "#006644"
-                          : "#444400"
-                    }
-                  >
-                    <text>
-                      <strong>
-                        {msg.role === "user"
-                          ? "You"
-                          : msg.role === "assistant"
-                            ? "Hermes"
-                            : "System"}
-                        :
-                      </strong>
-                      <span> {msg.content}</span>
-                    </text>
-                  </box>
-                ))}
-                
-                {/* Typing indicator */}
-                {isTyping && (
-                  <box
-                    padding={1}
-                    marginBottom={1}
-                    backgroundColor="#006644"
-                  >
-                    <text>
-                      <strong>Hermes:</strong>
-                      <span> </span>
-                      <span fg="#90EE90">typing...</span>
-                    </text>
-                  </box>
-                )}
-              </box>
-            </scrollbox>
-          )}
+        {/* Tab content area */}
+        {renderTabContent()}
 
-          {/* Input area */}
-          <box
-            height={3}
-            border
-            borderStyle="single"
-            paddingLeft={1}
-            marginTop={1}
-          >
-            <text>
-              {">"} {input}_
-            </text>
-          </box>
-
-          {/* Help text */}
-          <text>
-            <span fg="gray">Ctrl+C: Exit | Enter: Send | {hermesReady ? "Connected" : "Connecting..."}</span>
-          </text>
-        </box>
-
-        {/* Sidebar (right) */}
+        {/* Sidebar (right) - Always visible */}
         <box width={55} backgroundColor="#333333" flexDirection="column">
           {/* Avatar Box */}
           <box
