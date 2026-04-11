@@ -2,6 +2,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import { useState, useEffect, useRef } from "react";
 import { HermesApiClient } from "./hermes-api-client";
+import { AnimatedAvatar } from "./animated-avatar";
 
 interface Message {
   role: "user" | "assistant" | "system";
@@ -173,32 +174,6 @@ const App = () => {
 
   const allTools = ["web", "file", "terminal", "code", "vision", "browser"];
 
-  // ASCII art for the avatar
-  const avatarArt = `+##############%%%##**+++**##%%%###############=
-*@@@@@@@@@@@@@%#***###*=.  ::=+#@@@@@@@@@@@@@@@*
-*@@@@@@@@@%*=:      .-+%@*:     .=#@@@@@@@@@@@@+
-*@@@@@@@#-.            :+@@*.      +@@@@@@@@@@@*
-*@@@@@#-   :  ..   .=-%%--@@#.:-.=##=#@@@@@@@@@*
-*@@@@###+-=#+=+*#=+#@#--..-%@%:+--=+..%@@@@@@@@*
-*@%@+-=++:-:-::...::::     +#*- .  .. :@@@@@@@@*
-*@@%.          :.          .: -. :. .. =@@@@@@@*
-*@@*       .    =.         ..  .  :    .%@@@@@@*
-*@@#      .++--:=*-====:          .:    +@@@@@@*
-*@@@*... =+#@@@*- :+#@@@:    --:   :.   .@@@@@@*
-*@@@@%*#=.-=@%@@#=+##@@@.    . .   .:    *@@@@@*
-*@@@@@@@+.#@@@@@@@@@@@@#            :.   :@@@@@*
-*@@@@@%@:-@%@@@@@@@@@@@=             :    *@@@@*
-*@@@@@@@.:%+*#%@@@@@@@@.           . .. . :@@@@*
-*@@@@@@%  -##%%@@@@@@@#   .+      .. .. :- +@%@*
-*@##@%@+   -@@@@@@@@%@=   ++     ..   . .# .%%@+
-*@.*@@@:    .++++==*@@-  .=*:    .      .@. #*#*
-*%:.-=. ::          -#:  .*+.           ++  #*-*
-*@=:::-+- .:         -*=               .:  .%:-*
-*@%*=-:..-+        +#++%%=  ..   .....    .+:.%*
-*@@@@%+:=- ::       *+==*+**--+#%%%%#+-.  ::=%@+
-*@@@@@@%*+#*      ...*+##%*-*@@@@@@@@@*=.+#@@@@*
-+%#####%%%+    .-.:-#%%=+*.#%#########%*+%%###%+`;
-
   return (
     <box width="100%" height="100%" flexDirection="column">
       {/* Header */}
@@ -316,12 +291,10 @@ const App = () => {
             border
             borderColor="#666666"
             flexDirection="column"
+            height={26}
+            overflow="hidden"
           >
-            {avatarArt.split("\n").map((line, index) => (
-              <text key={index}>
-                <span fg="cyan">{line}</span>
-              </text>
-            ))}
+            <AnimatedAvatar />
           </box>
 
           {/* Tools Section */}
@@ -364,3 +337,5 @@ const main = async () => {
 };
 
 main().catch(console.error);
+
+export {};
