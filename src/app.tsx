@@ -7,6 +7,7 @@ import { Sidebar } from "./components/sidebar/Sidebar";
 import { Chat } from "./tabs/Chat";
 import { Context } from "./tabs/Context";
 import type { Message } from "./components/chat/MessageItem";
+import { copySelection } from "./utils/clipboard";
 
 export const App = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -22,12 +23,13 @@ export const App = () => {
   const renderer = useRenderer();
   const clientRef = useRef<HermesApiClient | null>(null);
   const currentAssistantMessage = useRef<string>("");
+  const sessionStartRef = useRef<number>(Date.now());
 
   const connectToHermes = async () => {
     try {
       const client = new HermesApiClient({
         baseUrl: "http://localhost:8642/v1",
-        apiKey: process.env.HERMES_API_KEY,
+        apiKey: process.env.API_SERVER_KEY,
         sessionId: sessionId,
         model: currentModel,
       });
@@ -149,6 +151,8 @@ export const App = () => {
     if (key.name === "return") {
       sendMessage();
     } else if (key.ctrl && key.name === "c") {
+      // If there's a selection, copy it instead of exiting
+      if (copySelection(renderer)) return;
       renderer.destroy();
     } else if (key.name === "backspace") {
       setInput((prev) => prev.slice(0, -1));
@@ -180,7 +184,14 @@ export const App = () => {
           />
         );
       case 1:
-        return <Context description={tabs[activeTab].description} />;
+        return (
+          <Context
+            description={tabs[activeTab].description}
+            client={clientRef.current}
+            messages={messages}
+            sessionStart={sessionStartRef.current}
+          />
+        );
       default:
         return null;
     }
@@ -192,6 +203,7 @@ export const App = () => {
       height="100%"
       flexDirection="column"
       backgroundColor="black"
+      onMouseUp={() => copySelection(renderer)}
     >
       <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 

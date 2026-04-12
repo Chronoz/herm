@@ -6,6 +6,7 @@ import { App } from "./app";
 const main = async () => {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false, // We handle Ctrl+C ourselves
+    useMouse: true, // Enable mouse for text selection & copy-on-select
   });
 
   const root = createRoot(renderer);
