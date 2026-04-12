@@ -17,7 +17,7 @@ export const App = () => {
   const [hermesReady, setHermesReady] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId] = useState(`herm-${Date.now()}`);
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(1); // temporarily set to context tab for better dev experience while working on context tab
 
   const renderer = useRenderer();
   const clientRef = useRef<HermesApiClient | null>(null);
@@ -145,7 +145,7 @@ export const App = () => {
     if (key.name === "left" || key.name === "right") {
       return;
     }
-    
+
     if (key.name === "return") {
       sendMessage();
     } else if (key.ctrl && key.name === "c") {
