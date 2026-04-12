@@ -10,10 +10,21 @@ import type { Message, Usage, ToolPart } from "./types/message"
 import { mid } from "./types/message"
 import { copySelection } from "./utils/clipboard"
 import { ThemeProvider, useTheme } from "./theme"
+import { DialogProvider, useDialog } from "./ui/dialog"
+import { ToastProvider } from "./ui/toast"
+import { CommandProvider, useCommand } from "./ui/command"
+import { HelpDialog } from "./dialogs/help"
+import { openThemePicker } from "./dialogs/theme-picker"
 
 export const App = () => (
   <ThemeProvider>
-    <AppInner />
+    <ToastProvider>
+      <DialogProvider>
+        <CommandProvider>
+          <AppInner />
+        </CommandProvider>
+      </DialogProvider>
+    </ToastProvider>
   </ThemeProvider>
 )
 
@@ -48,6 +59,36 @@ const AppInner = () => {
   const client = useRef<HermesApiClient | null>(null)
   const buf = useRef("")
   const start = useRef(Date.now())
+
+  const dialog = useDialog()
+  const themeCtx = useTheme()
+  const cmd = useCommand()
+
+  // Register commands
+  useEffect(() => cmd.register([
+    {
+      title: "Help",
+      value: "help",
+      keybind: "f1",
+      description: "Keyboard shortcuts",
+      category: "General",
+      onSelect: () => dialog.replace(<HelpDialog />),
+    },
+    {
+      title: "Switch Theme",
+      value: "theme",
+      description: "Change color theme",
+      category: "General",
+      onSelect: () => openThemePicker(dialog, themeCtx),
+    },
+    {
+      title: "New Session",
+      value: "new-session",
+      description: "Start a new chat session",
+      category: "Session",
+      onSelect: () => {},
+    },
+  ]), [cmd, dialog, themeCtx])
 
   // Connect to Hermes
   const connect = useCallback(async () => {
