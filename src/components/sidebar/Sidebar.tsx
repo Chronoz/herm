@@ -10,23 +10,19 @@ export const Sidebar = ({ activeTools, memoryCount }: SidebarProps) => {
   const allTools = ["web", "file", "terminal", "code", "vision", "browser"];
 
   return (
-    <box width={55} backgroundColor="#333333" flexDirection="column">
+    <box width={48} flexDirection="column">
       {/* Avatar Box */}
-      <box
-        padding={1}
-        marginBottom={1}
-        borderStyle="single"
-        border
-        borderColor="#666666"
-        flexDirection="column"
-        height={26}
-        overflow="hidden"
-      >
+      <box flexDirection="column" height={24} overflow="hidden">
         <AnimatedAvatar />
       </box>
 
       {/* Tools Section */}
-      <box padding={1} flexDirection="column">
+      <box
+        padding={1}
+        flexDirection="column"
+        flexGrow={1}
+        backgroundColor="#333333"
+      >
         <text>
           <strong>Tools</strong>
         </text>

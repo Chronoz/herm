@@ -24,7 +24,7 @@ export const TabBar = ({ tabs, activeTab, onTabChange }: TabBarProps) => {
 
   return (
     <box width="100%" flexDirection="column">
-      <box flexDirection="row" height={2}>
+      <box flexDirection="row">
         {tabs.map((tab, index) => (
           <box
             key={index}
@@ -34,26 +34,12 @@ export const TabBar = ({ tabs, activeTab, onTabChange }: TabBarProps) => {
             paddingY={0}
             marginRight={1}
             backgroundColor={index === activeTab ? "#333333" : "transparent"}
-            borderBottom={index === activeTab}
-            borderBottomStyle="single"
-            borderColor="#7aa2f7"
           >
             <text fg={index === activeTab ? "#7aa2f7" : "#888888"}>
               {tab.name}
             </text>
           </box>
         ))}
-      </box>
-      <box 
-        width="100%"
-        height={1}
-        paddingLeft={1}
-        paddingRight={1}
-        marginTop={-1}
-      >
-        <text fg="gray">
-          {'─'.repeat(120)}
-        </text>
       </box>
     </box>
   );

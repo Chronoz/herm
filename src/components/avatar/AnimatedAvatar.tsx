@@ -14,7 +14,7 @@ export const AnimatedAvatar = () => {
   }, []);
 
   const frameContent = AVATAR_FRAMES[currentFrame];
-  const lines = frameContent.split("\n").filter(line => line.length > 0);
+  const lines = frameContent.split("\n").filter((line) => line.length > 0);
 
   return (
     <box flexDirection="column">
