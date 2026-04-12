@@ -4,9 +4,11 @@ import type { HermesApiClient } from "../utils/hermes-api-client";
 import type { Message } from "../components/chat/MessageItem";
 import {
   readHermesHome,
+  hermesPath,
   type HermesHomeSnapshot,
   type SessionRow,
 } from "../utils/hermes-home";
+import { openHermesFile } from "../utils/open-file";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -14,7 +16,7 @@ interface ContextTabProps {
   description?: string;
   client?: HermesApiClient | null;
   messages?: Message[];
-  sessionStart?: number; // epoch ms
+  sessionStart?: number;
 }
 
 interface TokenUsage {
@@ -40,7 +42,6 @@ interface GridSegment {
   percentage: number;
 }
 
-/** A cell in the grid knows which segment it belongs to */
 interface GridCell {
   emoji: string;
   segmentId: SegmentId;
@@ -67,16 +68,12 @@ const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
 
 const DEFAULT_CONTEXT_LENGTH = 128_000;
 const CHARS_PER_TOKEN = 4;
-const GRID_SIZE = 256; // 16x16
+const GRID_SIZE = 256;
 const GRID_COLS = 16;
-
 const THRESHOLD_GOOD = 50;
 const THRESHOLD_WARN = 80;
 const THRESHOLD_CRITICAL = 95;
 
-const COMPRESSION_THRESHOLD_RATIO = 0.5;
-
-/** Background colors for hover highlight per segment */
 const SEGMENT_HIGHLIGHT: Record<SegmentId, string> = {
   system: "#1a3a5c",
   memory: "#5c4a1a",
@@ -106,18 +103,15 @@ const resolveContextLength = (model: string): number => {
   return DEFAULT_CONTEXT_LENGTH;
 };
 
-const estimateTokens = (text: string): number => {
-  if (!text) return 0;
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
-};
+const estimateTokens = (text: string): number =>
+  text ? Math.ceil(text.length / CHARS_PER_TOKEN) : 0;
 
 const formatDuration = (ms: number): string => {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h${minutes % 60}m`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h${m % 60}m`;
 };
 
 const buildBar = (percent: number, width: number = 20): string => {
@@ -135,7 +129,7 @@ const getUsageStatus = (
   return { label: "HEALTHY", color: "green" };
 };
 
-// ─── Segment Builder ─────────────────────────────────────────────────
+// ─── Segments ────────────────────────────────────────────────────────
 
 const buildSegments = (
   contextLength: number,
@@ -144,78 +138,37 @@ const buildSegments = (
   messages: Message[],
 ): GridSegment[] => {
   const segments: GridSegment[] = [];
-
   const memoryTokens = home?.memory ? estimateTokens(home.memory.content) : 0;
-  const userTokens = home?.userProfile
-    ? estimateTokens(home.userProfile.content)
-    : 0;
+  const userTokens = home?.userProfile ? estimateTokens(home.userProfile.content) : 0;
   const conversationTokens = estimateTokens(
-    messages
-      .filter((m) => m.role !== "system")
-      .map((m) => m.content)
-      .join(""),
+    messages.filter((m) => m.role !== "system").map((m) => m.content).join(""),
   );
-
   const knownSegments = memoryTokens + userTokens + conversationTokens;
   const systemOverhead = Math.max(0, inputTokens - knownSegments);
   const freeTokens = Math.max(0, contextLength - inputTokens);
 
-  if (systemOverhead > 0) {
-    segments.push({
-      id: "system",
-      label: "System & Tools",
-      emoji: "🟦",
-      tokens: systemOverhead,
-      percentage: (systemOverhead / contextLength) * 100,
-    });
-  }
-
-  if (memoryTokens + userTokens > 0) {
-    segments.push({
-      id: "memory",
-      label: "Memory",
-      emoji: "🟨",
-      tokens: memoryTokens + userTokens,
-      percentage: ((memoryTokens + userTokens) / contextLength) * 100,
-    });
-  }
-
-  if (conversationTokens > 0) {
-    segments.push({
-      id: "conversation",
-      label: "Conversation",
-      emoji: "🟥",
-      tokens: Math.min(conversationTokens, inputTokens),
-      percentage:
-        (Math.min(conversationTokens, inputTokens) / contextLength) * 100,
-    });
-  }
-
-  segments.push({
-    id: "free",
-    label: "Free",
-    emoji: "⬛",
-    tokens: freeTokens,
-    percentage: (freeTokens / contextLength) * 100,
-  });
+  if (systemOverhead > 0)
+    segments.push({ id: "system", label: "System & Tools", emoji: "🟦", tokens: systemOverhead, percentage: (systemOverhead / contextLength) * 100 });
+  if (memoryTokens + userTokens > 0)
+    segments.push({ id: "memory", label: "Memory", emoji: "🟨", tokens: memoryTokens + userTokens, percentage: ((memoryTokens + userTokens) / contextLength) * 100 });
+  if (conversationTokens > 0)
+    segments.push({ id: "conversation", label: "Conversation", emoji: "🟥", tokens: Math.min(conversationTokens, inputTokens), percentage: (Math.min(conversationTokens, inputTokens) / contextLength) * 100 });
+  segments.push({ id: "free", label: "Free", emoji: "⬛", tokens: freeTokens, percentage: (freeTokens / contextLength) * 100 });
 
   return segments;
 };
 
-/** Generate grid cells with segment ownership */
 const generateGrid = (segments: GridSegment[]): GridCell[] => {
   const grid: GridCell[] = [];
   for (const seg of segments) {
     const count = Math.round((seg.percentage / 100) * GRID_SIZE);
-    for (let i = 0; i < count; i++)
-      grid.push({ emoji: seg.emoji, segmentId: seg.id });
+    for (let i = 0; i < count; i++) grid.push({ emoji: seg.emoji, segmentId: seg.id });
   }
-  while (grid.length < GRID_SIZE)
-    grid.push({ emoji: "⬛", segmentId: "free" });
+  while (grid.length < GRID_SIZE) grid.push({ emoji: "⬛", segmentId: "free" });
   return grid.slice(0, GRID_SIZE);
 };
 
-// ─── Detail Panels (zoom view for each segment) ─────────────────────
+// ─── Detail Panels (data-driven from ~/.hermes/) ─────────────────────
 
 const SystemDetail = ({
   home,
@@ -223,48 +176,77 @@ const SystemDetail = ({
 }: {
   home: HermesHomeSnapshot | null;
   segment: GridSegment;
-}) => (
-  <box borderStyle="single" padding={1} flexGrow={1}>
-    <text>
-      <strong>🟦 System & Tools — {formatTokens(segment.tokens)} tokens</strong>
-    </text>
-    <text> </text>
-    <text>
-      This is everything injected before your conversation:
-    </text>
-    <text> </text>
-    <text>
-      SOUL.md{" "} — core personality & instructions
-    </text>
-    <text>
-      Skills list — {home?.skillCount ?? "?"} skills cataloged in prompt
-    </text>
-    <text>
-      Tool schemas — definitions for all enabled toolsets
-    </text>
-    <text>
-      Context files — AGENTS.md, project context
-    </text>
-    <text> </text>
-    <text fg="cyan">
-      This overhead is present on every API call. It's the "fixed cost"
-      of the agent's capabilities.
-    </text>
-    <text> </text>
-    <text>
-      Model: {home?.config?.model?.default ?? "unknown"}
-    </text>
-    <text>
-      Max turns: {home?.config?.agent?.max_turns ?? "?"}
-    </text>
-    <text>
-      Reasoning: {home?.config?.agent?.reasoning_effort ?? "?"}
-    </text>
-    <text>
-      Personality: {home?.config?.display?.personality ?? "default"}
-    </text>
-  </box>
-);
+}) => {
+  // Group skills by category
+  const skillsByCategory: Record<string, number> = {};
+  for (const skill of home?.skills ?? []) {
+    const cat = skill.category || "(uncategorized)";
+    skillsByCategory[cat] = (skillsByCategory[cat] ?? 0) + 1;
+  }
+  const sortedCategories = Object.entries(skillsByCategory).sort(
+    (a, b) => b[1] - a[1],
+  );
+
+  // Tool schema overhead
+  const toolChars = (home?.tools ?? []).reduce(
+    (sum, t) => sum + t.descriptionLength + t.paramsLength,
+    0,
+  );
+  const toolTokens = Math.ceil(toolChars / CHARS_PER_TOKEN);
+
+  return (
+    <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
+      <text>
+        <strong>🟦 System & Tools — {formatTokens(segment.tokens)} tokens</strong>
+      </text>
+      <text> </text>
+
+      {/* System prompt */}
+      {home?.systemPrompt && (
+        <>
+          <text>
+            <strong>System Prompt</strong> — ~{formatTokens(home.systemPrompt.tokenEstimate)} tokens ({home.systemPrompt.totalChars.toLocaleString()} chars)
+          </text>
+          {home.soul && (
+            <text onMouseDown={() => openHermesFile("SOUL.md")}>
+              · <span fg="cyan">SOUL.md</span> — ~{formatTokens(home.soul.tokenEstimate)} tokens ({home.soul.charCount.toLocaleString()} chars)
+            </text>
+          )}
+        </>
+      )}
+      <text> </text>
+
+      {/* Tools */}
+      {(home?.tools ?? []).length > 0 && (
+        <>
+          <text>
+            <strong>Tools</strong> — {home!.tools.length} registered (~{formatTokens(toolTokens)} tokens in schemas)
+          </text>
+          {home!.tools.map((t) => (
+            <text key={t.name} fg="white">
+              · {t.name}
+            </text>
+          ))}
+        </>
+      )}
+      <text> </text>
+
+      {/* Skills */}
+      {(home?.skills ?? []).length > 0 && (
+        <>
+          <text>
+            <strong>Skills</strong> — {home!.skills.length} installed
+          </text>
+          {sortedCategories.map(([cat, count]) => (
+            <text key={cat} fg="white">
+              · {cat} ({count})
+            </text>
+          ))}
+        </>
+      )}
+    </scrollbox>
+  );
+};
 
 const MemoryDetail = ({
   home,
@@ -273,69 +255,54 @@ const MemoryDetail = ({
   home: HermesHomeSnapshot | null;
   segment: GridSegment;
 }) => {
-  const mem = home?.memory;
-  const user = home?.userProfile;
+  const parseEntries = (content: string | undefined) =>
+    (content ?? "").split("§").map((s) => s.trim()).filter(Boolean);
 
-  // Parse § delimited entries
-  const memEntries = mem?.content
-    .split("§")
-    .map((s) => s.trim())
-    .filter(Boolean) ?? [];
-  const userEntries = user?.content
-    .split("§")
-    .map((s) => s.trim())
-    .filter(Boolean) ?? [];
+  const memEntries = parseEntries(home?.memory?.content);
+  const userEntries = parseEntries(home?.userProfile?.content);
 
   return (
-    <box borderStyle="single" padding={1} flexGrow={1}>
+    <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
         <strong>🟨 Memory — {formatTokens(segment.tokens)} tokens</strong>
       </text>
       <text> </text>
-      {mem && (
+
+      {home?.memory && (
         <>
-          <text>
-            <strong>Agent Notes</strong> —{" "}
-            {formatChars(mem.charCount, mem.charLimit)} chars ({mem.usagePercent}
-            %)
+          <text onMouseDown={() => openHermesFile("memories/MEMORY.md")}>
+            <strong>Agent Notes</strong> (<span fg="cyan">MEMORY.md</span>) — {formatChars(home.memory.charCount, home.memory.charLimit)} chars ({home.memory.usagePercent}%)
           </text>
-          <text>{buildBar(mem.usagePercent, 25)}</text>
+          <text>{buildBar(home.memory.usagePercent, 25)}{home.memory.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
           <text> </text>
-          {memEntries.slice(0, 8).map((entry, i) => (
+          {memEntries.map((entry, i) => (
             <text key={i} fg="white">
-              · {entry.length > 70 ? entry.slice(0, 67) + "..." : entry}
+              · {entry}
             </text>
           ))}
-          {memEntries.length > 8 && (
-            <text fg="cyan">  ...and {memEntries.length - 8} more entries</text>
-          )}
         </>
       )}
       <text> </text>
-      {user && (
+
+      {home?.userProfile && (
         <>
-          <text>
-            <strong>User Profile</strong> —{" "}
-            {formatChars(user.charCount, user.charLimit)} chars (
-            {user.usagePercent}%)
+          <text onMouseDown={() => openHermesFile("memories/USER.md")}>
+            <strong>User Profile</strong> (<span fg="cyan">USER.md</span>) — {formatChars(home.userProfile.charCount, home.userProfile.charLimit)} chars ({home.userProfile.usagePercent}%)
           </text>
-          <text>{buildBar(user.usagePercent, 25)}</text>
+          <text>{buildBar(home.userProfile.usagePercent, 25)}{home.userProfile.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
           <text> </text>
-          {userEntries.slice(0, 6).map((entry, i) => (
+          {userEntries.map((entry, i) => (
             <text key={i} fg="white">
-              · {entry.length > 70 ? entry.slice(0, 67) + "..." : entry}
+              · {entry}
             </text>
           ))}
-          {userEntries.length > 6 && (
-            <text fg="cyan">  ...and {userEntries.length - 6} more entries</text>
-          )}
         </>
       )}
       <text> </text>
-      <text fg="cyan">
-        Memory provider: {home?.config?.memory?.provider ?? "file"}
+      <text fg="cyan" onMouseDown={() => openHermesFile("config.yaml")}>
+        Provider: {home?.config?.memory?.provider ?? "unknown"} · config.yaml
       </text>
-    </box>
+    </scrollbox>
   );
 };
 
@@ -351,57 +318,40 @@ const ConversationDetail = ({
   const userMsgs = messages.filter((m) => m.role === "user");
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   const userTokens = estimateTokens(userMsgs.map((m) => m.content).join(""));
-  const assistantTokens = estimateTokens(
-    assistantMsgs.map((m) => m.content).join(""),
-  );
+  const assistantTokens = estimateTokens(assistantMsgs.map((m) => m.content).join(""));
+  const nonSystem = messages.filter((m) => m.role !== "system");
 
   return (
-    <box borderStyle="single" padding={1} flexGrow={1}>
+    <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>
-          🟥 Conversation — {formatTokens(segment.tokens)} tokens
-        </strong>
+        <strong>🟥 Conversation — {formatTokens(segment.tokens)} tokens</strong>
       </text>
       <text> </text>
-      <text>
-        User messages: {userMsgs.length} (~{formatTokens(userTokens)} tokens)
-      </text>
-      <text>
-        Assistant messages: {assistantMsgs.length} (~
-        {formatTokens(assistantTokens)} tokens)
-      </text>
+      <text>User: {userMsgs.length} messages (~{formatTokens(userTokens)} tokens)</text>
+      <text>Assistant: {assistantMsgs.length} messages (~{formatTokens(assistantTokens)} tokens)</text>
       {outputTokens > 0 && (
-        <text>
-          Output generated: {formatTokens(outputTokens)} tokens (not in context)
-        </text>
+        <text>Output generated: {formatTokens(outputTokens)} tokens</text>
       )}
       <text> </text>
-      <text fg="cyan">Recent messages:</text>
-      <text> </text>
-      {messages
-        .filter((m) => m.role !== "system")
-        .slice(-10)
-        .map((m, i) => {
-          const prefix = m.role === "user" ? "▸ You" : "◂ Agent";
-          const preview =
-            m.content.length > 60
-              ? m.content.slice(0, 57) + "..."
-              : m.content;
-          const tokens = estimateTokens(m.content);
-          return (
-            <text key={i}>
-              <span fg={m.role === "user" ? "cyan" : "green"}>{prefix}</span>
-              {" "}({formatTokens(tokens)}) {preview.replace(/\n/g, " ")}
-            </text>
-          );
-        })}
-      {messages.filter((m) => m.role !== "system").length > 10 && (
-        <text fg="cyan">
-          ...{messages.filter((m) => m.role !== "system").length - 10} earlier
-          messages
-        </text>
+      {nonSystem.length > 0 && (
+        <>
+          <text fg="cyan">Messages:</text>
+          <text> </text>
+          {nonSystem.map((m, i) => {
+            const prefix = m.role === "user" ? "▸ You" : "◂ Agent";
+            return (
+              <text key={i}>
+                <span fg={m.role === "user" ? "cyan" : "green"}>{prefix}</span>
+                {" "}({formatTokens(estimateTokens(m.content))}) {m.content.replace(/\n/g, " ")}
+              </text>
+            );
+          })}
+        </>
       )}
-    </box>
+      {nonSystem.length === 0 && (
+        <text fg="yellow">No messages yet</text>
+      )}
+    </scrollbox>
   );
 };
 
@@ -409,62 +359,39 @@ const FreeDetail = ({
   segment,
   contextLength,
   compressionThreshold,
-  compressionConfig,
+  home,
 }: {
   segment: GridSegment;
   contextLength: number;
   compressionThreshold: number;
-  compressionConfig: { enabled: boolean; threshold: number; protect_last_n: number; summary_model: string };
+  home: HermesHomeSnapshot | null;
 }) => {
+  const used = contextLength - segment.tokens;
   const compressionPercent = compressionThreshold > 0
-    ? Math.min(100, Math.round(((contextLength - segment.tokens) / compressionThreshold) * 100))
+    ? Math.min(100, Math.round((used / compressionThreshold) * 100))
     : 0;
+  const comp = home?.config?.compression;
 
   return (
-    <box borderStyle="single" padding={1} flexGrow={1}>
+    <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
         <strong>⬛ Free Space — {formatTokens(segment.tokens)} tokens</strong>
       </text>
       <text> </text>
-      <text>
-        Context window: {formatTokens(contextLength)}
-      </text>
-      <text>
-        Used: {formatTokens(contextLength - segment.tokens)} ({Math.round(((contextLength - segment.tokens) / contextLength) * 100)}%)
-      </text>
-      <text>
-        Available: {formatTokens(segment.tokens)} ({segment.percentage.toFixed(1)}%)
-      </text>
+      <text>Context window: {formatTokens(contextLength)}</text>
+      <text>Used: {formatTokens(used)} ({Math.round((used / contextLength) * 100)}%)</text>
+      <text>Available: {formatTokens(segment.tokens)} ({segment.percentage.toFixed(1)}%)</text>
       <text> </text>
-      <text>
-        <strong>Compression</strong>
-      </text>
-      <text>
-        {compressionConfig.enabled ? "✓ Enabled" : "✗ Disabled"} · triggers at{" "}
-        {Math.round(compressionConfig.threshold * 100)}% ({formatTokens(compressionThreshold)})
-      </text>
-      <text>
-        Progress: {buildBar(compressionPercent)} {compressionPercent}%
-      </text>
-      <text>
-        Protects last {compressionConfig.protect_last_n} messages
-      </text>
-      {compressionConfig.summary_model && (
-        <text>
-          Summary model: {compressionConfig.summary_model}
-        </text>
+      {comp && (
+        <>
+          <text><strong>Compression</strong></text>
+          <text>{comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold {Math.round(comp.threshold * 100)}% ({formatTokens(compressionThreshold)})</text>
+          <text>{buildBar(compressionPercent)} {compressionPercent}%</text>
+          <text>Protect last {comp.protect_last_n} messages · target ratio {Math.round(comp.target_ratio * 100)}%</text>
+          {comp.summary_model && <text>Summary model: {comp.summary_model}</text>}
+        </>
       )}
-      <text> </text>
-      <text fg="cyan">
-        {compressionPercent < 50
-          ? "Plenty of room. Context is healthy."
-          : compressionPercent < 80
-            ? "Getting fuller. Compression will trigger soon."
-            : compressionPercent < 100
-              ? "⚠ Approaching compression threshold."
-              : "⚠ Past threshold — compression should have fired."}
-      </text>
-    </box>
+    </scrollbox>
   );
 };
 
@@ -477,24 +404,14 @@ export const Context = ({
   sessionStart,
 }: ContextTabProps) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null);
-  const [wire, setWire] = useState<WireMetrics>({
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    apiCalls: 0,
-  });
+  const [wire, setWire] = useState<WireMetrics>({ inputTokens: 0, outputTokens: 0, totalTokens: 0, apiCalls: 0 });
   const wireRef = useRef(wire);
   const [hoveredSegment, setHoveredSegment] = useState<SegmentId | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(null);
 
-  // ─── Read ~/.hermes/ ─────────────────────────────────────────────
-
+  // Read ~/.hermes/
   const refreshHome = useCallback(async () => {
-    try {
-      setHome(await readHermesHome());
-    } catch {
-      // show what we have
-    }
+    try { setHome(await readHermesHome()); } catch { /* show what we have */ }
   }, []);
 
   useEffect(() => {
@@ -503,16 +420,14 @@ export const Context = ({
     return () => clearInterval(interval);
   }, [refreshHome]);
 
-  // ─── Wire metrics from SSE ───────────────────────────────────────
-
+  // Wire metrics from SSE
   useEffect(() => {
     if (!client) return;
     const onDone = (data: { reason: string; usage?: TokenUsage }) => {
       if (!data.usage) return;
       const updated: WireMetrics = {
         inputTokens: wireRef.current.inputTokens + data.usage.prompt_tokens,
-        outputTokens:
-          wireRef.current.outputTokens + data.usage.completion_tokens,
+        outputTokens: wireRef.current.outputTokens + data.usage.completion_tokens,
         totalTokens: wireRef.current.totalTokens + data.usage.total_tokens,
         apiCalls: wireRef.current.apiCalls + 1,
       };
@@ -520,40 +435,20 @@ export const Context = ({
       setWire(updated);
     };
     client.on("done", onDone);
-    return () => {
-      client.removeListener("done", onDone);
-    };
+    return () => { client.removeListener("done", onDone); };
   }, [client]);
 
-  // ─── Derived values ──────────────────────────────────────────────
-
+  // Derived values
   const modelName = home?.config?.model?.default ?? "unknown";
   const contextLength = resolveContextLength(modelName);
-  const compressionConfig = home?.config?.compression ?? {
-    enabled: true,
-    threshold: 0.5,
-    target_ratio: 0.2,
-    protect_last_n: 20,
-    summary_model: "",
-  };
   const compressionThreshold = Math.round(
-    contextLength * compressionConfig.threshold,
+    contextLength * (home?.config?.compression?.threshold ?? 0.5),
   );
 
   const latestDbSession: SessionRow | undefined = home?.recentSessions?.[0];
-  const inputTokens =
-    wire.apiCalls > 0
-      ? wire.inputTokens
-      : (latestDbSession?.input_tokens ?? 0);
-  const outputTokens =
-    wire.apiCalls > 0
-      ? wire.outputTokens
-      : (latestDbSession?.output_tokens ?? 0);
-
-  const usagePercent =
-    contextLength > 0
-      ? Math.round((inputTokens / contextLength) * 100)
-      : 0;
+  const inputTokens = wire.apiCalls > 0 ? wire.inputTokens : (latestDbSession?.input_tokens ?? 0);
+  const outputTokens = wire.apiCalls > 0 ? wire.outputTokens : (latestDbSession?.output_tokens ?? 0);
+  const usagePercent = contextLength > 0 ? Math.round((inputTokens / contextLength) * 100) : 0;
 
   const status = getUsageStatus(usagePercent);
   const segments = buildSegments(contextLength, inputTokens, home, messages);
@@ -561,115 +456,56 @@ export const Context = ({
   const elapsed = sessionStart ? Date.now() - sessionStart : 0;
   const messageCount = messages.filter((m) => m.role !== "system").length;
   const hasWireData = wire.apiCalls > 0;
+  const gatewayConnected = home?.gateway?.platforms?.api_server?.state === "connected";
 
-  const gatewayConnected =
-    home?.gateway?.platforms?.api_server?.state === "connected";
+  const findSegment = (id: SegmentId) => segments.find((s) => s.id === id);
 
-  // Find segment by id
-  const findSegment = (id: SegmentId): GridSegment | undefined =>
-    segments.find((s) => s.id === id);
-
-  // ─── Render detail panel for selected segment ────────────────────
-
+  // Detail panel router
   const renderDetailPanel = () => {
     if (!selectedSegment) return null;
     const seg = findSegment(selectedSegment);
     if (!seg) return null;
-
     switch (selectedSegment) {
-      case "system":
-        return <SystemDetail home={home} segment={seg} />;
-      case "memory":
-        return <MemoryDetail home={home} segment={seg} />;
-      case "conversation":
-        return (
-          <ConversationDetail
-            segment={seg}
-            messages={messages}
-            outputTokens={outputTokens}
-          />
-        );
-      case "free":
-        return (
-          <FreeDetail
-            segment={seg}
-            contextLength={contextLength}
-            compressionThreshold={compressionThreshold}
-            compressionConfig={compressionConfig}
-          />
-        );
-      default:
-        return null;
+      case "system": return <SystemDetail home={home} segment={seg} />;
+      case "memory": return <MemoryDetail home={home} segment={seg} />;
+      case "conversation": return <ConversationDetail segment={seg} messages={messages} outputTokens={outputTokens} />;
+      case "free": return <FreeDetail segment={seg} contextLength={contextLength} compressionThreshold={compressionThreshold} home={home} />;
     }
   };
 
-  // ─── Render overview panels (when no segment selected) ───────────
-
-  const renderOverviewPanels = () => (
+  // Overview panels
+  const renderOverview = () => (
     <>
-      {/* Breakdown Legend */}
       <box borderStyle="single" padding={1} marginBottom={1}>
-        <text>
-          <strong>Breakdown</strong>
-          <span fg="cyan"> (click grid to inspect)</span>
-        </text>
-        {segments
-          .filter((s) => s.tokens > 0)
-          .map((s) => (
-            <text key={s.id}>
-              {s.emoji} {s.label} — {formatTokens(s.tokens)} (
-              {s.percentage.toFixed(1)}%)
-            </text>
-          ))}
-        {outputTokens > 0 && (
-          <text fg="green">
-            🟩 Output — {formatTokens(outputTokens)} tokens
-          </text>
-        )}
+        <text><strong>Breakdown</strong><span fg="cyan"> (click grid to inspect)</span></text>
+        {segments.filter((s) => s.tokens > 0).map((s) => (
+          <text key={s.id}>{s.emoji} {s.label} — {formatTokens(s.tokens)} ({s.percentage.toFixed(1)}%)</text>
+        ))}
+        {outputTokens > 0 && <text fg="green">🟩 Output — {formatTokens(outputTokens)} tokens</text>}
       </box>
 
-      {/* Memory */}
       {home?.memory && home?.userProfile && (
         <box borderStyle="single" padding={1} marginBottom={1}>
-          <text>
-            <strong>Memory</strong>
-          </text>
-          <text>
-            Notes: {formatChars(home.memory.charCount, home.memory.charLimit)}{" "}
-            ({home.memory.usagePercent}%)
-            {home.memory.usagePercent >= 95 ? " ⚠" : ""}
-          </text>
-          <text>
-            Profile:{" "}
-            {formatChars(home.userProfile.charCount, home.userProfile.charLimit)}{" "}
-            ({home.userProfile.usagePercent}%)
-            {home.userProfile.usagePercent >= 95 ? " ⚠" : ""}
-          </text>
+          <text><strong>Memory</strong></text>
+          <text>Notes: {formatChars(home.memory.charCount, home.memory.charLimit)} ({home.memory.usagePercent}%){home.memory.usagePercent >= 95 ? " ⚠" : ""}</text>
+          <text>Profile: {formatChars(home.userProfile.charCount, home.userProfile.charLimit)} ({home.userProfile.usagePercent}%){home.userProfile.usagePercent >= 95 ? " ⚠" : ""}</text>
         </box>
       )}
 
-      {/* Session */}
       <box borderStyle="single" padding={1}>
-        <text>
-          <strong>Session</strong>
-        </text>
+        <text><strong>Session</strong></text>
         <text>
           {modelName.split("/").pop()} · <span fg={status.color}>{status.label}</span>
-          {" · "}
-          <span fg={gatewayConnected ? "green" : "red"}>
-            {gatewayConnected ? "●" : "○"} gateway
-          </span>
+          {" · "}<span fg={gatewayConnected ? "green" : "red"}>{gatewayConnected ? "●" : "○"} gateway</span>
         </text>
         <text>
           API: {wire.apiCalls} · Msgs: {messageCount}
           {elapsed > 0 ? ` · ${formatDuration(elapsed)}` : ""}
-          {" · "}Skills: {home?.skillCount ?? "?"}
+          {" · "}Skills: {home?.skills?.length ?? "?"}
         </text>
       </box>
     </>
   );
-
-  // ─── Render ──────────────────────────────────────────────────────
 
   return (
     <box flexGrow={1} flexDirection="column" padding={1}>
@@ -677,57 +513,29 @@ export const Context = ({
       <box marginBottom={1}>
         <text>
           <strong>Context Window</strong>
-          <span>
-            {" "}
-            {formatTokens(inputTokens)} / {formatTokens(contextLength)} ({usagePercent}%)
-          </span>
-          {selectedSegment && (
-            <span fg="cyan"> · viewing {findSegment(selectedSegment)?.label ?? selectedSegment} · click grid to close</span>
-          )}
-          {!selectedSegment && !hasWireData && !latestDbSession && (
-            <span fg="yellow"> [awaiting first response]</span>
-          )}
-          {!selectedSegment && !hasWireData && latestDbSession && (
-            <span fg="cyan"> [from last session]</span>
-          )}
+          <span> {formatTokens(inputTokens)} / {formatTokens(contextLength)} ({usagePercent}%)</span>
+          {selectedSegment && <span fg="cyan"> · viewing {findSegment(selectedSegment)?.label} · click grid to close</span>}
+          {!selectedSegment && !hasWireData && !latestDbSession && <span fg="yellow"> [awaiting first response]</span>}
+          {!selectedSegment && !hasWireData && latestDbSession && <span fg="cyan"> [from last session]</span>}
         </text>
       </box>
 
-      {/* Main layout */}
+      {/* Grid + right panel */}
       <box flexDirection="row">
-        {/* Grid - 16x16 interactive */}
         <box borderStyle="single" paddingTop={1} paddingX={2} marginRight={2}>
           {[...Array(GRID_COLS)].map((_, row) => (
             <box key={row} flexDirection="row" height={1}>
               {[...Array(GRID_COLS)].map((_, col) => {
                 const idx = row * GRID_COLS + col;
                 const cell = grid[idx];
-                const isHovered =
-                  hoveredSegment !== null &&
-                  cell.segmentId === hoveredSegment;
-                const isSelected =
-                  selectedSegment !== null &&
-                  cell.segmentId === selectedSegment;
-
+                const highlight = hoveredSegment === cell.segmentId || selectedSegment === cell.segmentId;
                 return (
                   <box
                     key={col}
-                    backgroundColor={
-                      isSelected
-                        ? SEGMENT_HIGHLIGHT[cell.segmentId]
-                        : isHovered
-                          ? SEGMENT_HIGHLIGHT[cell.segmentId]
-                          : undefined
-                    }
+                    backgroundColor={highlight ? SEGMENT_HIGHLIGHT[cell.segmentId] : undefined}
                     onMouseOver={() => setHoveredSegment(cell.segmentId)}
                     onMouseOut={() => setHoveredSegment(null)}
-                    onMouseDown={() =>
-                      setSelectedSegment(
-                        selectedSegment === cell.segmentId
-                          ? null
-                          : cell.segmentId,
-                      )
-                    }
+                    onMouseDown={() => setSelectedSegment(selectedSegment === cell.segmentId ? null : cell.segmentId)}
                   >
                     <text>{cell.emoji}</text>
                   </box>
@@ -737,9 +545,8 @@ export const Context = ({
           ))}
         </box>
 
-        {/* Right panel — detail or overview */}
         <box flexDirection="column" flexGrow={1}>
-          {selectedSegment ? renderDetailPanel() : renderOverviewPanels()}
+          {selectedSegment ? renderDetailPanel() : renderOverview()}
         </box>
       </box>
     </box>
