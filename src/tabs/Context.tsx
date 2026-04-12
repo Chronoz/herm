@@ -1,7 +1,8 @@
 // Using OpenTUI React, not standard React
 import { useEffect, useState, useRef, useCallback } from "react";
 import type { HermesApiClient } from "../utils/hermes-api-client";
-import type { Message } from "../components/chat/MessageItem";
+import type { Message } from "../types/message";
+import { text as msgText } from "../types/message";
 import {
   readHermesHome,
   type HermesHomeSnapshot,
@@ -48,17 +49,26 @@ interface GridCell {
 // ─── Constants ───────────────────────────────────────────────────────
 
 const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
+  // Claude 4.6 (1M)
   "claude-opus-4-6": 1_000_000,
   "claude-sonnet-4-6": 1_000_000,
+  "claude-opus-4.6": 1_000_000,
+  "claude-sonnet-4.6": 1_000_000,
+  // Claude 4 (200K)
   "claude-opus-4": 200_000,
   "claude-sonnet-4": 200_000,
+  // Claude 3.x
   "claude-3.5-sonnet": 200_000,
   "claude-3-opus": 200_000,
-  claude: 200_000,
+  "claude-3-sonnet": 200_000,
+  "claude-3-haiku": 200_000,
+  // OpenAI
   "gpt-4.1": 1_047_576,
   "gpt-4o": 128_000,
   "gpt-4": 128_000,
+  // Google
   gemini: 1_048_576,
+  // Others
   deepseek: 128_000,
   llama: 131_072,
   qwen: 131_072,
@@ -154,7 +164,7 @@ const buildSegments = (
   const conversationTokens = estimateTokens(
     messages
       .filter((m) => m.role !== "system")
-      .map((m) => m.content)
+      .map((m) => msgText(m))
       .join(""),
   );
   const knownSegments = memoryTokens + userTokens + conversationTokens;
@@ -407,9 +417,9 @@ const ConversationDetail = ({
   const { theme } = useTheme();
   const userMsgs = messages.filter((m) => m.role === "user");
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
-  const userTokens = estimateTokens(userMsgs.map((m) => m.content).join(""));
+  const userTokens = estimateTokens(userMsgs.map((m) => msgText(m)).join(""));
   const assistantTokens = estimateTokens(
-    assistantMsgs.map((m) => m.content).join(""),
+    assistantMsgs.map((m) => msgText(m)).join(""),
   );
   const nonSystem = messages.filter((m) => m.role !== "system");
 
@@ -444,8 +454,8 @@ const ConversationDetail = ({
                 <span fg={m.role === "user" ? theme.info : theme.success}>
                   {prefix}
                 </span>{" "}
-                ({formatTokens(estimateTokens(m.content))}){" "}
-                {m.content.replace(/\n/g, " ")}
+                ({formatTokens(estimateTokens(msgText(m)))}){" "}
+                {msgText(m).replace(/\n/g, " ")}
               </text>
             );
           })}
@@ -539,9 +549,8 @@ export const Context = ({
   const wireRef = useRef(wire);
   const { theme } = useTheme();
   const [hoveredSegment, setHoveredSegment] = useState<SegmentId | null>(null);
-  const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(
-    null,
-  );
+  const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(null);
+  const [sessionIdx, setSessionIdx] = useState(0);
 
   // Read ~/.hermes/
   const refreshHome = useCallback(async () => {
@@ -580,24 +589,43 @@ export const Context = ({
   }, [client]);
 
   // Derived values
-  const modelName = home?.config?.model?.default ?? "unknown";
+  const sessions = home?.recentSessions ?? [];
+  const dbSession: SessionRow | undefined = sessions[sessionIdx];
+  const modelName = dbSession?.model ?? home?.config?.model?.default ?? "unknown";
   const contextLength = resolveContextLength(modelName);
   const compressionThreshold = Math.round(
     contextLength * (home?.config?.compression?.threshold ?? 0.5),
   );
+  // Find matching live session for last_prompt_tokens (actual context fill)
+  const liveSession = dbSession
+    ? Object.values(home?.liveSessions ?? {}).find(
+        (ls) => ls.session_id === dbSession.id,
+      )
+    : undefined;
 
-  const latestDbSession: SessionRow | undefined = home?.recentSessions?.[0];
-  const inputTokens =
-    wire.apiCalls > 0 ? wire.inputTokens : (latestDbSession?.input_tokens ?? 0);
-  const outputTokens =
-    wire.apiCalls > 0
-      ? wire.outputTokens
-      : (latestDbSession?.output_tokens ?? 0);
+  // Context fill priority:
+  //   1. Wire data (active herm session — real prompt_tokens from SSE)
+  //   2. Live session's last_prompt_tokens (actual context window fill)
+  //   3. Estimate from cumulative data: last call likely used ~(total / msg_count * growth_factor)
+  //      but that's unreliable. Instead, show cumulative with a label.
+  const lastPrompt = liveSession?.last_prompt_tokens ?? 0;
+  const contextFill = wire.apiCalls > 0
+    ? wire.inputTokens
+    : lastPrompt > 0
+      ? lastPrompt
+      : (dbSession?.input_tokens ?? 0);
+  const isCumulative = wire.apiCalls === 0 && lastPrompt === 0 && (dbSession?.input_tokens ?? 0) > 0;
+
+  // Cumulative totals for the session info display
+  const totalInput = dbSession?.input_tokens ?? 0;
+  const totalOutput = dbSession?.output_tokens ?? 0;
+  const outputTokens = wire.apiCalls > 0 ? wire.outputTokens : totalOutput;
+
   const usagePercent =
-    contextLength > 0 ? Math.round((inputTokens / contextLength) * 100) : 0;
+    contextLength > 0 ? Math.round((contextFill / contextLength) * 100) : 0;
 
   const status = getUsageStatus(usagePercent, theme);
-  const segments = buildSegments(contextLength, inputTokens, home, messages);
+  const segments = buildSegments(contextLength, contextFill, home, messages);
   const grid = generateGrid(segments);
   const elapsed = sessionStart ? Date.now() - sessionStart : 0;
   const messageCount = messages.filter((m) => m.role !== "system").length;
@@ -688,20 +716,51 @@ export const Context = ({
       <box borderStyle="single" padding={1}>
         <text>
           <strong>Session</strong>
+          <span fg={theme.textMuted}> ({sessionIdx + 1}/{sessions.length || 1})</span>
         </text>
+        {dbSession && (
+          <>
+            <text>
+              {dbSession.model?.split("/").pop() ?? "?"} · {dbSession.sessionSource} · {dbSession.message_count} msgs · {dbSession.tool_call_count} tools
+            </text>
+            <text>
+              Total in: {formatTokens(dbSession.input_tokens)} · out: {formatTokens(dbSession.output_tokens)} · cache: {formatTokens(dbSession.cache_read_tokens)}
+            </text>
+            {liveSession && (
+              <text>Context fill: {formatTokens(liveSession.last_prompt_tokens)}</text>
+            )}
+            {dbSession.estimated_cost_usd != null && (
+              <text>Cost: ${dbSession.estimated_cost_usd.toFixed(2)}</text>
+            )}
+          </>
+        )}
         <text>
-          {modelName.split("/").pop()} ·{" "}
           <span fg={status.color}>{status.label}</span>
           {" · "}
           <span fg={gatewayConnected ? theme.success : theme.error}>
             {gatewayConnected ? "●" : "○"} gateway
           </span>
-        </text>
-        <text>
-          API: {wire.apiCalls} · Msgs: {messageCount}
-          {elapsed > 0 ? ` · ${formatDuration(elapsed)}` : ""}
           {" · "}Skills: {home?.skills?.length ?? "?"}
         </text>
+        {sessions.length > 1 && (
+          <box flexDirection="row" height={1} marginTop={1}>
+            <box
+              onMouseDown={() => setSessionIdx(Math.max(0, sessionIdx - 1))}
+            >
+              <text fg={sessionIdx > 0 ? theme.info : theme.textMuted}>
+                ◀ prev
+              </text>
+            </box>
+            <text>  </text>
+            <box
+              onMouseDown={() => setSessionIdx(Math.min(sessions.length - 1, sessionIdx + 1))}
+            >
+              <text fg={sessionIdx < sessions.length - 1 ? theme.info : theme.textMuted}>
+                next ▶
+              </text>
+            </box>
+          </box>
+        )}
       </box>
     </>
   );
@@ -714,7 +773,7 @@ export const Context = ({
           <strong>Context Window</strong>
           <span>
             {" "}
-            {formatTokens(inputTokens)} / {formatTokens(contextLength)} (
+            {formatTokens(contextFill)} / {formatTokens(contextLength)} (
             {usagePercent}%)
           </span>
           {selectedSegment && (
@@ -724,11 +783,14 @@ export const Context = ({
               close
             </span>
           )}
-          {!selectedSegment && !hasWireData && !latestDbSession && (
-            <span fg={theme.warning}> [awaiting first response]</span>
+          {!selectedSegment && !hasWireData && contextFill === 0 && (
+            <span fg={theme.warning}> [no data]</span>
           )}
-          {!selectedSegment && !hasWireData && latestDbSession && (
-            <span fg={theme.info}> [from last session]</span>
+          {!selectedSegment && !hasWireData && isCumulative && (
+            <span fg={theme.warning}> [cumulative — not current fill]</span>
+          )}
+          {!selectedSegment && !hasWireData && !isCumulative && contextFill > 0 && (
+            <span fg={theme.info}> [live session]</span>
           )}
         </text>
       </box>

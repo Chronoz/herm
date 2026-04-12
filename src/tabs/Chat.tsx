@@ -1,27 +1,50 @@
-// Using OpenTUI React, not standard React
-import { MessageList } from "../components/chat/MessageList";
-import { InputArea } from "../components/chat/InputArea";
-import type { Message } from "../components/chat/MessageItem";
-import { useTheme } from "../theme";
+import { MessageList } from "../components/chat/MessageList"
+import { InputArea } from "../components/chat/InputArea"
+import { useTheme } from "../theme"
+import type { Message, Usage } from "../types/message"
 
-interface ChatTabProps {
-  messages: Message[];
-  isTyping: boolean;
-  input: string;
-  hermesReady: boolean;
+type ChatProps = {
+  messages: Message[]
+  streaming: boolean
+  input: string
+  onInput: (v: string) => void
+  onSubmit: () => void
+  ready: boolean
+  model?: string
+  usage?: Usage
+  cost?: number
 }
 
-export const Chat = ({ messages, isTyping, input, hermesReady }: ChatTabProps) => {
-  const { theme } = useTheme();
+export const Chat = ({
+  messages,
+  streaming,
+  input,
+  onInput,
+  onSubmit,
+  ready,
+  model,
+  usage,
+  cost,
+}: ChatProps) => {
+  const { theme } = useTheme()
   return (
     <box
       flexGrow={1}
-      padding={1}
       flexDirection="column"
       backgroundColor={theme.background}
     >
-      <MessageList messages={messages} isTyping={isTyping} />
-      <InputArea input={input} hermesReady={hermesReady} />
+      <MessageList messages={messages} streaming={streaming} />
+      <InputArea
+        value={input}
+        onChange={onInput}
+        onSubmit={onSubmit}
+        focused={!streaming}
+        ready={ready}
+        streaming={streaming}
+        model={model}
+        usage={usage}
+        cost={cost}
+      />
     </box>
-  );
-};
+  )
+}

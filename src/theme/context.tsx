@@ -12,13 +12,17 @@
  */
 
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import type { SyntaxStyle } from "@opentui/core";
 import type { Theme, ThemeJson } from "./types";
 import { resolveTheme } from "./resolve";
 import { DEFAULT_THEMES, DEFAULT_THEME } from "./builtin";
+import { syntax } from "./syntax";
 
 interface ThemeContext {
   /** Resolved theme — all RGBA values ready for JSX props */
   theme: Theme;
+  /** SyntaxStyle for code/markdown rendering */
+  syntaxStyle: SyntaxStyle;
   /** Currently active theme name */
   name: string;
   /** Dark or light mode */
@@ -76,8 +80,11 @@ export const ThemeProvider = ({
     [themes],
   );
 
+  const syntaxStyle = useMemo(() => syntax(resolved), [resolved]);
+
   const value: ThemeContext = {
     theme: resolved,
+    syntaxStyle,
     name: active,
     mode,
     set,

@@ -1,35 +1,38 @@
-// Using OpenTUI React, not standard React
-import { MessageItem, type Message } from "./MessageItem";
-import { TypingIndicator } from "./TypingIndicator";
-import { useTheme } from "../../theme";
+import { MessageItem } from "./MessageItem"
+import { TypingIndicator } from "./TypingIndicator"
+import { useTheme } from "../../theme"
+import type { Message } from "../../types/message"
 
-interface MessageListProps {
-  messages: Message[];
-  isTyping: boolean;
-}
-
-export const MessageList = ({ messages, isTyping }: MessageListProps) => {
-  const { theme } = useTheme();
+export const MessageList = ({ messages, streaming }: { messages: Message[]; streaming: boolean }) => {
+  const { theme } = useTheme()
 
   if (messages.length === 0) {
     return (
       <box flexGrow={1} justifyContent="center" alignItems="center">
         <box flexDirection="column" alignItems="center">
-          <text fg={theme.textMuted}>Welcome to Herm</text>
-          <text fg={theme.textMuted}>Type your message below to start...</text>
+          <text fg={theme.primary}>Herm</text>
+          <text fg={theme.textMuted}>Type a message to start a conversation.</text>
         </box>
       </box>
-    );
+    )
   }
 
+  // Determine which message is currently streaming
+  const last = messages[messages.length - 1]
+  const lastIsStreaming = streaming && last?.role === "assistant"
+
   return (
-    <scrollbox flexGrow={1} focused>
+    <scrollbox flexGrow={1} scrollY stickyScroll>
       <box flexDirection="column">
-        {messages.map((msg, index) => (
-          <MessageItem key={index} message={msg} />
+        {messages.map((msg, i) => (
+          <MessageItem
+            key={msg.id}
+            message={msg}
+            streaming={lastIsStreaming && i === messages.length - 1}
+          />
         ))}
-        {isTyping && <TypingIndicator />}
+        {streaming && last?.role !== "assistant" && <TypingIndicator />}
       </box>
     </scrollbox>
-  );
-};
+  )
+}

@@ -1,210 +1,305 @@
-import { createCliRenderer } from "@opentui/core";
-import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
-import { useState, useEffect, useRef } from "react";
-import { HermesApiClient } from "./utils/hermes-api-client";
-import { TabBar } from "./components/tabs/TabBar";
-import { Sidebar } from "./components/sidebar/Sidebar";
-import { Chat } from "./tabs/Chat";
-import { Context } from "./tabs/Context";
-import type { Message } from "./components/chat/MessageItem";
-import { copySelection } from "./utils/clipboard";
-import { ThemeProvider, useTheme } from "./theme";
+import { useKeyboard, useRenderer } from "@opentui/react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { HermesApiClient } from "./utils/hermes-api-client"
+import type { DonePayload } from "./utils/hermes-api-client"
+import { TabBar } from "./components/tabs/TabBar"
+import { Sidebar } from "./components/sidebar/Sidebar"
+import { Chat } from "./tabs/Chat"
+import { Context } from "./tabs/Context"
+import type { Message, Usage, ToolPart } from "./types/message"
+import { mid } from "./types/message"
+import { copySelection } from "./utils/clipboard"
+import { ThemeProvider, useTheme } from "./theme"
 
 export const App = () => (
   <ThemeProvider>
     <AppInner />
   </ThemeProvider>
-);
+)
+
+const MAX_HISTORY = 50
 
 const AppInner = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [currentModel] = useState("hermes-agent");
-  const [activeTools] = useState(["web", "file"]);
-  const [memoryCount] = useState(0);
-  const [hermesReady, setHermesReady] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [sessionId] = useState(`herm-${Date.now()}`);
-  const [activeTab, setActiveTab] = useState(1); // temporarily set to context tab for better dev experience while working on context tab
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [model] = useState("hermes-agent")
+  const [tools] = useState(["web", "file"])
+  const [memos] = useState(0)
+  const [ready, setReady] = useState(false)
+  const [streaming, setStreaming] = useState(false)
+  const [session] = useState(`herm-${Date.now()}`)
+  const [tab, setTab] = useState(0)
+  const [usage, setUsage] = useState<Usage | undefined>(undefined)
+  const [cost, setCost] = useState(0)
 
-  const renderer = useRenderer();
-  const clientRef = useRef<HermesApiClient | null>(null);
-  const currentAssistantMessage = useRef<string>("");
-  const sessionStartRef = useRef<number>(Date.now());
+  // Prompt history
+  const [history, setHistory] = useState<string[]>([])
+  const histIdx = useRef(-1)
+  const stash = useRef("")
 
-  const connectToHermes = async () => {
-    try {
-      const client = new HermesApiClient({
-        baseUrl: "http://localhost:8642/v1",
-        apiKey: process.env.API_SERVER_KEY,
-        sessionId: sessionId,
-        model: currentModel,
-      });
+  const renderer = useRenderer()
+  const client = useRef<HermesApiClient | null>(null)
+  const buf = useRef("")
+  const start = useRef(Date.now())
 
-      // Set up event handlers
-      client.on("connected", (data) => {
-        setHermesReady(true);
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "system",
-            content: `Connected to Hermes API. Session: ${data.sessionId}`,
-            timestamp: Date.now() / 1000,
-          },
-        ]);
-      });
+  // Connect to Hermes
+  const connect = useCallback(async () => {
+    const api = new HermesApiClient({
+      url: "http://localhost:8642/v1",
+      key: process.env.API_SERVER_KEY,
+      session,
+      model,
+    })
 
-      client.on("content", (chunk: string) => {
-        currentAssistantMessage.current += chunk;
+    api.on("connected", () => {
+      setReady(true)
+      setMessages(prev => [...prev, {
+        id: mid(),
+        role: "system",
+        parts: [{ type: "text", content: `Connected to Hermes. Session: ${session}`, streaming: false }],
+        timestamp: Date.now() / 1000,
+      }])
+    })
 
-        setMessages((prev) => {
-          const lastMessage = prev[prev.length - 1];
-          if (lastMessage && lastMessage.role === "assistant" && isTyping) {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...lastMessage,
-                content: currentAssistantMessage.current,
-              },
-            ];
-          } else {
-            return [
-              ...prev,
-              {
-                role: "assistant",
-                content: currentAssistantMessage.current,
-                timestamp: Date.now() / 1000,
-              },
-            ];
-          }
-        });
-      });
+    api.on("start", () => {
+      setStreaming(true)
+      buf.current = ""
+    })
 
-      client.on("typing", (typing: boolean) => {
-        setIsTyping(typing);
-        if (!typing) {
-          currentAssistantMessage.current = "";
+    api.on("content", (chunk: string) => {
+      buf.current += chunk
+      const text = buf.current
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant" && last.parts.some(p => p.type === "text" && p.streaming)) {
+          // Update existing streaming message
+          const parts = last.parts.map(p =>
+            p.type === "text" && p.streaming ? { ...p, content: text } : p
+          )
+          return [...prev.slice(0, -1), { ...last, parts }]
         }
-      });
-
-      client.on("done", (data) => {
-        setIsTyping(false);
-        if (data.usage) {
-          console.log("Token usage:", data.usage);
-        }
-      });
-
-      client.on("error", (err) => {
-        setIsTyping(false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "system",
-            content: `Error: ${err.message}`,
-            timestamp: Date.now() / 1000,
-          },
-        ]);
-      });
-
-      clientRef.current = client;
-      await client.connect();
-    } catch (err: any) {
-      setMessages([
-        {
-          role: "system",
-          content: `Failed to connect: ${err.message}`,
+        // Create new assistant message
+        return [...prev, {
+          id: mid(),
+          role: "assistant",
+          parts: [{ type: "text", content: text, streaming: true }],
           timestamp: Date.now() / 1000,
-        },
-      ]);
+          model,
+        }]
+      })
+    })
+
+    api.on("tool", (tc: { id: string; name: string; status: string }) => {
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant") {
+          const existing = last.parts.find(p => p.type === "tool" && p.id === tc.id)
+          if (existing) {
+            const parts = last.parts.map(p =>
+              p.type === "tool" && p.id === tc.id ? { ...p, status: tc.status } as ToolPart : p
+            )
+            return [...prev.slice(0, -1), { ...last, parts }]
+          }
+          // Add new tool part
+          const part: ToolPart = { type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"] }
+          return [...prev.slice(0, -1), { ...last, parts: [...last.parts, part] }]
+        }
+        // Create new assistant message with tool
+        return [...prev, {
+          id: mid(),
+          role: "assistant",
+          parts: [{ type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"] }],
+          timestamp: Date.now() / 1000,
+          model,
+        }]
+      })
+    })
+
+    api.on("done", (data: DonePayload) => {
+      setStreaming(false)
+      buf.current = ""
+      // Finalize the last assistant message
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant") {
+          const parts = last.parts.map(p =>
+            p.type === "text" && p.streaming ? { ...p, streaming: false } : p
+          )
+          return [...prev.slice(0, -1), {
+            ...last,
+            parts,
+            duration: data.duration,
+            usage: data.usage,
+          }]
+        }
+        return prev
+      })
+      if (data.usage) {
+        setUsage(data.usage)
+        // Rough cost estimate (Claude Sonnet pricing as default)
+        const c = (data.usage.input * 3 + data.usage.output * 15) / 1_000_000
+        setCost(prev => prev + c)
+      }
+    })
+
+    api.on("error", (err: Error) => {
+      setStreaming(false)
+      buf.current = ""
+      setMessages(prev => [...prev, {
+        id: mid(),
+        role: "system",
+        parts: [{ type: "text", content: `Error: ${err.message}`, streaming: false }],
+        timestamp: Date.now() / 1000,
+      }])
+    })
+
+    client.current = api
+    try {
+      await api.connect()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setMessages([{
+        id: mid(),
+        role: "system",
+        parts: [{ type: "text", content: `Failed to connect: ${msg}`, streaming: false }],
+        timestamp: Date.now() / 1000,
+      }])
     }
-  };
+  }, [session, model])
 
   useEffect(() => {
-    connectToHermes();
-    return () => {
-      if (clientRef.current) {
-        clientRef.current.removeAllListeners();
+    connect()
+    return () => { client.current?.disconnect() }
+  }, [connect])
+
+  // Send message
+  const send = useCallback(() => {
+    const msg = input.trim()
+    if (!msg || !ready || streaming) return
+
+    // Add to history
+    setHistory(prev => {
+      const next = [msg, ...prev.filter(h => h !== msg)]
+      return next.slice(0, MAX_HISTORY)
+    })
+    histIdx.current = -1
+    stash.current = ""
+
+    setMessages(prev => [...prev, {
+      id: mid(),
+      role: "user",
+      parts: [{ type: "text", content: msg, streaming: false }],
+      timestamp: Date.now() / 1000,
+    }])
+
+    client.current?.send(msg)
+    setInput("")
+  }, [input, ready, streaming])
+
+  // Copy last assistant message
+  const copyLast = useCallback(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.role === "assistant") {
+        const content = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
+        if (content) {
+          // Use OSC 52 to copy
+          process.stdout.write(`\x1b]52;c;${Buffer.from(content).toString("base64")}\x07`)
+          return true
+        }
       }
-    };
-  }, []);
-
-  const sendMessage = () => {
-    if (!input.trim()) return;
-
-    const msg = input.trim();
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: msg,
-        timestamp: Date.now() / 1000,
-      },
-    ]);
-
-    if (clientRef.current) {
-      clientRef.current.sendMessage(msg);
     }
+    return false
+  }, [messages])
 
-    setInput("");
-  };
-
-  // Handle keyboard events
+  // Keyboard handler
   useKeyboard((key) => {
-    // Allow arrow keys to pass through for tab navigation
-    if (key.name === "left" || key.name === "right") {
-      return;
+    // Tab switching: Ctrl+Left/Right
+    if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
+    if (key.ctrl && key.name === "right") { setTab(t => Math.min(1, t + 1)); return }
+
+    // Only handle input keys on Chat tab
+    if (tab !== 0) return
+
+    // Escape — interrupt streaming
+    if (key.name === "escape") {
+      if (streaming) client.current?.interrupt()
+      return
     }
 
-    if (key.name === "return") {
-      sendMessage();
-    } else if (key.ctrl && key.name === "c") {
-      // If there's a selection, copy it instead of exiting
-      if (copySelection(renderer)) return;
-      renderer.destroy();
-    } else if (key.name === "backspace") {
-      setInput((prev) => prev.slice(0, -1));
-    } else if (
-      key.sequence &&
-      key.sequence.length === 1 &&
-      !key.ctrl &&
-      !key.meta
-    ) {
-      setInput((prev) => prev + key.sequence);
+    // Ctrl+C — copy selection or exit
+    if (key.ctrl && key.name === "c") {
+      if (copySelection(renderer)) return
+      renderer.destroy()
+      return
     }
-  });
+
+    // Ctrl+Y — copy last assistant message
+    if (key.ctrl && key.name === "y") {
+      copyLast()
+      return
+    }
+
+    // Up arrow — prompt history
+    if (key.name === "up") {
+      if (history.length === 0) return
+      if (histIdx.current === -1) stash.current = input
+      const next = Math.min(histIdx.current + 1, history.length - 1)
+      histIdx.current = next
+      setInput(history[next])
+      return
+    }
+
+    // Down arrow — prompt history
+    if (key.name === "down") {
+      if (histIdx.current === -1) return
+      const next = histIdx.current - 1
+      histIdx.current = next
+      setInput(next === -1 ? stash.current : history[next])
+      return
+    }
+
+    // These keys are handled by the textarea component when focused
+    // Let arrow left/right pass through
+    if (key.name === "left" || key.name === "right") return
+  })
 
   const tabs = [
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
-  ];
+  ]
 
-  // Render content based on active tab
-  const renderTabContent = () => {
-    switch (activeTab) {
+  const content = () => {
+    switch (tab) {
       case 0:
         return (
           <Chat
             messages={messages}
-            isTyping={isTyping}
+            streaming={streaming}
             input={input}
-            hermesReady={hermesReady}
+            onInput={setInput}
+            onSubmit={send}
+            ready={ready}
+            model={model}
+            usage={usage}
+            cost={cost}
           />
-        );
+        )
       case 1:
         return (
           <Context
-            description={tabs[activeTab].description}
-            client={clientRef.current}
+            description={tabs[tab].description}
+            client={client.current}
             messages={messages}
-            sessionStart={sessionStartRef.current}
+            sessionStart={start.current}
           />
-        );
+        )
       default:
-        return null;
+        return null
     }
-  };
+  }
 
-  const { theme } = useTheme();
+  const { theme } = useTheme()
 
   return (
     <box
@@ -214,12 +309,12 @@ const AppInner = () => {
       backgroundColor={theme.background}
       onMouseUp={() => copySelection(renderer)}
     >
-      <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
 
       <box flexGrow={1} flexDirection="row">
-        {renderTabContent()}
-        <Sidebar activeTools={activeTools} memoryCount={memoryCount} />
+        {content()}
+        <Sidebar activeTools={tools} memoryCount={memos} />
       </box>
     </box>
-  );
-};
+  )
+}

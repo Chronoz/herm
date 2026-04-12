@@ -1,14 +1,26 @@
-// Using OpenTUI React, not standard React
-import { useTheme } from "../../theme";
+import { useState, useEffect, useRef } from "react"
+import { useTheme } from "../../theme"
+
+const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 export const TypingIndicator = () => {
-  const { theme } = useTheme();
+  const { theme } = useTheme()
+  const [frame, setFrame] = useState(0)
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    timer.current = setInterval(() => {
+      setFrame(f => (f + 1) % FRAMES.length)
+    }, 80)
+    return () => { if (timer.current) clearInterval(timer.current) }
+  }, [])
 
   return (
-    <box padding={1} marginBottom={1} backgroundColor={theme.backgroundElement}>
+    <box height={1} paddingLeft={1}>
       <text>
-        <span fg={theme.info}>typing...</span>
+        <span fg={theme.info}>{FRAMES[frame]}</span>
+        <span fg={theme.textMuted}> Generating...</span>
       </text>
     </box>
-  );
-};
+  )
+}

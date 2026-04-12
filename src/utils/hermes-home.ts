@@ -312,7 +312,7 @@ export async function readLiveSessions(): Promise<
 }
 
 /** Query state.db for recent sessions */
-export function queryRecentSessions(limit: number = 10): SessionRow[] {
+export function queryRecentSessions(limit: number = 30): SessionRow[] {
   const dbSource = makeSource("state.db");
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
@@ -593,7 +593,7 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
 
   // SQLite is sync in bun:sqlite, run separately
   try {
-    snapshot.recentSessions = queryRecentSessions(10);
+    snapshot.recentSessions = queryRecentSessions();
   } catch (e: any) {
     errors.push(`stateDb: ${e.message}`);
   }
