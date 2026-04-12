@@ -3,7 +3,7 @@ peer = false
 
 [install.cache]
 disable = false
-dir = "~/.bun/install/cache"
+# Use default cache location (Bun will handle it properly)
 
 [install.lockfile]
 save = true
