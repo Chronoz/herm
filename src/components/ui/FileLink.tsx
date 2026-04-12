@@ -1,15 +1,15 @@
 /**
  * FileLink — Generic clickable file reference.
  *
- * Wraps content in an inline box for mouse hit-testing, renders cyan
- * text that opens the source file in the OS default handler when clicked.
- * Underlines on hover.
+ * Wraps in a box for mouse hit-testing. Opens the source file
+ * in the OS default handler when clicked. Underlines on hover.
  */
 
 import { useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import type { Source } from "../../utils/hermes-home";
 import { openFile } from "../../utils/open-file";
+import { useTheme } from "../../theme";
 
 interface FileLinkProps {
   source: Source;
@@ -17,6 +17,7 @@ interface FileLinkProps {
 }
 
 export const FileLink = ({ source, children }: FileLinkProps) => {
+  const { theme } = useTheme();
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -27,7 +28,7 @@ export const FileLink = ({ source, children }: FileLinkProps) => {
       onMouseOut={() => setHovered(false)}
     >
       <text
-        fg="cyan"
+        fg={theme.info}
         attributes={hovered ? TextAttributes.UNDERLINE : TextAttributes.NONE}
       >
         {children ?? source.label}

@@ -8,8 +8,15 @@ import { Chat } from "./tabs/Chat";
 import { Context } from "./tabs/Context";
 import type { Message } from "./components/chat/MessageItem";
 import { copySelection } from "./utils/clipboard";
+import { ThemeProvider, useTheme } from "./theme";
 
-export const App = () => {
+export const App = () => (
+  <ThemeProvider>
+    <AppInner />
+  </ThemeProvider>
+);
+
+const AppInner = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [currentModel] = useState("hermes-agent");
@@ -197,12 +204,14 @@ export const App = () => {
     }
   };
 
+  const { theme } = useTheme();
+
   return (
     <box
       width="100%"
       height="100%"
       flexDirection="column"
-      backgroundColor="black"
+      backgroundColor={theme.background}
       onMouseUp={() => copySelection(renderer)}
     >
       <TabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />

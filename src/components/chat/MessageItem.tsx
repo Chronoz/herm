@@ -1,4 +1,5 @@
 // Using OpenTUI React, not standard React
+import { useTheme } from "../../theme";
 
 export interface Message {
   role: "user" | "assistant" | "system";
@@ -11,14 +12,16 @@ interface MessageItemProps {
 }
 
 export const MessageItem = ({ message }: MessageItemProps) => {
-  const backgroundColor = 
-    message.role === "user"
-      ? "#004488"
-      : message.role === "assistant"
-        ? "#006644"
-        : "#444400";
+  const { theme } = useTheme();
 
-  const displayName = 
+  const bg =
+    message.role === "user"
+      ? theme.primary
+      : message.role === "assistant"
+        ? theme.secondary
+        : theme.backgroundElement;
+
+  const label =
     message.role === "user"
       ? "You"
       : message.role === "assistant"
@@ -26,13 +29,9 @@ export const MessageItem = ({ message }: MessageItemProps) => {
         : "System";
 
   return (
-    <box
-      padding={1}
-      marginBottom={1}
-      backgroundColor={backgroundColor}
-    >
-      <text>
-        <strong>{displayName}:</strong>
+    <box padding={1} marginBottom={1} backgroundColor={bg}>
+      <text fg={theme.text}>
+        <strong>{label}:</strong>
         <span> {message.content}</span>
       </text>
     </box>

@@ -8,6 +8,7 @@ import {
   type SessionRow,
 } from "../utils/hermes-home";
 import { FileLink } from "../components/ui/FileLink";
+import { useTheme, type Theme } from "../theme";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -73,11 +74,15 @@ const THRESHOLD_GOOD = 50;
 const THRESHOLD_WARN = 80;
 const THRESHOLD_CRITICAL = 95;
 
-const SEGMENT_HIGHLIGHT: Record<SegmentId, string> = {
-  system: "#1a3a5c",
-  memory: "#5c4a1a",
-  conversation: "#5c1a1a",
-  free: "#1a1a1a",
+/** Segment highlight uses theme-derived colors with low opacity */
+const segmentHighlight = (id: SegmentId, theme: Theme): string | undefined => {
+  const map: Record<SegmentId, any> = {
+    system: theme.info,
+    memory: theme.warning,
+    conversation: theme.error,
+    free: theme.backgroundElement,
+  };
+  return map[id];
 };
 
 // ─── Utilities ───────────────────────────────────────────────────────
@@ -121,11 +126,12 @@ const buildBar = (percent: number, width: number = 20): string => {
 
 const getUsageStatus = (
   percent: number,
-): { label: string; color: string } => {
-  if (percent >= THRESHOLD_CRITICAL) return { label: "CRITICAL", color: "red" };
-  if (percent >= THRESHOLD_WARN) return { label: "HIGH", color: "red" };
-  if (percent >= THRESHOLD_GOOD) return { label: "MODERATE", color: "yellow" };
-  return { label: "HEALTHY", color: "green" };
+  theme: Theme,
+): { label: string; color: any } => {
+  if (percent >= THRESHOLD_CRITICAL) return { label: "CRITICAL", color: theme.error };
+  if (percent >= THRESHOLD_WARN) return { label: "HIGH", color: theme.error };
+  if (percent >= THRESHOLD_GOOD) return { label: "MODERATE", color: theme.warning };
+  return { label: "HEALTHY", color: theme.success };
 };
 
 // ─── Segments ────────────────────────────────────────────────────────
@@ -176,6 +182,7 @@ const SystemDetail = ({
   home: HermesHomeSnapshot | null;
   segment: GridSegment;
 }) => {
+  const { theme } = useTheme();
   // Group skills by category
   const skillsByCategory: Record<string, number> = {};
   for (const skill of home?.skills ?? []) {
@@ -226,7 +233,7 @@ const SystemDetail = ({
             <strong>Tools</strong> — {tools.length} registered (~{formatTokens(toolTokens)} tokens in schemas)
           </text>
           {tools.map((t) => (
-            <text key={t.name} fg="white">
+            <text key={t.name} fg={theme.text}>
               · {t.name}
             </text>
           ))}
@@ -241,7 +248,7 @@ const SystemDetail = ({
             <strong>Skills</strong> — {home!.skills.length} installed
           </text>
           {sortedCategories.map(([cat, count]) => (
-            <text key={cat} fg="white">
+            <text key={cat} fg={theme.text}>
               · {cat} ({count})
             </text>
           ))}
@@ -258,6 +265,7 @@ const MemoryDetail = ({
   home: HermesHomeSnapshot | null;
   segment: GridSegment;
 }) => {
+  const { theme } = useTheme();
   const parseEntries = (content: string | undefined) =>
     (content ?? "").split("§").map((s) => s.trim()).filter(Boolean);
 
@@ -281,7 +289,7 @@ const MemoryDetail = ({
           <text>{buildBar(home.memory.usagePercent, 25)}{home.memory.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
           <text> </text>
           {memEntries.map((entry, i) => (
-            <text key={i} fg="white">
+            <text key={i} fg={theme.text}>
               · {entry}
             </text>
           ))}
@@ -299,7 +307,7 @@ const MemoryDetail = ({
           <text>{buildBar(home.userProfile.usagePercent, 25)}{home.userProfile.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
           <text> </text>
           {userEntries.map((entry, i) => (
-            <text key={i} fg="white">
+            <text key={i} fg={theme.text}>
               · {entry}
             </text>
           ))}
@@ -307,7 +315,7 @@ const MemoryDetail = ({
       )}
       <text> </text>
       <box flexDirection="row" height={1}>
-        <text fg="cyan">Provider: {home?.config?.memory?.provider ?? "unknown"}</text>
+        <text fg={theme.info}>Provider: {home?.config?.memory?.provider ?? "unknown"}</text>
         {home?.config?.source && (
           <>
             <text> · </text>
@@ -328,6 +336,7 @@ const ConversationDetail = ({
   messages: Message[];
   outputTokens: number;
 }) => {
+  const { theme } = useTheme();
   const userMsgs = messages.filter((m) => m.role === "user");
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   const userTokens = estimateTokens(userMsgs.map((m) => m.content).join(""));
@@ -348,13 +357,13 @@ const ConversationDetail = ({
       <text> </text>
       {nonSystem.length > 0 && (
         <>
-          <text fg="cyan">Messages:</text>
+          <text fg={theme.info}>Messages:</text>
           <text> </text>
           {nonSystem.map((m, i) => {
             const prefix = m.role === "user" ? "▸ You" : "◂ Agent";
             return (
               <text key={i}>
-                <span fg={m.role === "user" ? "cyan" : "green"}>{prefix}</span>
+                <span fg={m.role === "user" ? theme.info : theme.success}>{prefix}</span>
                 {" "}({formatTokens(estimateTokens(m.content))}) {m.content.replace(/\n/g, " ")}
               </text>
             );
@@ -362,7 +371,7 @@ const ConversationDetail = ({
         </>
       )}
       {nonSystem.length === 0 && (
-        <text fg="yellow">No messages yet</text>
+        <text fg={theme.warning}>No messages yet</text>
       )}
     </scrollbox>
   );
@@ -379,6 +388,7 @@ const FreeDetail = ({
   compressionThreshold: number;
   home: HermesHomeSnapshot | null;
 }) => {
+  const { theme } = useTheme();
   const used = contextLength - segment.tokens;
   const compressionPercent = compressionThreshold > 0
     ? Math.min(100, Math.round((used / compressionThreshold) * 100))
@@ -419,6 +429,7 @@ export const Context = ({
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null);
   const [wire, setWire] = useState<WireMetrics>({ inputTokens: 0, outputTokens: 0, totalTokens: 0, apiCalls: 0 });
   const wireRef = useRef(wire);
+  const { theme } = useTheme();
   const [hoveredSegment, setHoveredSegment] = useState<SegmentId | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(null);
 
@@ -463,7 +474,7 @@ export const Context = ({
   const outputTokens = wire.apiCalls > 0 ? wire.outputTokens : (latestDbSession?.output_tokens ?? 0);
   const usagePercent = contextLength > 0 ? Math.round((inputTokens / contextLength) * 100) : 0;
 
-  const status = getUsageStatus(usagePercent);
+  const status = getUsageStatus(usagePercent, theme);
   const segments = buildSegments(contextLength, inputTokens, home, messages);
   const grid = generateGrid(segments);
   const elapsed = sessionStart ? Date.now() - sessionStart : 0;
@@ -490,11 +501,11 @@ export const Context = ({
   const renderOverview = () => (
     <>
       <box borderStyle="single" padding={1} marginBottom={1}>
-        <text><strong>Breakdown</strong><span fg="cyan"> (click grid to inspect)</span></text>
+        <text><strong>Breakdown</strong><span fg={theme.info}> (click grid to inspect)</span></text>
         {segments.filter((s) => s.tokens > 0).map((s) => (
           <text key={s.id}>{s.emoji} {s.label} — {formatTokens(s.tokens)} ({s.percentage.toFixed(1)}%)</text>
         ))}
-        {outputTokens > 0 && <text fg="green">🟩 Output — {formatTokens(outputTokens)} tokens</text>}
+        {outputTokens > 0 && <text fg={theme.success}>🟩 Output — {formatTokens(outputTokens)} tokens</text>}
       </box>
 
       {home?.memory && home?.userProfile && (
@@ -509,7 +520,7 @@ export const Context = ({
         <text><strong>Session</strong></text>
         <text>
           {modelName.split("/").pop()} · <span fg={status.color}>{status.label}</span>
-          {" · "}<span fg={gatewayConnected ? "green" : "red"}>{gatewayConnected ? "●" : "○"} gateway</span>
+          {" · "}<span fg={gatewayConnected ? theme.success : theme.error}>{gatewayConnected ? "●" : "○"} gateway</span>
         </text>
         <text>
           API: {wire.apiCalls} · Msgs: {messageCount}
@@ -527,9 +538,9 @@ export const Context = ({
         <text>
           <strong>Context Window</strong>
           <span> {formatTokens(inputTokens)} / {formatTokens(contextLength)} ({usagePercent}%)</span>
-          {selectedSegment && <span fg="cyan"> · viewing {findSegment(selectedSegment)?.label} · click grid to close</span>}
-          {!selectedSegment && !hasWireData && !latestDbSession && <span fg="yellow"> [awaiting first response]</span>}
-          {!selectedSegment && !hasWireData && latestDbSession && <span fg="cyan"> [from last session]</span>}
+          {selectedSegment && <span fg={theme.info}> · viewing {findSegment(selectedSegment)?.label} · click grid to close</span>}
+          {!selectedSegment && !hasWireData && !latestDbSession && <span fg={theme.warning}> [awaiting first response]</span>}
+          {!selectedSegment && !hasWireData && latestDbSession && <span fg={theme.info}> [from last session]</span>}
         </text>
       </box>
 
@@ -545,7 +556,7 @@ export const Context = ({
                 return (
                   <box
                     key={col}
-                    backgroundColor={highlight ? SEGMENT_HIGHLIGHT[cell.segmentId] : undefined}
+                    backgroundColor={highlight ? segmentHighlight(cell.segmentId, theme) : undefined}
                     onMouseOver={() => setHoveredSegment(cell.segmentId)}
                     onMouseOut={() => setHoveredSegment(null)}
                     onMouseDown={() => setSelectedSegment(selectedSegment === cell.segmentId ? null : cell.segmentId)}

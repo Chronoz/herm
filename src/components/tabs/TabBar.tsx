@@ -1,5 +1,6 @@
 // Using OpenTUI React, not standard React
 import { useKeyboard } from "@opentui/react";
+import { useTheme } from "../../theme";
 
 interface Tab {
   name: string;
@@ -13,7 +14,8 @@ interface TabBarProps {
 }
 
 export const TabBar = ({ tabs, activeTab, onTabChange }: TabBarProps) => {
-  // Handle keyboard navigation for tabs
+  const { theme } = useTheme();
+
   useKeyboard((key) => {
     if (key.name === "left" && activeTab > 0) {
       onTabChange(activeTab - 1);
@@ -33,9 +35,9 @@ export const TabBar = ({ tabs, activeTab, onTabChange }: TabBarProps) => {
             paddingX={2}
             paddingY={0}
             marginRight={1}
-            backgroundColor={index === activeTab ? "#333333" : "transparent"}
+            backgroundColor={index === activeTab ? theme.backgroundElement : undefined}
           >
-            <text fg={index === activeTab ? "#7aa2f7" : "#888888"}>
+            <text fg={index === activeTab ? theme.primary : theme.textMuted}>
               {tab.name}
             </text>
           </box>

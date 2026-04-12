@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { AVATAR_FRAMES, FRAME_COUNT, FPS } from "./avatar-frames";
+import { useTheme } from "../../theme";
 
 /**
  * Animation loop:
@@ -11,6 +12,7 @@ import { AVATAR_FRAMES, FRAME_COUNT, FPS } from "./avatar-frames";
  */
 
 export const AnimatedAvatar = () => {
+  const { theme } = useTheme();
   const [frame, setFrame] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -79,7 +81,7 @@ export const AnimatedAvatar = () => {
     <box flexDirection="column">
       {lines.map((line, i) => (
         <text key={i}>
-          <span fg="cyan">{line}</span>
+          <span fg={theme.hermAvatar}>{line}</span>
         </text>
       ))}
     </box>

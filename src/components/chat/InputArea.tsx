@@ -1,4 +1,5 @@
 // Using OpenTUI React, not standard React
+import { useTheme } from "../../theme";
 
 interface InputAreaProps {
   input: string;
@@ -6,6 +7,8 @@ interface InputAreaProps {
 }
 
 export const InputArea = ({ input, hermesReady }: InputAreaProps) => {
+  const { theme } = useTheme();
+
   return (
     <>
       <box
@@ -15,17 +18,14 @@ export const InputArea = ({ input, hermesReady }: InputAreaProps) => {
         paddingLeft={1}
         marginTop={1}
       >
-        <text>
+        <text fg={theme.text}>
           {">"} {input}_
         </text>
       </box>
 
-      {/* Help text */}
-      <text>
-        <span fg="gray">
-          Ctrl+C: Exit | Enter: Send |{" "}
-          {hermesReady ? "Connected" : "Connecting..."}
-        </span>
+      <text fg={theme.textMuted}>
+        Ctrl+C: Exit | Enter: Send |{" "}
+        {hermesReady ? "Connected" : "Connecting..."}
       </text>
     </>
   );
