@@ -37,13 +37,11 @@ type SegmentId = "system" | "memory" | "conversation" | "free";
 interface GridSegment {
   id: SegmentId;
   label: string;
-  emoji: string;
   tokens: number;
   percentage: number;
 }
 
 interface GridCell {
-  emoji: string;
   segmentId: SegmentId;
 }
 
@@ -56,14 +54,14 @@ const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "claude-sonnet-4": 200_000,
   "claude-3.5-sonnet": 200_000,
   "claude-3-opus": 200_000,
-  "claude": 200_000,
+  claude: 200_000,
   "gpt-4.1": 1_047_576,
   "gpt-4o": 128_000,
   "gpt-4": 128_000,
-  "gemini": 1_048_576,
-  "deepseek": 128_000,
-  "llama": 131_072,
-  "qwen": 131_072,
+  gemini: 1_048_576,
+  deepseek: 128_000,
+  llama: 131_072,
+  qwen: 131_072,
 };
 
 const DEFAULT_CONTEXT_LENGTH = 128_000;
@@ -74,16 +72,20 @@ const THRESHOLD_GOOD = 50;
 const THRESHOLD_WARN = 80;
 const THRESHOLD_CRITICAL = 95;
 
-/** Segment highlight uses theme-derived colors with low opacity */
-const segmentHighlight = (id: SegmentId, theme: Theme): string | undefined => {
+/** Map segment ID to its theme color */
+const segmentColor = (id: SegmentId, theme: Theme): any => {
   const map: Record<SegmentId, any> = {
     system: theme.info,
     memory: theme.warning,
     conversation: theme.error,
-    free: theme.backgroundElement,
+    free: theme.borderSubtle,
   };
   return map[id];
 };
+
+/** Segment highlight background on hover/select */
+const segmentHighlight = (id: SegmentId, theme: Theme): any =>
+  segmentColor(id, theme);
 
 // ─── Utilities ───────────────────────────────────────────────────────
 
@@ -128,9 +130,11 @@ const getUsageStatus = (
   percent: number,
   theme: Theme,
 ): { label: string; color: any } => {
-  if (percent >= THRESHOLD_CRITICAL) return { label: "CRITICAL", color: theme.error };
+  if (percent >= THRESHOLD_CRITICAL)
+    return { label: "CRITICAL", color: theme.error };
   if (percent >= THRESHOLD_WARN) return { label: "HIGH", color: theme.error };
-  if (percent >= THRESHOLD_GOOD) return { label: "MODERATE", color: theme.warning };
+  if (percent >= THRESHOLD_GOOD)
+    return { label: "MODERATE", color: theme.warning };
   return { label: "HEALTHY", color: theme.success };
 };
 
@@ -144,21 +148,47 @@ const buildSegments = (
 ): GridSegment[] => {
   const segments: GridSegment[] = [];
   const memoryTokens = home?.memory ? estimateTokens(home.memory.content) : 0;
-  const userTokens = home?.userProfile ? estimateTokens(home.userProfile.content) : 0;
+  const userTokens = home?.userProfile
+    ? estimateTokens(home.userProfile.content)
+    : 0;
   const conversationTokens = estimateTokens(
-    messages.filter((m) => m.role !== "system").map((m) => m.content).join(""),
+    messages
+      .filter((m) => m.role !== "system")
+      .map((m) => m.content)
+      .join(""),
   );
   const knownSegments = memoryTokens + userTokens + conversationTokens;
   const systemOverhead = Math.max(0, inputTokens - knownSegments);
   const freeTokens = Math.max(0, contextLength - inputTokens);
 
   if (systemOverhead > 0)
-    segments.push({ id: "system", label: "System & Tools", emoji: "🟦", tokens: systemOverhead, percentage: (systemOverhead / contextLength) * 100 });
+    segments.push({
+      id: "system",
+      label: "System & Tools",
+      tokens: systemOverhead,
+      percentage: (systemOverhead / contextLength) * 100,
+    });
   if (memoryTokens + userTokens > 0)
-    segments.push({ id: "memory", label: "Memory", emoji: "🟨", tokens: memoryTokens + userTokens, percentage: ((memoryTokens + userTokens) / contextLength) * 100 });
+    segments.push({
+      id: "memory",
+      label: "Memory",
+      tokens: memoryTokens + userTokens,
+      percentage: ((memoryTokens + userTokens) / contextLength) * 100,
+    });
   if (conversationTokens > 0)
-    segments.push({ id: "conversation", label: "Conversation", emoji: "🟥", tokens: Math.min(conversationTokens, inputTokens), percentage: (Math.min(conversationTokens, inputTokens) / contextLength) * 100 });
-  segments.push({ id: "free", label: "Free", emoji: "⬛", tokens: freeTokens, percentage: (freeTokens / contextLength) * 100 });
+    segments.push({
+      id: "conversation",
+      label: "Conversation",
+      tokens: Math.min(conversationTokens, inputTokens),
+      percentage:
+        (Math.min(conversationTokens, inputTokens) / contextLength) * 100,
+    });
+  segments.push({
+    id: "free",
+    label: "Free",
+    tokens: freeTokens,
+    percentage: (freeTokens / contextLength) * 100,
+  });
 
   return segments;
 };
@@ -167,9 +197,9 @@ const generateGrid = (segments: GridSegment[]): GridCell[] => {
   const grid: GridCell[] = [];
   for (const seg of segments) {
     const count = Math.round((seg.percentage / 100) * GRID_SIZE);
-    for (let i = 0; i < count; i++) grid.push({ emoji: seg.emoji, segmentId: seg.id });
+    for (let i = 0; i < count; i++) grid.push({ segmentId: seg.id });
   }
-  while (grid.length < GRID_SIZE) grid.push({ emoji: "⬛", segmentId: "free" });
+  while (grid.length < GRID_SIZE) grid.push({ segmentId: "free" });
   return grid.slice(0, GRID_SIZE);
 };
 
@@ -205,7 +235,10 @@ const SystemDetail = ({
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>🟦 System & Tools — {formatTokens(segment.tokens)} tokens</strong>
+        <strong>
+          <span fg={theme.info}>◼</span> System & Tools —{" "}
+          {formatTokens(segment.tokens)} tokens
+        </strong>
       </text>
       <text> </text>
 
@@ -213,13 +246,19 @@ const SystemDetail = ({
       {home?.systemPrompt && (
         <>
           <text>
-            <strong>System Prompt</strong> — ~{formatTokens(home.systemPrompt.tokenEstimate)} tokens ({home.systemPrompt.totalChars.toLocaleString()} chars)
+            <strong>System Prompt</strong> — ~
+            {formatTokens(home.systemPrompt.tokenEstimate)} tokens (
+            {home.systemPrompt.totalChars.toLocaleString()} chars)
           </text>
           {home.soul && (
             <box flexDirection="row" height={1}>
               <text>· </text>
               <FileLink source={home.soul.source} />
-              <text> — ~{formatTokens(home.soul.tokenEstimate)} tokens ({home.soul.charCount.toLocaleString()} chars)</text>
+              <text>
+                {" "}
+                — ~{formatTokens(home.soul.tokenEstimate)} tokens (
+                {home.soul.charCount.toLocaleString()} chars)
+              </text>
             </box>
           )}
         </>
@@ -230,7 +269,8 @@ const SystemDetail = ({
       {tools.length > 0 && (
         <>
           <text>
-            <strong>Tools</strong> — {tools.length} registered (~{formatTokens(toolTokens)} tokens in schemas)
+            <strong>Tools</strong> — {tools.length} registered (~
+            {formatTokens(toolTokens)} tokens in schemas)
           </text>
           {tools.map((t) => (
             <text key={t.name} fg={theme.text}>
@@ -267,7 +307,10 @@ const MemoryDetail = ({
 }) => {
   const { theme } = useTheme();
   const parseEntries = (content: string | undefined) =>
-    (content ?? "").split("§").map((s) => s.trim()).filter(Boolean);
+    (content ?? "")
+      .split("§")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
   const memEntries = parseEntries(home?.memory?.content);
   const userEntries = parseEntries(home?.userProfile?.content);
@@ -275,18 +318,29 @@ const MemoryDetail = ({
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>🟨 Memory — {formatTokens(segment.tokens)} tokens</strong>
+        <strong>
+          <span fg={theme.warning}>◼</span> Memory —{" "}
+          {formatTokens(segment.tokens)} tokens
+        </strong>
       </text>
       <text> </text>
 
       {home?.memory && (
         <>
           <box flexDirection="row" height={1}>
-            <text><strong>Agent Notes</strong> (</text>
+            <text>
+              <strong>Agent Notes</strong> (
+            </text>
             <FileLink source={home.memory.source} />
-            <text>) — {formatChars(home.memory.charCount, home.memory.charLimit)} chars ({home.memory.usagePercent}%)</text>
+            <text>
+              ) — {formatChars(home.memory.charCount, home.memory.charLimit)}{" "}
+              chars ({home.memory.usagePercent}%)
+            </text>
           </box>
-          <text>{buildBar(home.memory.usagePercent, 25)}{home.memory.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
+          <text>
+            {buildBar(home.memory.usagePercent, 25)}
+            {home.memory.usagePercent >= 95 ? " ⚠ near limit" : ""}
+          </text>
           <text> </text>
           {memEntries.map((entry, i) => (
             <text key={i} fg={theme.text}>
@@ -300,11 +354,23 @@ const MemoryDetail = ({
       {home?.userProfile && (
         <>
           <box flexDirection="row" height={1}>
-            <text><strong>User Profile</strong> (</text>
+            <text>
+              <strong>User Profile</strong> (
+            </text>
             <FileLink source={home.userProfile.source} />
-            <text>) — {formatChars(home.userProfile.charCount, home.userProfile.charLimit)} chars ({home.userProfile.usagePercent}%)</text>
+            <text>
+              ) —{" "}
+              {formatChars(
+                home.userProfile.charCount,
+                home.userProfile.charLimit,
+              )}{" "}
+              chars ({home.userProfile.usagePercent}%)
+            </text>
           </box>
-          <text>{buildBar(home.userProfile.usagePercent, 25)}{home.userProfile.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
+          <text>
+            {buildBar(home.userProfile.usagePercent, 25)}
+            {home.userProfile.usagePercent >= 95 ? " ⚠ near limit" : ""}
+          </text>
           <text> </text>
           {userEntries.map((entry, i) => (
             <text key={i} fg={theme.text}>
@@ -315,7 +381,9 @@ const MemoryDetail = ({
       )}
       <text> </text>
       <box flexDirection="row" height={1}>
-        <text fg={theme.info}>Provider: {home?.config?.memory?.provider ?? "unknown"}</text>
+        <text fg={theme.info}>
+          Provider: {home?.config?.memory?.provider ?? "unknown"}
+        </text>
         {home?.config?.source && (
           <>
             <text> · </text>
@@ -340,17 +408,27 @@ const ConversationDetail = ({
   const userMsgs = messages.filter((m) => m.role === "user");
   const assistantMsgs = messages.filter((m) => m.role === "assistant");
   const userTokens = estimateTokens(userMsgs.map((m) => m.content).join(""));
-  const assistantTokens = estimateTokens(assistantMsgs.map((m) => m.content).join(""));
+  const assistantTokens = estimateTokens(
+    assistantMsgs.map((m) => m.content).join(""),
+  );
   const nonSystem = messages.filter((m) => m.role !== "system");
 
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>🟥 Conversation — {formatTokens(segment.tokens)} tokens</strong>
+        <strong>
+          <span fg={theme.error}>◼</span> Conversation —{" "}
+          {formatTokens(segment.tokens)} tokens
+        </strong>
       </text>
       <text> </text>
-      <text>User: {userMsgs.length} messages (~{formatTokens(userTokens)} tokens)</text>
-      <text>Assistant: {assistantMsgs.length} messages (~{formatTokens(assistantTokens)} tokens)</text>
+      <text>
+        User: {userMsgs.length} messages (~{formatTokens(userTokens)} tokens)
+      </text>
+      <text>
+        Assistant: {assistantMsgs.length} messages (~
+        {formatTokens(assistantTokens)} tokens)
+      </text>
       {outputTokens > 0 && (
         <text>Output generated: {formatTokens(outputTokens)} tokens</text>
       )}
@@ -363,8 +441,11 @@ const ConversationDetail = ({
             const prefix = m.role === "user" ? "▸ You" : "◂ Agent";
             return (
               <text key={i}>
-                <span fg={m.role === "user" ? theme.info : theme.success}>{prefix}</span>
-                {" "}({formatTokens(estimateTokens(m.content))}) {m.content.replace(/\n/g, " ")}
+                <span fg={m.role === "user" ? theme.info : theme.success}>
+                  {prefix}
+                </span>{" "}
+                ({formatTokens(estimateTokens(m.content))}){" "}
+                {m.content.replace(/\n/g, " ")}
               </text>
             );
           })}
@@ -390,28 +471,50 @@ const FreeDetail = ({
 }) => {
   const { theme } = useTheme();
   const used = contextLength - segment.tokens;
-  const compressionPercent = compressionThreshold > 0
-    ? Math.min(100, Math.round((used / compressionThreshold) * 100))
-    : 0;
+  const compressionPercent =
+    compressionThreshold > 0
+      ? Math.min(100, Math.round((used / compressionThreshold) * 100))
+      : 0;
   const comp = home?.config?.compression;
 
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>⬛ Free Space — {formatTokens(segment.tokens)} tokens</strong>
+        <strong>
+          <span fg={theme.borderSubtle}>◻</span> Free Space —{" "}
+          {formatTokens(segment.tokens)} tokens
+        </strong>
       </text>
       <text> </text>
       <text>Context window: {formatTokens(contextLength)}</text>
-      <text>Used: {formatTokens(used)} ({Math.round((used / contextLength) * 100)}%)</text>
-      <text>Available: {formatTokens(segment.tokens)} ({segment.percentage.toFixed(1)}%)</text>
+      <text>
+        Used: {formatTokens(used)} ({Math.round((used / contextLength) * 100)}%)
+      </text>
+      <text>
+        Available: {formatTokens(segment.tokens)} (
+        {segment.percentage.toFixed(1)}%)
+      </text>
       <text> </text>
       {comp && (
         <>
-          <text><strong>Compression</strong></text>
-          <text>{comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold {Math.round(comp.threshold * 100)}% ({formatTokens(compressionThreshold)})</text>
-          <text>{buildBar(compressionPercent)} {compressionPercent}%</text>
-          <text>Protect last {comp.protect_last_n} messages · target ratio {Math.round(comp.target_ratio * 100)}%</text>
-          {comp.summary_model && <text>Summary model: {comp.summary_model}</text>}
+          <text>
+            <strong>Compression</strong>
+          </text>
+          <text>
+            {comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold{" "}
+            {Math.round(comp.threshold * 100)}% (
+            {formatTokens(compressionThreshold)})
+          </text>
+          <text>
+            {buildBar(compressionPercent)} {compressionPercent}%
+          </text>
+          <text>
+            Protect last {comp.protect_last_n} messages · target ratio{" "}
+            {Math.round(comp.target_ratio * 100)}%
+          </text>
+          {comp.summary_model && (
+            <text>Summary model: {comp.summary_model}</text>
+          )}
         </>
       )}
     </scrollbox>
@@ -427,15 +530,26 @@ export const Context = ({
   sessionStart,
 }: ContextTabProps) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null);
-  const [wire, setWire] = useState<WireMetrics>({ inputTokens: 0, outputTokens: 0, totalTokens: 0, apiCalls: 0 });
+  const [wire, setWire] = useState<WireMetrics>({
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    apiCalls: 0,
+  });
   const wireRef = useRef(wire);
   const { theme } = useTheme();
   const [hoveredSegment, setHoveredSegment] = useState<SegmentId | null>(null);
-  const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(null);
+  const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(
+    null,
+  );
 
   // Read ~/.hermes/
   const refreshHome = useCallback(async () => {
-    try { setHome(await readHermesHome()); } catch { /* show what we have */ }
+    try {
+      setHome(await readHermesHome());
+    } catch {
+      /* show what we have */
+    }
   }, []);
 
   useEffect(() => {
@@ -451,7 +565,8 @@ export const Context = ({
       if (!data.usage) return;
       const updated: WireMetrics = {
         inputTokens: wireRef.current.inputTokens + data.usage.prompt_tokens,
-        outputTokens: wireRef.current.outputTokens + data.usage.completion_tokens,
+        outputTokens:
+          wireRef.current.outputTokens + data.usage.completion_tokens,
         totalTokens: wireRef.current.totalTokens + data.usage.total_tokens,
         apiCalls: wireRef.current.apiCalls + 1,
       };
@@ -459,7 +574,9 @@ export const Context = ({
       setWire(updated);
     };
     client.on("done", onDone);
-    return () => { client.removeListener("done", onDone); };
+    return () => {
+      client.removeListener("done", onDone);
+    };
   }, [client]);
 
   // Derived values
@@ -470,9 +587,14 @@ export const Context = ({
   );
 
   const latestDbSession: SessionRow | undefined = home?.recentSessions?.[0];
-  const inputTokens = wire.apiCalls > 0 ? wire.inputTokens : (latestDbSession?.input_tokens ?? 0);
-  const outputTokens = wire.apiCalls > 0 ? wire.outputTokens : (latestDbSession?.output_tokens ?? 0);
-  const usagePercent = contextLength > 0 ? Math.round((inputTokens / contextLength) * 100) : 0;
+  const inputTokens =
+    wire.apiCalls > 0 ? wire.inputTokens : (latestDbSession?.input_tokens ?? 0);
+  const outputTokens =
+    wire.apiCalls > 0
+      ? wire.outputTokens
+      : (latestDbSession?.output_tokens ?? 0);
+  const usagePercent =
+    contextLength > 0 ? Math.round((inputTokens / contextLength) * 100) : 0;
 
   const status = getUsageStatus(usagePercent, theme);
   const segments = buildSegments(contextLength, inputTokens, home, messages);
@@ -480,7 +602,8 @@ export const Context = ({
   const elapsed = sessionStart ? Date.now() - sessionStart : 0;
   const messageCount = messages.filter((m) => m.role !== "system").length;
   const hasWireData = wire.apiCalls > 0;
-  const gatewayConnected = home?.gateway?.platforms?.api_server?.state === "connected";
+  const gatewayConnected =
+    home?.gateway?.platforms?.api_server?.state === "connected";
 
   const findSegment = (id: SegmentId) => segments.find((s) => s.id === id);
 
@@ -490,10 +613,27 @@ export const Context = ({
     const seg = findSegment(selectedSegment);
     if (!seg) return null;
     switch (selectedSegment) {
-      case "system": return <SystemDetail home={home} segment={seg} />;
-      case "memory": return <MemoryDetail home={home} segment={seg} />;
-      case "conversation": return <ConversationDetail segment={seg} messages={messages} outputTokens={outputTokens} />;
-      case "free": return <FreeDetail segment={seg} contextLength={contextLength} compressionThreshold={compressionThreshold} home={home} />;
+      case "system":
+        return <SystemDetail home={home} segment={seg} />;
+      case "memory":
+        return <MemoryDetail home={home} segment={seg} />;
+      case "conversation":
+        return (
+          <ConversationDetail
+            segment={seg}
+            messages={messages}
+            outputTokens={outputTokens}
+          />
+        );
+      case "free":
+        return (
+          <FreeDetail
+            segment={seg}
+            contextLength={contextLength}
+            compressionThreshold={compressionThreshold}
+            home={home}
+          />
+        );
     }
   };
 
@@ -501,26 +641,61 @@ export const Context = ({
   const renderOverview = () => (
     <>
       <box borderStyle="single" padding={1} marginBottom={1}>
-        <text><strong>Breakdown</strong><span fg={theme.info}> (click grid to inspect)</span></text>
-        {segments.filter((s) => s.tokens > 0).map((s) => (
-          <text key={s.id}>{s.emoji} {s.label} — {formatTokens(s.tokens)} ({s.percentage.toFixed(1)}%)</text>
-        ))}
-        {outputTokens > 0 && <text fg={theme.success}>🟩 Output — {formatTokens(outputTokens)} tokens</text>}
+        <text>
+          <strong>Breakdown</strong>
+          <span fg={theme.info}> (click grid to inspect)</span>
+        </text>
+        {segments
+          .filter((s) => s.tokens > 0)
+          .map((s) => (
+            <text key={s.id}>
+              <span fg={segmentColor(s.id, theme)}>
+                {s.id === "free" ? "◻" : "◼"}
+              </span>{" "}
+              {s.label} — {formatTokens(s.tokens)} ({s.percentage.toFixed(1)}%)
+            </text>
+          ))}
+        {outputTokens > 0 && (
+          <text>
+            <span fg={theme.success}>◼</span> Output —{" "}
+            {formatTokens(outputTokens)} tokens
+          </text>
+        )}
       </box>
 
       {home?.memory && home?.userProfile && (
         <box borderStyle="single" padding={1} marginBottom={1}>
-          <text><strong>Memory</strong></text>
-          <text>Notes: {formatChars(home.memory.charCount, home.memory.charLimit)} ({home.memory.usagePercent}%){home.memory.usagePercent >= 95 ? " ⚠" : ""}</text>
-          <text>Profile: {formatChars(home.userProfile.charCount, home.userProfile.charLimit)} ({home.userProfile.usagePercent}%){home.userProfile.usagePercent >= 95 ? " ⚠" : ""}</text>
+          <text>
+            <strong>Memory</strong>
+          </text>
+          <text>
+            Notes: {formatChars(home.memory.charCount, home.memory.charLimit)} (
+            {home.memory.usagePercent}%)
+            {home.memory.usagePercent >= 95 ? " ⚠" : ""}
+          </text>
+          <text>
+            Profile:{" "}
+            {formatChars(
+              home.userProfile.charCount,
+              home.userProfile.charLimit,
+            )}{" "}
+            ({home.userProfile.usagePercent}%)
+            {home.userProfile.usagePercent >= 95 ? " ⚠" : ""}
+          </text>
         </box>
       )}
 
       <box borderStyle="single" padding={1}>
-        <text><strong>Session</strong></text>
         <text>
-          {modelName.split("/").pop()} · <span fg={status.color}>{status.label}</span>
-          {" · "}<span fg={gatewayConnected ? theme.success : theme.error}>{gatewayConnected ? "●" : "○"} gateway</span>
+          <strong>Session</strong>
+        </text>
+        <text>
+          {modelName.split("/").pop()} ·{" "}
+          <span fg={status.color}>{status.label}</span>
+          {" · "}
+          <span fg={gatewayConnected ? theme.success : theme.error}>
+            {gatewayConnected ? "●" : "○"} gateway
+          </span>
         </text>
         <text>
           API: {wire.apiCalls} · Msgs: {messageCount}
@@ -537,10 +712,24 @@ export const Context = ({
       <box marginBottom={1}>
         <text>
           <strong>Context Window</strong>
-          <span> {formatTokens(inputTokens)} / {formatTokens(contextLength)} ({usagePercent}%)</span>
-          {selectedSegment && <span fg={theme.info}> · viewing {findSegment(selectedSegment)?.label} · click grid to close</span>}
-          {!selectedSegment && !hasWireData && !latestDbSession && <span fg={theme.warning}> [awaiting first response]</span>}
-          {!selectedSegment && !hasWireData && latestDbSession && <span fg={theme.info}> [from last session]</span>}
+          <span>
+            {" "}
+            {formatTokens(inputTokens)} / {formatTokens(contextLength)} (
+            {usagePercent}%)
+          </span>
+          {selectedSegment && (
+            <span fg={theme.info}>
+              {" "}
+              · viewing {findSegment(selectedSegment)?.label} · click grid to
+              close
+            </span>
+          )}
+          {!selectedSegment && !hasWireData && !latestDbSession && (
+            <span fg={theme.warning}> [awaiting first response]</span>
+          )}
+          {!selectedSegment && !hasWireData && latestDbSession && (
+            <span fg={theme.info}> [from last session]</span>
+          )}
         </text>
       </box>
 
@@ -552,16 +741,32 @@ export const Context = ({
               {[...Array(GRID_COLS)].map((_, col) => {
                 const idx = row * GRID_COLS + col;
                 const cell = grid[idx];
-                const highlight = hoveredSegment === cell.segmentId || selectedSegment === cell.segmentId;
+                const highlight =
+                  hoveredSegment === cell.segmentId ||
+                  selectedSegment === cell.segmentId;
                 return (
                   <box
+                    height={1}
+                    width={2}
                     key={col}
-                    backgroundColor={highlight ? segmentHighlight(cell.segmentId, theme) : undefined}
+                    backgroundColor={
+                      highlight
+                        ? segmentHighlight(cell.segmentId, theme)
+                        : undefined
+                    }
                     onMouseOver={() => setHoveredSegment(cell.segmentId)}
                     onMouseOut={() => setHoveredSegment(null)}
-                    onMouseDown={() => setSelectedSegment(selectedSegment === cell.segmentId ? null : cell.segmentId)}
+                    onMouseDown={() =>
+                      setSelectedSegment(
+                        selectedSegment === cell.segmentId
+                          ? null
+                          : cell.segmentId,
+                      )
+                    }
                   >
-                    <text>{cell.emoji}</text>
+                    <text fg={segmentColor(cell.segmentId, theme)}>
+                      {cell.segmentId === "free" ? "◻" : "◼"}
+                    </text>
                   </box>
                 );
               })}
