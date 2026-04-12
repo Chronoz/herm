@@ -1,7 +1,6 @@
 import { useState } from "react"
 import type { ToolPart } from "../../types/message"
 import { useTheme } from "../../theme"
-import { SyntaxStyle } from "@opentui/core"
 
 const ICON: Record<string, string> = {
   terminal: "⚡",
@@ -13,14 +12,20 @@ const ICON: Record<string, string> = {
   browser_click: "🖱️",
   browser_snapshot: "📸",
   browser_vision: "👁️",
+  browser_type: "⌨️",
   vision_analyze: "👁️",
   delegate_task: "🤖",
   execute_code: "🐍",
   image_generate: "🎨",
   skill_view: "📚",
   skill_manage: "📝",
+  skills_list: "📚",
   memory: "🧠",
   todo: "✅",
+  clarify: "❓",
+  session_search: "🔎",
+  cronjob: "⏰",
+  text_to_speech: "🔊",
 }
 
 function icon(name: string): string {
@@ -31,6 +36,39 @@ function label(name: string): string {
   return name.replace(/_/g, " ")
 }
 
+// Extract a meaningful one-line summary from tool args
+function summary(name: string, raw: string): string {
+  if (!raw) return ""
+  try {
+    const p = JSON.parse(raw)
+    switch (name) {
+      case "terminal": return p.command || ""
+      case "read_file": return p.path || ""
+      case "write_file": return p.path || ""
+      case "patch": return p.path || p.mode || ""
+      case "search_files": return `${p.pattern || ""}${p.path ? ` in ${p.path}` : ""}`
+      case "browser_navigate": return p.url || ""
+      case "browser_click": return p.ref || ""
+      case "browser_type": return `${p.ref || ""} → ${(p.text || "").slice(0, 30)}`
+      case "delegate_task": return (p.goal || "").slice(0, 80)
+      case "execute_code": return `${(p.code || "").split("\n")[0].slice(0, 60)}`
+      case "image_generate": return (p.prompt || "").slice(0, 60)
+      case "memory": return `${p.action || ""} ${p.target || ""}`
+      case "todo": return p.todos ? `${p.todos.length} items` : "view"
+      case "skill_view": return p.name || ""
+      case "skill_manage": return `${p.action || ""} ${p.name || ""}`
+      case "cronjob": return `${p.action || ""} ${p.name || ""}`
+      default: {
+        // Generic: show first string arg
+        const first = Object.values(p).find(v => typeof v === "string" && (v as string).length > 0) as string | undefined
+        return first ? first.slice(0, 60) : ""
+      }
+    }
+  } catch {
+    return ""
+  }
+}
+
 export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
   const { theme, syntaxStyle } = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -38,38 +76,23 @@ export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
   const running = tool.status === "running"
   const failed = tool.status === "error"
   const color = failed ? theme.error : running ? theme.warning : theme.success
-
-  // Parse args for display
-  let summary = ""
-  try {
-    const parsed = JSON.parse(tool.args)
-    // Show the most relevant arg for common tools
-    if (parsed.command) summary = parsed.command
-    else if (parsed.path) summary = parsed.path
-    else if (parsed.url) summary = parsed.url
-    else if (parsed.pattern) summary = parsed.pattern
-    else if (parsed.goal) summary = parsed.goal?.slice(0, 60) + (parsed.goal?.length > 60 ? "..." : "")
-    else if (parsed.prompt) summary = parsed.prompt?.slice(0, 60) + (parsed.prompt?.length > 60 ? "..." : "")
-    else if (parsed.text) summary = parsed.text?.slice(0, 60) + (parsed.text?.length > 60 ? "..." : "")
-  } catch {
-    // not valid json
-  }
-
-  const spinner = running ? "◌ " : failed ? "✗ " : "✓ "
+  const sum = summary(tool.name, tool.args)
+  const spin = running ? "◌ " : failed ? "✗ " : "✓ "
+  const arrow = expanded ? "▾" : "▸"
 
   return (
     <box
       flexDirection="column"
       paddingLeft={2}
       marginBottom={0}
-      onMouseDown={() => setExpanded(e => !e)}
     >
-      <box height={1} flexDirection="row">
+      <box height={1} flexDirection="row" onMouseDown={() => setExpanded(e => !e)}>
         <text>
-          <span fg={color}>{spinner}</span>
+          <span fg={color}>{spin}</span>
           <span fg={theme.textMuted}>{icon(tool.name)} </span>
           <span fg={theme.text}>{label(tool.name)}</span>
-          {summary ? <span fg={theme.textMuted}> — {summary}</span> : null}
+          {sum ? <span fg={theme.textMuted}> — {sum.length > 70 ? sum.slice(0, 70) + "…" : sum}</span> : null}
+          {tool.args ? <span fg={theme.borderSubtle}> {arrow}</span> : null}
         </text>
       </box>
       {expanded && tool.args && (

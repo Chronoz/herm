@@ -1,7 +1,7 @@
+import { useState } from "react"
 import type { Message, TextPart } from "../../types/message"
 import { ToolCallItem } from "./ToolCallItem"
 import { useTheme } from "../../theme"
-import type { SyntaxStyle } from "@opentui/core"
 
 // Re-export for backward compat
 export type { Message }
@@ -24,9 +24,14 @@ function stamp(ts: number): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
-export const MessageItem = ({ message, streaming }: { message: Message; streaming: boolean }) => {
-  const { theme } = useTheme()
+function extract(msg: Message): string {
+  return msg.parts
+    .filter((p): p is TextPart => p.type === "text")
+    .map(p => p.content)
+    .join("")
+}
 
+export const MessageItem = ({ message, streaming }: { message: Message; streaming: boolean }) => {
   if (message.role === "system") return <SystemMessage message={message} />
   if (message.role === "user") return <UserMessage message={message} />
   return <AssistantMessage message={message} streaming={streaming} />
@@ -34,14 +39,13 @@ export const MessageItem = ({ message, streaming }: { message: Message; streamin
 
 const SystemMessage = ({ message }: { message: Message }) => {
   const { theme } = useTheme()
-  const content = message.parts.filter((p): p is TextPart => p.type === "text").map(p => p.content).join("")
+  const content = extract(message)
 
   return (
-    <box paddingLeft={1} paddingY={0} marginBottom={1}>
+    <box paddingLeft={1} paddingY={0} marginBottom={0} height={1}>
       <text>
-        <span fg={theme.textMuted}>{'─'.repeat(3)} </span>
+        <span fg={theme.borderSubtle}>{'─'.repeat(2)} </span>
         <span fg={theme.textMuted}>{content}</span>
-        <span fg={theme.textMuted}> {'─'.repeat(3)}</span>
       </text>
     </box>
   )
@@ -49,15 +53,21 @@ const SystemMessage = ({ message }: { message: Message }) => {
 
 const UserMessage = ({ message }: { message: Message }) => {
   const { theme } = useTheme()
-  const content = message.parts.filter((p): p is TextPart => p.type === "text").map(p => p.content).join("")
+  const [hover, setHover] = useState(false)
+  const content = extract(message)
 
   return (
-    <box flexDirection="column" marginBottom={1}>
+    <box
+      flexDirection="column"
+      marginBottom={1}
+      backgroundColor={hover ? theme.backgroundElement : undefined}
+      onMouseOver={() => setHover(true)}
+      onMouseOut={() => setHover(false)}
+    >
       {/* Header */}
       <box height={1} flexDirection="row" paddingLeft={1}>
         <text>
-          <span fg={theme.primary}>▌</span>
-          <span fg={theme.primary}> You</span>
+          <span fg={theme.primary}>▌ You</span>
           {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
         </text>
       </box>
@@ -72,32 +82,33 @@ const UserMessage = ({ message }: { message: Message }) => {
 const AssistantMessage = ({ message, streaming }: { message: Message; streaming: boolean }) => {
   const { theme, syntaxStyle } = useTheme()
   const parts = message.parts
-  const textContent = parts.filter((p): p is TextPart => p.type === "text").map(p => p.content).join("")
+  const content = extract(message)
   const toolParts = parts.filter(p => p.type === "tool")
   const isStreaming = streaming && parts.some(p => p.type === "text" && p.streaming)
+  const hasError = !!message.error
+  const borderColor = hasError ? theme.error : theme.secondary
 
   return (
     <box flexDirection="column" marginBottom={1}>
       {/* Header */}
       <box height={1} flexDirection="row" paddingLeft={1}>
         <text>
-          <span fg={theme.secondary}>▌</span>
-          <span fg={theme.secondary}> Hermes</span>
+          <span fg={borderColor}>▌ Hermes</span>
           {message.model ? <span fg={theme.textMuted}> · {message.model}</span> : null}
           {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
         </text>
       </box>
 
-      {/* Tool calls */}
+      {/* Tool calls — rendered before text like OpenCode */}
       {toolParts.map((p, i) =>
         p.type === "tool" ? <ToolCallItem key={p.id || i} tool={p} /> : null
       )}
 
-      {/* Text content — markdown rendering */}
-      {textContent ? (
+      {/* Text content — markdown rendered */}
+      {content ? (
         <box paddingLeft={3}>
           <markdown
-            content={textContent}
+            content={content}
             syntaxStyle={syntaxStyle}
             streaming={isStreaming}
           />
@@ -105,26 +116,23 @@ const AssistantMessage = ({ message, streaming }: { message: Message; streaming:
       ) : null}
 
       {/* Footer — metadata after completion */}
-      {!isStreaming && (message.duration || message.usage) ? (
+      {!isStreaming && (message.duration || message.usage || hasError) ? (
         <box height={1} paddingLeft={3} marginTop={0}>
           <text>
-            <span fg={theme.textMuted}>▣ </span>
-            {message.duration ? <span fg={theme.textMuted}>{duration(message.duration)}</span> : null}
-            {message.usage ? (
-              <span fg={theme.textMuted}>
-                {message.duration ? " · " : ""}
-                {tokens(message.usage.input)}→{tokens(message.usage.output)}
-              </span>
-            ) : null}
-          </text>
-        </box>
-      ) : null}
-
-      {/* Error */}
-      {message.error ? (
-        <box paddingLeft={3} marginTop={0}>
-          <text>
-            <span fg={theme.error}>✗ {message.error}</span>
+            {hasError ? (
+              <span fg={theme.error}>✗ {message.error}</span>
+            ) : (
+              <>
+                <span fg={theme.textMuted}>▣ </span>
+                {message.duration ? <span fg={theme.textMuted}>{duration(message.duration)}</span> : null}
+                {message.usage ? (
+                  <span fg={theme.textMuted}>
+                    {message.duration ? " · " : ""}
+                    {tokens(message.usage.input)}→{tokens(message.usage.output)}
+                  </span>
+                ) : null}
+              </>
+            )}
           </text>
         </box>
       ) : null}

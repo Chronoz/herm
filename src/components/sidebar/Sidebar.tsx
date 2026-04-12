@@ -1,15 +1,29 @@
-// Using OpenTUI React, not standard React
-import { AnimatedAvatar } from "../avatar/AnimatedAvatar";
-import { useTheme } from "../../theme";
+import { useState, useEffect, useCallback } from "react"
+import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
+import { useTheme } from "../../theme"
+import { readHermesHome, type HermesHomeSnapshot } from "../../utils/hermes-home"
 
-interface SidebarProps {
-  activeTools: string[];
-  memoryCount: number;
-}
+export const Sidebar = ({ activeTools, memoryCount }: { activeTools: string[]; memoryCount: number }) => {
+  const { theme } = useTheme()
+  const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
 
-export const Sidebar = ({ activeTools, memoryCount }: SidebarProps) => {
-  const { theme } = useTheme();
-  const allTools = ["web", "file", "terminal", "code", "vision", "browser"];
+  const refresh = useCallback(async () => {
+    try { setHome(await readHermesHome()) } catch {}
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    const timer = setInterval(refresh, 15_000)
+    return () => clearInterval(timer)
+  }, [refresh])
+
+  // Real data from hermes-home
+  const skills = home?.skills ?? []
+  const memNotes = home?.memory
+  const memUser = home?.userProfile
+  const notesCount = memNotes ? memNotes.content.split("§").filter(s => s.trim()).length : 0
+  const userCount = memUser ? memUser.content.split("§").filter(s => s.trim()).length : 0
+  const skillCount = skills.length
 
   return (
     <box width={48} flexDirection="column">
@@ -25,25 +39,41 @@ export const Sidebar = ({ activeTools, memoryCount }: SidebarProps) => {
         flexGrow={1}
         backgroundColor={theme.hermBody}
       >
-        <text fg={theme.hermBodyText}>
-          <strong>Tools</strong>
-        </text>
-        <text> </text>
-        {allTools.map((tool) => (
-          <text key={tool} fg={theme.hermBodyText}>
-            {activeTools.includes(tool) ? "[x]" : "[ ]"} {tool}
-          </text>
-        ))}
-
-        <text> </text>
-        <text> </text>
+        {/* Memory section */}
         <text fg={theme.hermBodyText}>
           <strong>Memory</strong>
         </text>
         <text fg={theme.hermBodyText}>
-          {memoryCount} facts
+          Notes: {notesCount} entries
+          {memNotes ? ` (${memNotes.content.length}/${2200} chars)` : ""}
         </text>
+        <text fg={theme.hermBodyText}>
+          Profile: {userCount} entries
+          {memUser ? ` (${memUser.content.length}/${1375} chars)` : ""}
+        </text>
+
+        <text> </text>
+
+        {/* Skills */}
+        <text fg={theme.hermBodyText}>
+          <strong>Skills</strong>
+        </text>
+        <text fg={theme.hermBodyText}>
+          {skillCount} loaded
+        </text>
+
+        <text> </text>
+
+        {/* Tools */}
+        <text fg={theme.hermBodyText}>
+          <strong>Tools</strong>
+        </text>
+        {activeTools.map(tool => (
+          <text key={tool} fg={theme.hermBodyText}>
+            · {tool}
+          </text>
+        ))}
       </box>
     </box>
-  );
-};
+  )
+}

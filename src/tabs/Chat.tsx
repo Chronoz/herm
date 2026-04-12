@@ -8,11 +8,12 @@ type ChatProps = {
   streaming: boolean
   input: string
   onInput: (v: string) => void
-  onSubmit: () => void
+  onSubmit: (val?: string) => void
   ready: boolean
   model?: string
   usage?: Usage
   cost?: number
+  turns?: number
 }
 
 export const Chat = ({
@@ -25,6 +26,7 @@ export const Chat = ({
   model,
   usage,
   cost,
+  turns,
 }: ChatProps) => {
   const { theme } = useTheme()
   return (
@@ -44,6 +46,7 @@ export const Chat = ({
         model={model}
         usage={usage}
         cost={cost}
+        turns={turns}
       />
     </box>
   )
