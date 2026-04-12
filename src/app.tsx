@@ -6,6 +6,7 @@ import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
+import { Sessions } from "./tabs/Sessions"
 import type { Message, Usage, ToolPart } from "./types/message"
 import { mid } from "./types/message"
 import { copySelection } from "./utils/clipboard"
@@ -245,7 +246,7 @@ const AppInner = () => {
 
     // Tab switching: Ctrl+Left/Right
     if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
-    if (key.ctrl && key.name === "right") { setTab(t => Math.min(1, t + 1)); return }
+    if (key.ctrl && key.name === "right") { setTab(t => Math.min(2, t + 1)); return }
 
     // Only handle remaining keys on Chat tab
     if (tab !== 0) return
@@ -307,6 +308,7 @@ const AppInner = () => {
   const tabs = [
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
+    { name: "Sessions", description: "Session history" },
   ]
 
   const content = () => {
@@ -335,6 +337,8 @@ const AppInner = () => {
             sessionStart={start.current}
           />
         )
+      case 2:
+        return <Sessions />
       default:
         return null
     }
