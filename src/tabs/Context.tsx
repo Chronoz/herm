@@ -4,11 +4,10 @@ import type { HermesApiClient } from "../utils/hermes-api-client";
 import type { Message } from "../components/chat/MessageItem";
 import {
   readHermesHome,
-  hermesPath,
   type HermesHomeSnapshot,
   type SessionRow,
 } from "../utils/hermes-home";
-import { openHermesFile } from "../utils/open-file";
+import { FileLink } from "../components/ui/FileLink";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -188,8 +187,10 @@ const SystemDetail = ({
   );
 
   // Tool schema overhead
-  const toolChars = (home?.tools ?? []).reduce(
-    (sum, t) => sum + t.descriptionLength + t.paramsLength,
+  const tools = home?.toolsInfo?.tools ?? [];
+  const toolChars = tools.reduce(
+    (sum: number, t: { descriptionLength: number; paramsLength: number }) =>
+      sum + t.descriptionLength + t.paramsLength,
     0,
   );
   const toolTokens = Math.ceil(toolChars / CHARS_PER_TOKEN);
@@ -208,21 +209,23 @@ const SystemDetail = ({
             <strong>System Prompt</strong> — ~{formatTokens(home.systemPrompt.tokenEstimate)} tokens ({home.systemPrompt.totalChars.toLocaleString()} chars)
           </text>
           {home.soul && (
-            <text onMouseDown={() => openHermesFile("SOUL.md")}>
-              · <span fg="cyan">SOUL.md</span> — ~{formatTokens(home.soul.tokenEstimate)} tokens ({home.soul.charCount.toLocaleString()} chars)
-            </text>
+            <box flexDirection="row" height={1}>
+              <text>· </text>
+              <FileLink source={home.soul.source} />
+              <text> — ~{formatTokens(home.soul.tokenEstimate)} tokens ({home.soul.charCount.toLocaleString()} chars)</text>
+            </box>
           )}
         </>
       )}
       <text> </text>
 
       {/* Tools */}
-      {(home?.tools ?? []).length > 0 && (
+      {tools.length > 0 && (
         <>
           <text>
-            <strong>Tools</strong> — {home!.tools.length} registered (~{formatTokens(toolTokens)} tokens in schemas)
+            <strong>Tools</strong> — {tools.length} registered (~{formatTokens(toolTokens)} tokens in schemas)
           </text>
-          {home!.tools.map((t) => (
+          {tools.map((t) => (
             <text key={t.name} fg="white">
               · {t.name}
             </text>
@@ -270,9 +273,11 @@ const MemoryDetail = ({
 
       {home?.memory && (
         <>
-          <text onMouseDown={() => openHermesFile("memories/MEMORY.md")}>
-            <strong>Agent Notes</strong> (<span fg="cyan">MEMORY.md</span>) — {formatChars(home.memory.charCount, home.memory.charLimit)} chars ({home.memory.usagePercent}%)
-          </text>
+          <box flexDirection="row" height={1}>
+            <text><strong>Agent Notes</strong> (</text>
+            <FileLink source={home.memory.source} />
+            <text>) — {formatChars(home.memory.charCount, home.memory.charLimit)} chars ({home.memory.usagePercent}%)</text>
+          </box>
           <text>{buildBar(home.memory.usagePercent, 25)}{home.memory.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
           <text> </text>
           {memEntries.map((entry, i) => (
@@ -286,9 +291,11 @@ const MemoryDetail = ({
 
       {home?.userProfile && (
         <>
-          <text onMouseDown={() => openHermesFile("memories/USER.md")}>
-            <strong>User Profile</strong> (<span fg="cyan">USER.md</span>) — {formatChars(home.userProfile.charCount, home.userProfile.charLimit)} chars ({home.userProfile.usagePercent}%)
-          </text>
+          <box flexDirection="row" height={1}>
+            <text><strong>User Profile</strong> (</text>
+            <FileLink source={home.userProfile.source} />
+            <text>) — {formatChars(home.userProfile.charCount, home.userProfile.charLimit)} chars ({home.userProfile.usagePercent}%)</text>
+          </box>
           <text>{buildBar(home.userProfile.usagePercent, 25)}{home.userProfile.usagePercent >= 95 ? " ⚠ near limit" : ""}</text>
           <text> </text>
           {userEntries.map((entry, i) => (
@@ -299,9 +306,15 @@ const MemoryDetail = ({
         </>
       )}
       <text> </text>
-      <text fg="cyan" onMouseDown={() => openHermesFile("config.yaml")}>
-        Provider: {home?.config?.memory?.provider ?? "unknown"} · config.yaml
-      </text>
+      <box flexDirection="row" height={1}>
+        <text fg="cyan">Provider: {home?.config?.memory?.provider ?? "unknown"}</text>
+        {home?.config?.source && (
+          <>
+            <text> · </text>
+            <FileLink source={home.config.source} />
+          </>
+        )}
+      </box>
     </scrollbox>
   );
 };
