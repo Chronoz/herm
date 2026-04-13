@@ -8,10 +8,9 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import type { SelectOption } from "../ui/dialog-select"
 
-export const ThemePickerDialog = () => {
+export const ThemePickerDialog = ({ onConfirm }: { onConfirm: () => void }) => {
   const ctx = useTheme()
   const dialog = useDialog()
-  const initial = useRef(ctx.name)
 
   const options: SelectOption[] = ctx.names.map(n => ({
     title: n,
@@ -24,8 +23,9 @@ export const ThemePickerDialog = () => {
 
   const onSelect = useCallback((opt: SelectOption) => {
     ctx.set(opt.value)
+    onConfirm()
     dialog.clear()
-  }, [ctx, dialog])
+  }, [ctx, dialog, onConfirm])
 
   return (
     <DialogSelect
@@ -42,8 +42,9 @@ export const ThemePickerDialog = () => {
 /** Open the theme picker, reverting on close without selection */
 export const openThemePicker = (dialog: ReturnType<typeof useDialog>, ctx: ReturnType<typeof useTheme>) => {
   const saved = ctx.name
+  let confirmed = false
   dialog.replace(
-    <ThemePickerDialog />,
-    () => { ctx.set(saved) }
+    <ThemePickerDialog onConfirm={() => { confirmed = true }} />,
+    () => { if (!confirmed) ctx.set(saved) }
   )
 }
