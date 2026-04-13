@@ -72,7 +72,7 @@ export const Memory = () => {
   return (
     <box flexGrow={1} flexDirection="row" gap={1} padding={1}>
       {/* Left: Provider list + built-in memory stats */}
-      <box flexDirection="column" width="40%" gap={1}>
+      <box flexDirection="column" width={50} gap={1}>
         {/* Memory config summary */}
         {cfg ? (
           <box
@@ -81,6 +81,7 @@ export const Memory = () => {
             border
             borderColor={theme.borderSubtle}
             padding={1}
+            width="100%"
           >
             <box height={1}>
               <text fg={theme.primary}>
@@ -232,7 +233,7 @@ type CapacityProps = {
 const CapacityBox = ({ title, info, theme }: CapacityProps) => {
   if (!info) {
     return (
-      <box flexDirection="column" backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} padding={1}>
+      <box flexDirection="column" backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} padding={1} width="100%">
         <text fg={theme.textMuted}>{title}: unavailable</text>
       </box>
     )
@@ -241,7 +242,7 @@ const CapacityBox = ({ title, info, theme }: CapacityProps) => {
   const color = usageColor(info.usagePercent, theme)
 
   return (
-    <box flexDirection="column" backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} paddingX={1}>
+    <box flexDirection="column" backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} paddingX={1} width="100%">
       <box height={1}>
         <text>
           <span fg={theme.text}>{title}</span>
