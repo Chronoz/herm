@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useKeyboard } from "@opentui/react";
 import {
   queryRecentSessions,
+  querySessionMessages,
   type SessionRow,
+  type MessageRow,
 } from "../utils/hermes-home";
 import { useTheme } from "../theme";
 
@@ -178,7 +180,11 @@ const SessionItem = (props: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Sessions = () => {
+type SessionsProps = {
+  onSwitch?: (sid: string, rows: MessageRow[]) => void;
+};
+
+export const Sessions = ({ onSwitch }: SessionsProps) => {
   const { theme } = useTheme();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [selected, setSelected] = useState(0);
@@ -192,6 +198,13 @@ export const Sessions = () => {
     load();
   }, [load]);
 
+  const activate = useCallback(() => {
+    const s = sessions[selected];
+    if (!s || !onSwitch) return;
+    const rows = querySessionMessages(s.id);
+    onSwitch(s.id, rows);
+  }, [sessions, selected, onSwitch]);
+
   useKeyboard((key) => {
     if (key.name === "up") {
       setSelected((prev) => Math.max(0, prev - 1));
@@ -199,6 +212,10 @@ export const Sessions = () => {
     }
     if (key.name === "down") {
       setSelected((prev) => Math.min(sessions.length - 1, prev + 1));
+      return;
+    }
+    if (key.name === "return") {
+      activate();
       return;
     }
     if (key.name === "r") {
@@ -225,7 +242,7 @@ export const Sessions = () => {
           <span fg={theme.primary}>
             <strong>{`Sessions (${sessions.length})`}</strong>
           </span>
-          <span fg={theme.textMuted}>{`  ↑↓ navigate  r refresh`}</span>
+          <span fg={theme.textMuted}>{`  ↑↓ navigate  Enter switch  r refresh`}</span>
         </text>
         <text> </text>
         <scrollbox scrollY>

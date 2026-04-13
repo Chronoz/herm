@@ -8,6 +8,7 @@ import { Overview } from "./tabs/Overview"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
+import type { MessageRow } from "./utils/hermes-home"
 import { Memory } from "./tabs/Memory"
 import type { Message, Usage, ToolPart } from "./types/message"
 import { mid } from "./types/message"
@@ -42,7 +43,7 @@ const AppInner = () => {
   const [memos] = useState(0)
   const [ready, setReady] = useState(false)
   const [streaming, setStreaming] = useState(false)
-  const [session] = useState(`herm-${Date.now()}`)
+  const [session, setSession] = useState(`herm-${Date.now()}`)
   const [tab, setTab] = useState(1)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [total, setTotal] = useState({ input: 0, output: 0 })
@@ -278,6 +279,121 @@ const AppInner = () => {
     return false
   }, [messages])
 
+  // Switch to an existing session — load its history into chat
+  const switchSession = useCallback((sid: string, rows: MessageRow[]) => {
+    // Convert MessageRows to app Message format
+    const loaded: Message[] = rows
+      .filter(r => r.content && (r.role === "user" || r.role === "assistant"))
+      .map(r => ({
+        id: mid(),
+        role: r.role as "user" | "assistant",
+        parts: [{ type: "text" as const, content: r.content ?? "", streaming: false }],
+        timestamp: r.timestamp,
+      }))
+
+    setMessages(loaded)
+    setSession(sid)
+    setTab(1) // switch to Chat tab
+    setMsgCount(loaded.length)
+    setCost(0)
+    setUsage(undefined)
+    setTotal({ input: 0, output: 0 })
+
+    // Update the API client's session ID
+    if (client.current) {
+      client.current.disconnect()
+    }
+    // Reconnect with new session
+    const api = new HermesApiClient({
+      url: "http://localhost:8642/v1",
+      key: process.env.API_SERVER_KEY,
+      session: sid,
+      model,
+    })
+    // Re-wire events (same as connect() but skip the connected system message)
+    api.on("start", () => { setStreaming(true); setInterrupted(false); buf.current = "" })
+    api.on("content", (chunk: string) => {
+      buf.current += chunk
+      const text = buf.current
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant" && last.parts.some(p => p.type === "text" && p.streaming)) {
+          const parts = last.parts.map(p =>
+            p.type === "text" && p.streaming ? { ...p, content: text } : p
+          )
+          return [...prev.slice(0, -1), { ...last, parts }]
+        }
+        return [...prev, {
+          id: mid(),
+          role: "assistant",
+          parts: [{ type: "text", content: text, streaming: true }],
+          timestamp: Date.now() / 1000,
+          model,
+        }]
+      })
+    })
+    api.on("tool", (tc: { id: string; name: string; status: string }) => {
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant") {
+          const existing = last.parts.find(p => p.type === "tool" && p.id === tc.id)
+          if (existing) {
+            const parts = last.parts.map(p =>
+              p.type === "tool" && p.id === tc.id ? { ...p, status: tc.status } as ToolPart : p
+            )
+            return [...prev.slice(0, -1), { ...last, parts }]
+          }
+          const part: ToolPart = { type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"] }
+          return [...prev.slice(0, -1), { ...last, parts: [...last.parts, part] }]
+        }
+        return [...prev, {
+          id: mid(),
+          role: "assistant",
+          parts: [{ type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"] }],
+          timestamp: Date.now() / 1000,
+          model,
+        }]
+      })
+    })
+    api.on("done", (data: DonePayload) => {
+      setStreaming(false)
+      buf.current = ""
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant") {
+          const parts = last.parts.map(p =>
+            p.type === "text" && p.streaming ? { ...p, streaming: false } : p
+          )
+          return [...prev.slice(0, -1), { ...last, parts, duration: data.duration, usage: data.usage }]
+        }
+        return prev
+      })
+      setMsgCount(c => c + 1)
+      if (data.usage) {
+        setUsage(data.usage)
+        setTotal(prev => ({ input: prev.input + data.usage!.input, output: prev.output + data.usage!.output }))
+        setCost(prev => prev + (data.usage!.input * 3 + data.usage!.output * 15) / 1_000_000)
+      }
+    })
+    api.on("aborted", () => {
+      setStreaming(false); setInterrupted(true); buf.current = ""
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant") {
+          const parts = last.parts.map(p => p.type === "text" && p.streaming ? { ...p, streaming: false } : p)
+          return [...prev.slice(0, -1), { ...last, parts, error: "Interrupted" }]
+        }
+        return prev
+      })
+    })
+    api.on("error", (err: Error) => {
+      setStreaming(false); buf.current = ""
+      setMessages(prev => [...prev, { id: mid(), role: "system", parts: [{ type: "text", content: `Error: ${err.message}`, streaming: false }], timestamp: Date.now() / 1000 }])
+    })
+    client.current = api
+    setReady(true)
+  }, [model])
+
   // Keyboard handler
   useKeyboard((key) => {
     // Global: Ctrl+C — copy selection or exit
@@ -385,7 +501,7 @@ const AppInner = () => {
           />
         )
       case 3:
-        return <Sessions />
+        return <Sessions onSwitch={switchSession} />
       case 4:
         return <Memory />
       default:

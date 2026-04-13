@@ -311,20 +311,23 @@ export async function readLiveSessions(): Promise<
   }
 }
 
-/** Query state.db for recent sessions */
+/** Query state.db for recent sessions — falls back to first user message as title */
 export function queryRecentSessions(limit: number = 30): SessionRow[] {
   const dbSource = makeSource("state.db");
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
     const rows = db
       .query(
-        `SELECT id, source, model, started_at, ended_at, end_reason,
-                message_count, tool_call_count,
-                input_tokens, output_tokens,
-                cache_read_tokens, cache_write_tokens, reasoning_tokens,
-                estimated_cost_usd, title, parent_session_id
-         FROM sessions
-         ORDER BY started_at DESC
+        `SELECT s.id, s.source, s.model, s.started_at, s.ended_at, s.end_reason,
+                s.message_count, s.tool_call_count,
+                s.input_tokens, s.output_tokens,
+                s.cache_read_tokens, s.cache_write_tokens, s.reasoning_tokens,
+                s.estimated_cost_usd, s.parent_session_id,
+                COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title
+         FROM sessions s
+         LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
+           AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
+         ORDER BY s.started_at DESC
          LIMIT ?`,
       )
       .all(limit) as Array<{
@@ -425,6 +428,35 @@ export function querySession(sessionId: string): SessionRow | null {
     };
   } catch {
     return null;
+  }
+}
+
+/** Message row from state.db */
+export interface MessageRow {
+  id: number;
+  role: string;
+  content: string | null;
+  tool_calls: string | null;
+  tool_name: string | null;
+  timestamp: number;
+}
+
+/** Load all messages for a session from state.db */
+export function querySessionMessages(sid: string): MessageRow[] {
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true });
+    const rows = db
+      .query(
+        `SELECT id, role, content, tool_calls, tool_name, timestamp
+         FROM messages
+         WHERE session_id = ?
+         ORDER BY timestamp ASC, id ASC`,
+      )
+      .all(sid) as MessageRow[];
+    db.close();
+    return rows;
+  } catch {
+    return [];
   }
 }
 
