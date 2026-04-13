@@ -1,6 +1,8 @@
 import type { SubmitEvent } from "@opentui/core"
 import { useTheme } from "../../theme"
 import type { Usage } from "../../types/message"
+import type { SlashCommand } from "../../commands/slash"
+import { SlashPopover } from "./SlashPopover"
 
 type InputAreaProps = {
   value: string
@@ -13,6 +15,11 @@ type InputAreaProps = {
   usage?: Usage
   cost?: number
   turns?: number
+  // Slash popover state — driven by parent
+  popover: ReadonlyArray<SlashCommand> | null
+  popCursor: number
+  onPopCursor: (idx: number) => void
+  onPopSelect: (cmd: SlashCommand) => void
 }
 
 function fmt(n: number): string {
@@ -32,6 +39,10 @@ export const InputArea = ({
   usage,
   cost,
   turns,
+  popover,
+  popCursor,
+  onPopCursor,
+  onPopSelect,
 }: InputAreaProps) => {
   const { theme } = useTheme()
 
@@ -46,8 +57,19 @@ export const InputArea = ({
   if (usage) stats.push(`${fmt(usage.input)}→${fmt(usage.output)}`)
   if (cost !== undefined && cost > 0) stats.push(`$${cost.toFixed(2)}`)
 
+  const open = popover !== null && popover.length > 0
+
   return (
     <box flexDirection="column">
+      {/* Slash popover — positioned above the input */}
+      {open ? (
+        <SlashPopover
+          commands={popover!}
+          cursor={popCursor}
+          onCursor={onPopCursor}
+          onSelect={onPopSelect}
+        />
+      ) : null}
       {/* Input box */}
       <box
         border
@@ -61,9 +83,9 @@ export const InputArea = ({
         </box>
         <input
           value={value}
-          onChange={onChange}
+          onInput={onChange}
           onSubmit={onSubmit as unknown as (e: SubmitEvent) => void}
-          placeholder={streaming ? "Waiting for response..." : "Message Hermes..."}
+          placeholder={streaming ? "Waiting for response..." : "Message Hermes... (/ for commands)"}
           focused={focused && !streaming}
           textColor={theme.text}
           placeholderColor={theme.textMuted}
@@ -84,7 +106,11 @@ export const InputArea = ({
         <box>
           <text>
             <span fg={theme.textMuted}>
-              {streaming ? "Esc×2: Interrupt" : "Enter: Send · ↑↓: History · Ctrl+Y: Copy"}
+              {streaming
+                ? "Esc×2: Interrupt"
+                : open
+                  ? "↑↓: Navigate · Enter/Tab: Select · Esc: Close"
+                  : "Enter: Send · ↑↓: History · /: Commands"}
             </span>
           </text>
         </box>

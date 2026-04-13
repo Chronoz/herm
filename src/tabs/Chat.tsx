@@ -2,6 +2,7 @@ import { MessageList } from "../components/chat/MessageList"
 import { InputArea } from "../components/chat/InputArea"
 import { useTheme } from "../theme"
 import type { Message, Usage } from "../types/message"
+import type { SlashCommand } from "../commands/slash"
 
 type ChatProps = {
   messages: Message[]
@@ -14,6 +15,11 @@ type ChatProps = {
   usage?: Usage
   cost?: number
   turns?: number
+  // Slash popover
+  popover: ReadonlyArray<SlashCommand> | null
+  popCursor: number
+  onPopCursor: (idx: number) => void
+  onPopSelect: (cmd: SlashCommand) => void
 }
 
 export const Chat = ({
@@ -27,6 +33,10 @@ export const Chat = ({
   usage,
   cost,
   turns,
+  popover,
+  popCursor,
+  onPopCursor,
+  onPopSelect,
 }: ChatProps) => {
   const { theme } = useTheme()
   return (
@@ -47,6 +57,10 @@ export const Chat = ({
         usage={usage}
         cost={cost}
         turns={turns}
+        popover={popover}
+        popCursor={popCursor}
+        onPopCursor={onPopCursor}
+        onPopSelect={onPopSelect}
       />
     </box>
   )

@@ -1,5 +1,5 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { HermesApiClient } from "./utils/hermes-api-client"
 import type { DonePayload } from "./utils/hermes-api-client"
 import { TabBar } from "./components/tabs/TabBar"
@@ -19,6 +19,8 @@ import { ToastProvider } from "./ui/toast"
 import { CommandProvider, useCommand } from "./ui/command"
 import { HelpDialog } from "./dialogs/help"
 import { openThemePicker } from "./dialogs/theme-picker"
+import type { SlashCommand } from "./commands/slash"
+import { filter as filterSlash } from "./commands/slash"
 
 export const App = () => (
   <ThemeProvider>
@@ -48,6 +50,7 @@ const AppInner = () => {
   const [msgCount, setMsgCount] = useState(0)
 
   const [history, setHistory] = useState<string[]>([])
+  const [popCursor, setPopCursor] = useState(0)
   const histIdx = useRef(-1)
   const stash = useRef("")
   const lastEsc = useRef(0)
@@ -59,6 +62,19 @@ const AppInner = () => {
   const dialog = useDialog()
   const themeCtx = useTheme()
   const cmd = useCommand()
+
+  // Slash popover — derived from input value
+  const popover = useMemo(() => {
+    const m = input.match(/^\/(\S*)$/)
+    return m ? filterSlash(m[1]) : null
+  }, [input])
+
+  // Reset cursor when input changes
+  useEffect(() => {
+    setPopCursor(0)
+  }, [input])
+
+  const popOpen = popover !== null && popover.length > 0
 
   // Register commands
   useEffect(() => cmd.register([
@@ -225,8 +241,54 @@ const AppInner = () => {
     return () => { client.current?.disconnect() }
   }, [connect])
 
-  // Send message
+  // Handle slash commands
+  const slash = useCallback((cmd: SlashCommand) => {
+    setInput("")
+    if (cmd.target === "local") {
+      switch (cmd.name) {
+        case "clear":
+          setMessages([])
+          setMsgCount(0)
+          return
+        case "new": {
+          const sid = `herm-${Date.now()}`
+          client.current?.disconnect()
+          setMessages([])
+          setSession(sid)
+          setCost(0)
+          setUsage(undefined)
+          setMsgCount(0)
+          connect()
+          return
+        }
+        case "theme":
+          openThemePicker(dialog, themeCtx)
+          return
+        case "help":
+          dialog.replace(<HelpDialog />)
+          return
+      }
+    }
+
+    // Gateway commands — send as /{name}
+    if (cmd.target === "gateway" && client.current && ready && !streaming) {
+      setMessages(prev => [...prev, {
+        id: mid(),
+        role: "user",
+        parts: [{ type: "text", content: `/${cmd.name}`, streaming: false }],
+        timestamp: Date.now() / 1000,
+      }])
+      client.current.send(`/${cmd.name}`)
+    }
+  }, [ready, streaming, connect, dialog, themeCtx])
+
+  // Send message (or select popover item on Enter)
   const send = useCallback((val?: string) => {
+    // If popover is open, Enter selects the active command
+    if (popOpen) {
+      slash(popover[popCursor])
+      return
+    }
     const msg = (val ?? input).trim()
     if (!msg || !ready || streaming) return
 
@@ -246,7 +308,7 @@ const AppInner = () => {
 
     client.current?.send(msg)
     setInput("")
-  }, [input, ready, streaming])
+  }, [input, ready, streaming, popOpen, popover, popCursor, slash])
 
   // Copy last assistant message
   const copyLast = useCallback(() => {
@@ -308,6 +370,31 @@ const AppInner = () => {
     // Chat-only keys
     if (tab !== 1) return
 
+    // --- Popover open: route navigation keys to popover ---
+    if (popOpen) {
+      if (key.name === "escape") {
+        setInput("")
+        return
+      }
+      if (key.name === "up") {
+        setPopCursor(c => Math.max(0, c - 1))
+        return
+      }
+      if (key.name === "down") {
+        setPopCursor(c => Math.min((popover?.length ?? 1) - 1, c + 1))
+        return
+      }
+      if (key.name === "tab") {
+        const item = popover?.[popCursor]
+        if (item) slash(item)
+        return
+      }
+      // Enter is handled by <input> onSubmit — which calls send(),
+      // but we intercept in send() when popover is open.
+      return
+    }
+
+    // --- Popover closed: normal chat keys ---
     if (key.name === "escape") {
       if (streaming) {
         const now = Date.now()
@@ -375,6 +462,10 @@ const AppInner = () => {
             usage={usage}
             cost={cost}
             turns={msgCount}
+            popover={popover}
+            popCursor={popCursor}
+            onPopCursor={setPopCursor}
+            onPopSelect={slash}
           />
         )
       case 2:
