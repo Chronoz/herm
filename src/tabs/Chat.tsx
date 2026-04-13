@@ -46,7 +46,8 @@ export const Chat = ({
       backgroundColor={theme.background}
     >
       <MessageList messages={messages} streaming={streaming} />
-      <InputArea
+      <box flexShrink={0}>
+        <InputArea
         value={input}
         onChange={onInput}
         onSubmit={onSubmit}
@@ -62,6 +63,7 @@ export const Chat = ({
         onPopCursor={onPopCursor}
         onPopSelect={onPopSelect}
       />
+      </box>
     </box>
   )
 }

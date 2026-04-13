@@ -60,15 +60,17 @@ export const InputArea = ({
   const open = popover !== null && popover.length > 0
 
   return (
-    <box flexDirection="column">
-      {/* Slash popover — positioned above the input */}
+    <box flexDirection="column" position="relative">
+      {/* Slash popover — absolutely positioned above the input */}
       {open ? (
-        <SlashPopover
-          commands={popover!}
-          cursor={popCursor}
-          onCursor={onPopCursor}
-          onSelect={onPopSelect}
-        />
+        <box position="absolute" bottom={4} left={0} right={0}>
+          <SlashPopover
+            commands={popover!}
+            cursor={popCursor}
+            onCursor={onPopCursor}
+            onSelect={onPopSelect}
+          />
+        </box>
       ) : null}
       {/* Input box */}
       <box
