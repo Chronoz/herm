@@ -7,6 +7,7 @@ import { Sidebar } from "./components/sidebar/Sidebar"
 import { Overview } from "./tabs/Overview"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
+import { Sessions } from "./tabs/Sessions"
 import type { Message, Usage, ToolPart } from "./types/message"
 import { mid } from "./types/message"
 import { copySelection } from "./utils/clipboard"
@@ -350,6 +351,7 @@ const AppInner = () => {
     { name: "Overview", description: "Dashboard" },
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
+    { name: "Sessions", description: "Session history" },
   ]
 
   const content = () => {
@@ -380,6 +382,8 @@ const AppInner = () => {
             sessionStart={start.current}
           />
         )
+      case 2:
+        return <Sessions />
       default:
         return null
     }
