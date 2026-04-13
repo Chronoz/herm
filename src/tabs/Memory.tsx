@@ -34,6 +34,9 @@ const DESC: Record<string, string> = {
   supermemory: "Semantic long-term memory with profile recall and session ingest",
 }
 
+// All known providers — always shown
+const ALL_PROVIDERS = ["builtin", "mem0", "honcho", "hindsight", "holographic", "openviking", "retaindb", "byterover", "supermemory"]
+
 // ─── Component ────────────────────────────────────────────────────────
 
 export const Memory = () => {
@@ -46,8 +49,14 @@ export const Memory = () => {
     const snap = await readHermesHome()
     setHome(snap)
     const active = snap.config?.memory?.provider || ""
-    const prov = await readMemoryProviders(active)
-    setProviders(prov)
+    const found = await readMemoryProviders(active)
+    // Merge with all known — ensure every provider appears
+    const merged: MemoryProviderInfo[] = ALL_PROVIDERS.map(name => {
+      const existing = found.find(p => p.name === name)
+      if (existing) return existing
+      return { name, active: name === "builtin" || name === active, config: {} }
+    })
+    setProviders(merged)
   }, [])
 
   useEffect(() => {
@@ -58,6 +67,7 @@ export const Memory = () => {
 
   const cfg = home?.config?.memory
   const current = providers[selected]
+  const active = cfg?.provider || ""
 
   return (
     <box flexGrow={1} flexDirection="row" gap={1} padding={1}>
@@ -72,18 +82,30 @@ export const Memory = () => {
             borderColor={theme.borderSubtle}
             padding={1}
           >
-            <text fg={theme.primary}>
-              <strong>Memory Config</strong>
-            </text>
-            <text fg={theme.text}>
-              Active provider: <span fg={theme.accent}>{cfg.provider || "builtin (file-only)"}</span>
-            </text>
-            <text fg={theme.textMuted}>
-              Notes: {cfg.memory_enabled ? "enabled" : "disabled"} · Profile: {cfg.user_profile_enabled ? "enabled" : "disabled"}
-            </text>
-            <text fg={theme.textMuted}>
-              Nudge every {cfg.nudge_interval} turns · Flush after {cfg.flush_min_turns} turns
-            </text>
+            <box height={1}>
+              <text fg={theme.primary}>
+                <strong>Memory Config</strong>
+              </text>
+            </box>
+            <box height={1}>
+              <text>
+                <span fg={theme.textMuted}>Provider: </span>
+                <span fg={theme.accent}>{active || "builtin (file-only)"}</span>
+              </text>
+            </box>
+            <box height={1}>
+              <text>
+                <span fg={theme.textMuted}>Notes: </span>
+                <span fg={cfg.memory_enabled ? theme.success : theme.error}>{cfg.memory_enabled ? "on" : "off"}</span>
+                <span fg={theme.textMuted}> · Profile: </span>
+                <span fg={cfg.user_profile_enabled ? theme.success : theme.error}>{cfg.user_profile_enabled ? "on" : "off"}</span>
+              </text>
+            </box>
+            <box height={1}>
+              <text>
+                <span fg={theme.textMuted}>Nudge: every {cfg.nudge_interval} turns · Flush: after {cfg.flush_min_turns} turns</span>
+              </text>
+            </box>
           </box>
         ) : null}
 
@@ -100,15 +122,20 @@ export const Memory = () => {
           borderColor={theme.borderSubtle}
           padding={1}
         >
-          <text fg={theme.primary}>
-            <strong>Providers</strong>
-          </text>
-          <text> </text>
+          <box height={1}>
+            <text fg={theme.primary}>
+              <strong>Providers</strong>
+            </text>
+          </box>
+          <box height={1} />
           <scrollbox scrollY flexGrow={1}>
             {providers.map((p, i) => {
               const sel = i === selected
-              const dot = p.active ? "●" : "○"
-              const color = p.active ? theme.success : theme.textMuted
+              const isActive = p.name === "builtin" || p.name === active
+              const configured = Object.keys(p.config).length > 0
+              const dot = isActive ? "●" : configured ? "◐" : "○"
+              const color = isActive ? theme.success : configured ? theme.warning : theme.textMuted
+              const status = isActive ? "active" : configured ? "configured" : ""
               return (
                 <box
                   key={p.name}
@@ -120,7 +147,7 @@ export const Memory = () => {
                   <text>
                     <span fg={color}>{dot} </span>
                     <span fg={sel ? theme.accent : theme.text}>{p.name}</span>
-                    {p.active ? <span fg={theme.success}> (active)</span> : null}
+                    {status ? <span fg={color}> ({status})</span> : null}
                   </text>
                 </box>
               )
@@ -139,25 +166,35 @@ export const Memory = () => {
         padding={1}
       >
         {current ? (
-          <>
-            <text fg={theme.primary}>
-              <strong>{current.name}</strong>
-              {current.active ? <span fg={theme.success}> ● active</span> : <span fg={theme.textMuted}> ○ inactive</span>}
-            </text>
-            <text> </text>
-            <text fg={theme.textMuted}>{DESC[current.name] || "Memory provider"}</text>
-            <text> </text>
+          <box flexDirection="column" flexGrow={1}>
+            <box height={1}>
+              <text>
+                <span fg={theme.primary}>
+                  <strong>{current.name}</strong>
+                </span>
+                {current.name === "builtin" || current.name === active
+                  ? <span fg={theme.success}> ● active</span>
+                  : <span fg={theme.textMuted}> ○ inactive</span>}
+              </text>
+            </box>
+            <box height={1} />
+            <box height={1}>
+              <text fg={theme.textMuted}>{DESC[current.name] || "Memory provider"}</text>
+            </box>
+            <box height={1} />
 
             {/* Config entries */}
             {Object.keys(current.config).length > 0 ? (
-              <>
-                <text fg={theme.accent}>
-                  <strong>Configuration</strong>
-                </text>
-                <text> </text>
+              <box flexDirection="column" flexGrow={1}>
+                <box height={1}>
+                  <text fg={theme.accent}>
+                    <strong>Local Configuration</strong>
+                  </text>
+                </box>
+                <box height={1} />
                 <scrollbox scrollY flexGrow={1}>
                   {Object.entries(current.config).map(([k, v]) => (
-                    <box key={k} height={1} flexDirection="row">
+                    <box key={k} height={1}>
                       <text>
                         <span fg={theme.textMuted}>{k}: </span>
                         <span fg={theme.text}>{String(v)}</span>
@@ -165,15 +202,17 @@ export const Memory = () => {
                     </box>
                   ))}
                 </scrollbox>
-              </>
+              </box>
             ) : (
-              <text fg={theme.textMuted}>
-                {current.name === "builtin"
-                  ? "Built-in provider uses MEMORY.md and USER.md files. No additional config."
-                  : "No local configuration found."}
-              </text>
+              <box height={2}>
+                <text fg={theme.textMuted}>
+                  {current.name === "builtin"
+                    ? "Built-in provider uses MEMORY.md and USER.md files. No additional config."
+                    : "No local configuration found. Run `hermes memory setup` to configure."}
+                </text>
+              </box>
             )}
-          </>
+          </box>
         ) : (
           <text fg={theme.textMuted}>Select a provider to view details</text>
         )}
@@ -193,7 +232,7 @@ type CapacityProps = {
 const CapacityBox = ({ title, info, theme }: CapacityProps) => {
   if (!info) {
     return (
-      <box backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} padding={1}>
+      <box flexDirection="column" backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} padding={1}>
         <text fg={theme.textMuted}>{title}: unavailable</text>
       </box>
     )
@@ -202,15 +241,19 @@ const CapacityBox = ({ title, info, theme }: CapacityProps) => {
   const color = usageColor(info.usagePercent, theme)
 
   return (
-    <box backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} paddingX={1}>
-      <text>
-        <span fg={theme.text}>{title}</span>
-        <span fg={theme.textMuted}> {info.entryCount} entries</span>
-      </text>
-      <text>
-        <span fg={color}>{bar(info.usagePercent, 20)}</span>
-        <span fg={theme.textMuted}> {info.charCount}/{info.charLimit} ({info.usagePercent}%)</span>
-      </text>
+    <box flexDirection="column" backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} paddingX={1}>
+      <box height={1}>
+        <text>
+          <span fg={theme.text}>{title}</span>
+          <span fg={theme.textMuted}> · {info.entryCount} entries</span>
+        </text>
+      </box>
+      <box height={1}>
+        <text>
+          <span fg={color}>{bar(info.usagePercent, 20)}</span>
+          <span fg={theme.textMuted}> {info.charCount}/{info.charLimit} ({info.usagePercent}%)</span>
+        </text>
+      </box>
     </box>
   )
 }
