@@ -377,64 +377,6 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
   }
 }
 
-/** Query state.db for a specific session by ID */
-export function querySession(sessionId: string): SessionRow | null {
-  const dbSource = makeSource("state.db");
-  try {
-    const db = new Database(hermesPath("state.db"), { readonly: true });
-    const row = db
-      .query(
-        `SELECT id, source, model, started_at, ended_at, end_reason,
-                message_count, tool_call_count,
-                input_tokens, output_tokens,
-                cache_read_tokens, cache_write_tokens, reasoning_tokens,
-                estimated_cost_usd, title, parent_session_id
-         FROM sessions WHERE id = ?`,
-      )
-      .get(sessionId) as {
-      id: string;
-      source: string;
-      model: string | null;
-      started_at: number;
-      ended_at: number | null;
-      end_reason: string | null;
-      message_count: number;
-      tool_call_count: number;
-      input_tokens: number;
-      output_tokens: number;
-      cache_read_tokens: number;
-      cache_write_tokens: number;
-      reasoning_tokens: number;
-      estimated_cost_usd: number | null;
-      title: string | null;
-      parent_session_id: string | null;
-    } | null;
-    db.close();
-    if (!row) return null;
-    return {
-      source: dbSource,
-      id: row.id,
-      sessionSource: row.source,
-      model: row.model,
-      started_at: row.started_at,
-      ended_at: row.ended_at,
-      end_reason: row.end_reason,
-      message_count: row.message_count,
-      tool_call_count: row.tool_call_count,
-      input_tokens: row.input_tokens,
-      output_tokens: row.output_tokens,
-      cache_read_tokens: row.cache_read_tokens,
-      cache_write_tokens: row.cache_write_tokens,
-      reasoning_tokens: row.reasoning_tokens,
-      estimated_cost_usd: row.estimated_cost_usd,
-      title: row.title,
-      parent_session_id: row.parent_session_id,
-    };
-  } catch {
-    return null;
-  }
-}
-
 /** Memory provider info — what's configured and available */
 export interface MemoryProviderInfo {
   name: string;

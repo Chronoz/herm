@@ -30,12 +30,6 @@ const Ctx = createContext<DialogContext | null>(null)
 
 const BACKDROP = RGBA.fromInts(0, 0, 0, 150)
 
-const WIDTH_MEDIUM = 60
-const WIDTH_LARGE = 88
-const WIDTH_XLARGE = 116
-
-export { WIDTH_MEDIUM, WIDTH_LARGE, WIDTH_XLARGE }
-
 export const DialogProvider = ({ children }: { children: ReactNode }) => {
   const [stack, setStack] = useState<DialogEntry[]>([])
 
