@@ -1,183 +1,216 @@
-import { useState, useEffect, useCallback } from "react";
-import { readHermesHome, type MemoryFileInfo } from "../utils/hermes-home";
-import { useTheme, type Theme } from "../theme";
+import { useState, useEffect, useCallback } from "react"
+import {
+  readHermesHome,
+  readMemoryProviders,
+  type HermesHomeSnapshot,
+  type MemoryProviderInfo,
+} from "../utils/hermes-home"
+import { useTheme, type Theme } from "../theme"
 
-// ─── Types ───────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
-type Category = "Projects" | "People" | "Dated" | "Other";
+const REFRESH = 15_000
 
-interface CategorizedEntry {
-  category: Category;
-  text: string;
+function usageColor(pct: number, theme: Theme): string {
+  if (pct >= 95) return theme.error.toString()
+  if (pct >= 80) return theme.warning.toString()
+  return theme.success.toString()
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-const REFRESH_INTERVAL = 15_000;
-const DATE_RE = /\d{4}-\d{2}-\d{2}/;
-
-function categorizeEntry(entry: string): Category {
-  const trimmed = entry.trim();
-  if (trimmed.startsWith("Projects >")) return "Projects";
-  if (trimmed.startsWith("People >")) return "People";
-  if (DATE_RE.test(trimmed)) return "Dated";
-  return "Other";
+function bar(pct: number, w: number): string {
+  const filled = Math.round((pct / 100) * w)
+  return "█".repeat(filled) + "░".repeat(w - filled)
 }
 
-function parseEntries(content: string): CategorizedEntry[] {
-  return content
-    .split("§")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((text) => ({ category: categorizeEntry(text), text }));
+const DESC: Record<string, string> = {
+  builtin: "File-based §-delimited entries (MEMORY.md + USER.md)",
+  mem0: "Server-side LLM fact extraction with semantic search and reranking",
+  honcho: "AI-native cross-session user modeling with dialectic Q&A",
+  hindsight: "Knowledge graph with entity resolution and multi-strategy retrieval",
+  holographic: "Local SQLite fact store with FTS5, trust scoring, HRR retrieval",
+  openviking: "Session-managed memory with tiered retrieval",
+  retaindb: "Cloud memory API with hybrid search and 7 memory types",
+  byterover: "Persistent knowledge tree via brv CLI",
+  supermemory: "Semantic long-term memory with profile recall and session ingest",
 }
 
-function groupByCategory(
-  entries: CategorizedEntry[],
-): Record<Category, CategorizedEntry[]> {
-  const groups: Record<Category, CategorizedEntry[]> = {
-    Projects: [],
-    People: [],
-    Dated: [],
-    Other: [],
-  };
-  for (const entry of entries) {
-    groups[entry.category].push(entry);
-  }
-  return groups;
-}
-
-function usageColor(percent: number, theme: Theme): string {
-  if (percent >= 95) return theme.error.toString();
-  if (percent >= 80) return theme.warning.toString();
-  return theme.success.toString();
-}
-
-function usageBar(percent: number, width: number): string {
-  const filled = Math.round((percent / 100) * width);
-  const empty = width - filled;
-  return "█".repeat(filled) + "░".repeat(empty);
-}
-
-// ─── Component ───────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────
 
 export const Memory = () => {
-  const { theme } = useTheme();
-  const [memory, setMemory] = useState<MemoryFileInfo | null>(null);
-  const [userProfile, setUserProfile] = useState<MemoryFileInfo | null>(null);
+  const { theme } = useTheme()
+  const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
+  const [providers, setProviders] = useState<MemoryProviderInfo[]>([])
+  const [selected, setSelected] = useState(0)
 
   const refresh = useCallback(async () => {
-    const snapshot = await readHermesHome();
-    setMemory(snapshot.memory);
-    setUserProfile(snapshot.userProfile);
-  }, []);
+    const snap = await readHermesHome()
+    setHome(snap)
+    const active = snap.config?.memory?.provider || ""
+    const prov = await readMemoryProviders(active)
+    setProviders(prov)
+  }, [])
 
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, REFRESH_INTERVAL);
-    return () => clearInterval(id);
-  }, [refresh]);
+    refresh()
+    const id = setInterval(refresh, REFRESH)
+    return () => clearInterval(id)
+  }, [refresh])
+
+  const cfg = home?.config?.memory
+  const current = providers[selected]
 
   return (
     <box flexGrow={1} flexDirection="row" gap={1} padding={1}>
-      <MemoryPanel
-        title="Notes"
-        info={memory}
-        theme={theme}
-      />
-      <MemoryPanel
-        title="Profile"
-        info={userProfile}
-        theme={theme}
-      />
-    </box>
-  );
-};
+      {/* Left: Provider list + built-in memory stats */}
+      <box flexDirection="column" width="40%" gap={1}>
+        {/* Memory config summary */}
+        {cfg ? (
+          <box
+            flexDirection="column"
+            backgroundColor={theme.backgroundPanel}
+            border
+            borderColor={theme.borderSubtle}
+            padding={1}
+          >
+            <text fg={theme.primary}>
+              <strong>Memory Config</strong>
+            </text>
+            <text fg={theme.text}>
+              Active provider: <span fg={theme.accent}>{cfg.provider || "builtin (file-only)"}</span>
+            </text>
+            <text fg={theme.textMuted}>
+              Notes: {cfg.memory_enabled ? "enabled" : "disabled"} · Profile: {cfg.user_profile_enabled ? "enabled" : "disabled"}
+            </text>
+            <text fg={theme.textMuted}>
+              Nudge every {cfg.nudge_interval} turns · Flush after {cfg.flush_min_turns} turns
+            </text>
+          </box>
+        ) : null}
 
-// ─── Panel ───────────────────────────────────────────────────────────
+        {/* Built-in capacity bars */}
+        <CapacityBox title="Notes (MEMORY.md)" info={home?.memory ?? null} theme={theme} />
+        <CapacityBox title="Profile (USER.md)" info={home?.userProfile ?? null} theme={theme} />
 
-interface MemoryPanelProps {
-  title: string;
-  info: MemoryFileInfo | null;
-  theme: Theme;
-}
+        {/* Provider list */}
+        <box
+          flexDirection="column"
+          flexGrow={1}
+          backgroundColor={theme.backgroundPanel}
+          border
+          borderColor={theme.borderSubtle}
+          padding={1}
+        >
+          <text fg={theme.primary}>
+            <strong>Providers</strong>
+          </text>
+          <text> </text>
+          <scrollbox scrollY flexGrow={1}>
+            {providers.map((p, i) => {
+              const sel = i === selected
+              const dot = p.active ? "●" : "○"
+              const color = p.active ? theme.success : theme.textMuted
+              return (
+                <box
+                  key={p.name}
+                  height={1}
+                  backgroundColor={sel ? theme.backgroundElement : undefined}
+                  onMouseDown={() => setSelected(i)}
+                  onMouseOver={() => setSelected(i)}
+                >
+                  <text>
+                    <span fg={color}>{dot} </span>
+                    <span fg={sel ? theme.accent : theme.text}>{p.name}</span>
+                    {p.active ? <span fg={theme.success}> (active)</span> : null}
+                  </text>
+                </box>
+              )
+            })}
+          </scrollbox>
+        </box>
+      </box>
 
-const CATEGORY_ORDER: Category[] = ["Projects", "People", "Dated", "Other"];
-
-const MemoryPanel = ({ title, info, theme }: MemoryPanelProps) => {
-  if (!info) {
-    return (
+      {/* Right: Selected provider detail */}
       <box
-        flexGrow={1}
         flexDirection="column"
+        flexGrow={1}
         backgroundColor={theme.backgroundPanel}
-        borderStyle="single"
+        border
         borderColor={theme.borderSubtle}
         padding={1}
       >
-        <text fg={theme.textMuted}>{title}: No data available</text>
+        {current ? (
+          <>
+            <text fg={theme.primary}>
+              <strong>{current.name}</strong>
+              {current.active ? <span fg={theme.success}> ● active</span> : <span fg={theme.textMuted}> ○ inactive</span>}
+            </text>
+            <text> </text>
+            <text fg={theme.textMuted}>{DESC[current.name] || "Memory provider"}</text>
+            <text> </text>
+
+            {/* Config entries */}
+            {Object.keys(current.config).length > 0 ? (
+              <>
+                <text fg={theme.accent}>
+                  <strong>Configuration</strong>
+                </text>
+                <text> </text>
+                <scrollbox scrollY flexGrow={1}>
+                  {Object.entries(current.config).map(([k, v]) => (
+                    <box key={k} height={1} flexDirection="row">
+                      <text>
+                        <span fg={theme.textMuted}>{k}: </span>
+                        <span fg={theme.text}>{String(v)}</span>
+                      </text>
+                    </box>
+                  ))}
+                </scrollbox>
+              </>
+            ) : (
+              <text fg={theme.textMuted}>
+                {current.name === "builtin"
+                  ? "Built-in provider uses MEMORY.md and USER.md files. No additional config."
+                  : "No local configuration found."}
+              </text>
+            )}
+          </>
+        ) : (
+          <text fg={theme.textMuted}>Select a provider to view details</text>
+        )}
       </box>
-    );
+    </box>
+  )
+}
+
+// ─── Capacity Bar ─────────────────────────────────────────────────────
+
+type CapacityProps = {
+  title: string
+  info: { charCount: number; charLimit: number; usagePercent: number; entryCount: number } | null
+  theme: Theme
+}
+
+const CapacityBox = ({ title, info, theme }: CapacityProps) => {
+  if (!info) {
+    return (
+      <box backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} padding={1}>
+        <text fg={theme.textMuted}>{title}: unavailable</text>
+      </box>
+    )
   }
 
-  const entries = parseEntries(info.content);
-  const groups = groupByCategory(entries);
-  const color = usageColor(info.usagePercent, theme);
-  const bar = usageBar(info.usagePercent, 20);
+  const color = usageColor(info.usagePercent, theme)
 
   return (
-    <box
-      flexGrow={1}
-      flexDirection="column"
-      backgroundColor={theme.backgroundPanel}
-      borderStyle="single"
-      borderColor={theme.borderSubtle}
-    >
-      {/* Header */}
-      <box flexDirection="column" paddingX={1} paddingTop={1}>
-        <text fg={theme.primary}>
-          <strong>{title}</strong>
-          <span fg={theme.textMuted}>
-            {" "}
-            {info.entryCount} entries
-          </span>
-        </text>
-        <text>
-          <span fg={theme.textMuted}>
-            {bar} {info.charCount}/{info.charLimit} ({info.usagePercent}%)
-          </span>
-        </text>
-      </box>
-
-      {/* Entries */}
-      <scrollbox scrollY flexGrow={1} paddingX={1} paddingBottom={1}>
-        {CATEGORY_ORDER.map((cat) => {
-          const catEntries = groups[cat];
-          if (catEntries.length === 0) return null;
-          return (
-            <box key={cat} flexDirection="column" marginTop={1}>
-              <text fg={theme.accent}>
-                <strong>── {cat} ({catEntries.length}) ──</strong>
-              </text>
-              {catEntries.map((entry, i) => (
-                <box
-                  key={`${cat}-${i}`}
-                  flexDirection="column"
-                  marginTop={1}
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  borderStyle="single"
-                  borderColor={theme.borderSubtle}
-                >
-                  <text fg={theme.text}>
-                    {entry.text}
-                  </text>
-                </box>
-              ))}
-            </box>
-          );
-        })}
-      </scrollbox>
+    <box backgroundColor={theme.backgroundPanel} border borderColor={theme.borderSubtle} paddingX={1}>
+      <text>
+        <span fg={theme.text}>{title}</span>
+        <span fg={theme.textMuted}> {info.entryCount} entries</span>
+      </text>
+      <text>
+        <span fg={color}>{bar(info.usagePercent, 20)}</span>
+        <span fg={theme.textMuted}> {info.charCount}/{info.charLimit} ({info.usagePercent}%)</span>
+      </text>
     </box>
-  );
-};
+  )
+}

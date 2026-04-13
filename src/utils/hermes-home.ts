@@ -66,6 +66,8 @@ export interface HermesConfig {
     memory_char_limit: number;
     user_char_limit: number;
     provider: string;
+    nudge_interval: number;
+    flush_min_turns: number;
   };
   display: {
     personality: string;
@@ -241,7 +243,9 @@ export async function readConfig(): Promise<HermesConfig | null> {
         user_profile_enabled: raw?.memory?.user_profile_enabled ?? true,
         memory_char_limit: raw?.memory?.memory_char_limit ?? 2200,
         user_char_limit: raw?.memory?.user_char_limit ?? 1375,
-        provider: raw?.memory?.provider ?? "file",
+        provider: raw?.memory?.provider ?? "",
+        nudge_interval: raw?.memory?.nudge_interval ?? 10,
+        flush_min_turns: raw?.memory?.flush_min_turns ?? 6,
       },
       display: {
         personality: raw?.display?.personality ?? "default",
@@ -429,6 +433,80 @@ export function querySession(sessionId: string): SessionRow | null {
   } catch {
     return null;
   }
+}
+
+/** Memory provider info — what's configured and available */
+export interface MemoryProviderInfo {
+  name: string;
+  active: boolean;
+  config: Record<string, string | number | boolean>;
+}
+
+/** Read memory provider configs from ~/.hermes/ */
+export async function readMemoryProviders(
+  activeProvider: string,
+): Promise<MemoryProviderInfo[]> {
+  const providers: MemoryProviderInfo[] = [];
+
+  // Built-in is always present
+  providers.push({ name: "builtin", active: true, config: {} });
+
+  // Known providers and their config file patterns
+  const known: Array<{ name: string; files: string[] }> = [
+    { name: "mem0", files: ["mem0.json"] },
+    { name: "honcho", files: ["honcho.json"] },
+    { name: "hindsight", files: ["hindsight/config.json"] },
+    { name: "supermemory", files: ["supermemory.json"] },
+    { name: "holographic", files: ["holographic.db"] },
+    { name: "openviking", files: [] },
+    { name: "retaindb", files: [] },
+    { name: "byterover", files: [] },
+  ];
+
+  for (const p of known) {
+    const cfg: Record<string, string | number | boolean> = {};
+    let found = false;
+
+    for (const f of p.files) {
+      try {
+        const file = Bun.file(hermesPath(f));
+        if (f.endsWith(".json")) {
+          const raw = await file.json();
+          for (const [k, v] of Object.entries(raw)) {
+            if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+              // Redact keys/tokens
+              const lower = k.toLowerCase();
+              if (lower.includes("key") || lower.includes("token") || lower.includes("secret")) {
+                cfg[k] = typeof v === "string" ? `${v.slice(0, 4)}...` : v;
+              } else {
+                cfg[k] = v;
+              }
+            }
+          }
+          found = true;
+        } else {
+          // Non-JSON (like .db) — just check existence
+          const stat = await file.stat();
+          if (stat) {
+            cfg["db_size"] = `${Math.round(stat.size / 1024)}KB`;
+            found = true;
+          }
+        }
+      } catch {
+        // file doesn't exist
+      }
+    }
+
+    if (found || p.name === activeProvider) {
+      providers.push({
+        name: p.name,
+        active: p.name === activeProvider,
+        config: cfg,
+      });
+    }
+  }
+
+  return providers;
 }
 
 /** Message row from state.db */
