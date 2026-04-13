@@ -4,6 +4,7 @@ import { HermesApiClient } from "./utils/hermes-api-client"
 import type { DonePayload } from "./utils/hermes-api-client"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
+import { Overview } from "./tabs/Overview"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import type { Message, Usage, ToolPart } from "./types/message"
@@ -40,7 +41,7 @@ const AppInner = () => {
   const [ready, setReady] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [session] = useState(`herm-${Date.now()}`)
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState(1)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [total, setTotal] = useState({ input: 0, output: 0 })
   const [cost, setCost] = useState(0)
@@ -286,10 +287,10 @@ const AppInner = () => {
 
     // Tab switching: Ctrl+Left/Right
     if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
-    if (key.ctrl && key.name === "right") { setTab(t => Math.min(1, t + 1)); return }
+    if (key.ctrl && key.name === "right") { setTab(t => Math.min(2, t + 1)); return }
 
     // Only handle remaining keys on Chat tab
-    if (tab !== 0) return
+    if (tab !== 1) return
 
     // Double-escape to interrupt
     if (key.name === "escape") {
@@ -346,6 +347,7 @@ const AppInner = () => {
   })
 
   const tabs = [
+    { name: "Overview", description: "Dashboard" },
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
   ]
@@ -353,6 +355,8 @@ const AppInner = () => {
   const content = () => {
     switch (tab) {
       case 0:
+        return <Overview />
+      case 1:
         return (
           <Chat
             messages={messages}
@@ -367,7 +371,7 @@ const AppInner = () => {
             turns={msgCount}
           />
         )
-      case 1:
+      case 2:
         return (
           <Context
             description={tabs[tab].description}
