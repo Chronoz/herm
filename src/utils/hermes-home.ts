@@ -670,6 +670,50 @@ export function readSystemPromptInfo(): SystemPromptInfo | null {
   }
 }
 
+// ─── Toolsets ─────────────────────────────────────────────────────────
+
+/** Known toolset → tool name mapping */
+const TOOLSET_MAP: Record<string, string[]> = {
+  terminal: ["terminal", "process"],
+  file: ["read_file", "write_file", "search_files", "patch"],
+  web: ["browser_navigate", "browser_click", "browser_type", "browser_snapshot", "browser_scroll", "browser_press", "browser_back", "browser_vision", "browser_console", "browser_get_images"],
+  code: ["execute_code"],
+  delegate: ["delegate_task"],
+  memory: ["memory", "session_search", "skill_manage", "skill_view", "skills_list"],
+  productivity: ["todo", "cronjob", "image_generate", "text_to_speech"],
+  clarify: ["clarify"],
+};
+
+/** Info about a single toolset */
+export interface ToolsetInfo {
+  name: string;
+  tools: string[];
+  enabled: boolean;
+  active: string[];
+}
+
+/** Read toolsets: parse config.yaml for enabled list, cross-ref with session tools */
+export async function readToolsets(): Promise<ToolsetInfo[]> {
+  let enabled: string[] = [];
+  try {
+    const text = await Bun.file(hermesPath("config.yaml")).text();
+    const raw = parseYaml(text);
+    if (Array.isArray(raw?.toolsets)) enabled = raw.toolsets;
+  } catch {
+    // no config — treat all as enabled
+  }
+
+  const info = await readToolsFromLatestSession();
+  const live = new Set(info?.tools.map(t => t.name) ?? []);
+
+  return Object.entries(TOOLSET_MAP).map(([name, tools]) => ({
+    name,
+    tools,
+    enabled: enabled.length === 0 || enabled.includes(name),
+    active: tools.filter(t => live.has(t)),
+  }));
+}
+
 // ─── Composite Reader ────────────────────────────────────────────────
 
 /**
@@ -753,3 +797,93 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
 
   return snapshot;
 }
+
+// ─── Env File CRUD ──────────────────────────────────────────────────
+
+const ENV_PATH = hermesPath(".env");
+
+/** Parse ~/.hermes/.env into Record<string, string> */
+export async function readEnvFile(): Promise<Record<string, string>> {
+  try {
+    const text = await Bun.file(ENV_PATH).text();
+    const vars: Record<string, string> = {};
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 1) continue;
+      vars[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+    }
+    return vars;
+  } catch {
+    return {};
+  }
+}
+
+/** Update or append a KEY=VALUE in ~/.hermes/.env */
+export async function writeEnvVar(key: string, value: string): Promise<void> {
+  let text = "";
+  try {
+    text = await Bun.file(ENV_PATH).text();
+  } catch { /* file may not exist */ }
+
+  const lines = text.split("\n");
+  let found = false;
+  const updated = lines.map(line => {
+    if (line.startsWith(`${key}=`)) {
+      found = true;
+      return `${key}=${value}`;
+    }
+    return line;
+  });
+  if (!found) updated.push(`${key}=${value}`);
+
+  await Bun.write(ENV_PATH, updated.join("\n"));
+}
+
+/** Remove a key from ~/.hermes/.env */
+export async function removeEnvVar(key: string): Promise<void> {
+  let text = "";
+  try {
+    text = await Bun.file(ENV_PATH).text();
+  } catch { return; }
+
+  const lines = text.split("\n").filter(l => !l.startsWith(`${key}=`));
+  await Bun.write(ENV_PATH, lines.join("\n"));
+}
+
+/** Redact a value: show first 4 chars + '...' */
+export const redact = (value: string): string =>
+  value.length <= 4 ? value : `${value.slice(0, 4)}...`;
+
+// ─── Provider Catalog ───────────────────────────────────────────────
+
+export const ENV_CATALOG: ReadonlyArray<{ category: string; keys: string[] }> = [
+  {
+    category: "LLM Providers",
+    keys: [
+      "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
+      "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY",
+      "MISTRAL_API_KEY", "XAI_API_KEY", "TOGETHER_API_KEY",
+      "FIREWORKS_API_KEY", "NOUS_API_KEY",
+    ],
+  },
+  {
+    category: "Tool API Keys",
+    keys: [
+      "FIRECRAWL_API_KEY", "BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID",
+      "TAVILY_API_KEY", "EXA_API_KEY", "ELEVENLABS_API_KEY",
+    ],
+  },
+  {
+    category: "Messaging",
+    keys: [
+      "TELEGRAM_BOT_TOKEN", "DISCORD_BOT_TOKEN",
+      "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN",
+    ],
+  },
+  {
+    category: "Agent",
+    keys: ["API_SERVER_KEY", "MEM0_API_KEY"],
+  },
+];
