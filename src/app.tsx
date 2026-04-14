@@ -28,6 +28,7 @@ import { HelpDialog } from "./dialogs/help"
 import { openThemePicker } from "./dialogs/theme-picker"
 import type { SlashCommand } from "./commands/slash"
 import { filter as filterSlash } from "./commands/slash"
+import { InputArea } from "./components/chat/InputArea"
 
 export const App = () => (
   <ThemeProvider>
@@ -340,6 +341,7 @@ const AppInner = () => {
 
     client.current?.send(msg)
     setInput("")
+    setTab(1)
   }, [input, ready, streaming, popOpen, popover, popCursor, slash])
 
   // Copy last assistant message
@@ -398,9 +400,6 @@ const AppInner = () => {
 
     if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
     if (key.ctrl && key.name === "right") { setTab(t => Math.min(10, t + 1)); return }
-
-    // Chat-only keys
-    if (tab !== 1) return
 
     // --- Popover open: route navigation keys to popover ---
     if (popOpen) {
@@ -489,22 +488,7 @@ const AppInner = () => {
       case 0: return <Overview />
       case 1:
         return (
-          <Chat
-            messages={messages}
-            streaming={streaming}
-            input={input}
-            onInput={setInput}
-            onSubmit={send}
-            ready={ready}
-            model={model}
-            usage={usage}
-            cost={cost}
-            turns={msgCount}
-            popover={popover}
-            popCursor={popCursor}
-            onPopCursor={setPopCursor}
-            onPopSelect={slash}
-          />
+          <Chat messages={messages} streaming={streaming} />
         )
       case 2:
         return (
@@ -539,8 +523,28 @@ const AppInner = () => {
     >
       <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
       <box flexGrow={1} flexDirection="row">
-        {content()}
-        <Sidebar activeTools={[]} memoryCount={0} agentState={agentState} />
+        <box flexGrow={1} flexDirection="column">
+          {content()}
+          <box flexShrink={0}>
+            <InputArea
+              value={input}
+              onChange={setInput}
+              onSubmit={send}
+              focused={!streaming}
+              ready={ready}
+              streaming={streaming}
+              model={model}
+              usage={usage}
+              cost={cost}
+              turns={msgCount}
+              popover={popover}
+              popCursor={popCursor}
+              onPopCursor={setPopCursor}
+              onPopSelect={slash}
+            />
+          </box>
+        </box>
+        <Sidebar agentState={agentState} />
       </box>
     </box>
   )

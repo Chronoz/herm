@@ -1,53 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar";
 import { useTheme } from "../../theme";
-import {
-  readHermesHome,
-  type HermesHomeSnapshot,
-} from "../../utils/hermes-home";
 import type { AvatarState } from "../avatar/states";
 
+const STATES: AvatarState[] = ["idle", "listening", "thinking", "speaking", "working", "error"];
+
 export const Sidebar = ({
-  activeTools,
-  memoryCount,
   agentState = "idle",
 }: {
-  activeTools: string[];
-  memoryCount: number;
   agentState?: AvatarState;
 }) => {
   const { theme } = useTheme();
-  const [home, setHome] = useState<HermesHomeSnapshot | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      setHome(await readHermesHome());
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, 15_000);
-    return () => clearInterval(timer);
-  }, [refresh]);
-
-  // Real data from hermes-home
-  const skills = home?.skills ?? [];
-  const memNotes = home?.memory;
-  const memUser = home?.userProfile;
-  const notesCount = memNotes
-    ? memNotes.content.split("§").filter((s) => s.trim()).length
-    : 0;
-  const userCount = memUser
-    ? memUser.content.split("§").filter((s) => s.trim()).length
-    : 0;
-  const skillCount = skills.length;
+  const [override, setOverride] = useState<AvatarState | null>(null);
+  const active = override ?? agentState;
 
   return (
     <box width={48} flexDirection="column">
       {/* Avatar (bust) */}
       <box flexDirection="column" height={24} overflow="hidden">
-        <AnimatedAvatar state={agentState} />
+        <AnimatedAvatar state={active} />
       </box>
 
       {/* Body (pillar) */}
@@ -58,8 +29,20 @@ export const Sidebar = ({
         backgroundColor={theme.hermBody}
       >
         <box justifyContent="center">
-          <text fg={theme.hermBodyText}>{agentState}</text>
+          <text fg={theme.hermBodyText}>{active}{override ? " (debug)" : ""}</text>
         </box>
+        <text> </text>
+        {STATES.map(s => (
+          <box
+            key={s}
+            height={1}
+            onMouseDown={() => setOverride(s === override ? null : s)}
+          >
+            <text fg={s === active ? theme.primary : theme.hermBodyText}>
+              {s === active ? "▸ " : "  "}{s}
+            </text>
+          </box>
+        ))}
       </box>
     </box>
   );
