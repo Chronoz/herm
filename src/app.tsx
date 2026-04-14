@@ -8,6 +8,7 @@ import { Overview } from "./tabs/Overview"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
+import { Analytics } from "./tabs/Analytics"
 import type { MessageRow } from "./utils/hermes-home"
 import { Memory } from "./tabs/Memory"
 import { Skills } from "./tabs/Skills"
@@ -366,7 +367,7 @@ const AppInner = () => {
     }
 
     if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
-    if (key.ctrl && key.name === "right") { setTab(t => Math.min(4, t + 1)); return }
+    if (key.ctrl && key.name === "right") { setTab(t => Math.min(6, t + 1)); return }
 
     // Chat-only keys
     if (tab !== 1) return
@@ -444,6 +445,7 @@ const AppInner = () => {
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
     { name: "Sessions", description: "Session history" },
+    { name: "Analytics", description: "Token usage and costs" },
     { name: "Skills", description: "Installed skills browser" },
     { name: "Memory", description: "Agent memory browser" },
   ]
@@ -480,8 +482,9 @@ const AppInner = () => {
           />
         )
       case 3: return <Sessions onSwitch={switchSession} />
-      case 4: return <Skills />
-      case 5: return <Memory />
+      case 4: return <Analytics />
+      case 5: return <Skills />
+      case 6: return <Memory />
       default: return null
     }
   }

@@ -484,6 +484,128 @@ export function querySessionMessages(sid: string): MessageRow[] {
   }
 }
 
+// ─── Analytics ────────────────────────────────────────────────────────
+
+export interface DailyRow {
+  day: string;
+  input: number;
+  output: number;
+  cache: number;
+  reasoning: number;
+  cost: number;
+  sessions: number;
+}
+
+export interface ModelRow {
+  model: string;
+  input: number;
+  output: number;
+  cost: number;
+  sessions: number;
+}
+
+export interface TotalsRow {
+  input: number;
+  output: number;
+  cache: number;
+  reasoning: number;
+  estimated: number;
+  actual: number;
+  sessions: number;
+}
+
+export interface AnalyticsData {
+  daily: DailyRow[];
+  models: ModelRow[];
+  totals: TotalsRow;
+}
+
+/** Query analytics aggregates from state.db for the last N days */
+export function queryAnalytics(days: number): AnalyticsData {
+  const cutoff = Math.floor(Date.now() / 1000) - days * 86400;
+  const empty: AnalyticsData = {
+    daily: [],
+    models: [],
+    totals: { input: 0, output: 0, cache: 0, reasoning: 0, estimated: 0, actual: 0, sessions: 0 },
+  };
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true });
+
+    const daily = db
+      .query(
+        `SELECT date(started_at, 'unixepoch') as day,
+                SUM(input_tokens), SUM(output_tokens),
+                SUM(cache_read_tokens), SUM(reasoning_tokens),
+                COALESCE(SUM(estimated_cost_usd),0), COUNT(*)
+         FROM sessions WHERE started_at > ?
+         GROUP BY day ORDER BY day`,
+      )
+      .all(cutoff) as Array<Record<string, unknown>>;
+
+    const models = db
+      .query(
+        `SELECT model, SUM(input_tokens), SUM(output_tokens),
+                COALESCE(SUM(estimated_cost_usd),0), COUNT(*)
+         FROM sessions WHERE started_at > ? AND model IS NOT NULL
+         GROUP BY model ORDER BY SUM(input_tokens)+SUM(output_tokens) DESC`,
+      )
+      .all(cutoff) as Array<Record<string, unknown>>;
+
+    const totals = db
+      .query(
+        `SELECT SUM(input_tokens), SUM(output_tokens),
+                SUM(cache_read_tokens), SUM(reasoning_tokens),
+                COALESCE(SUM(estimated_cost_usd),0),
+                COALESCE(SUM(actual_cost_usd),0), COUNT(*)
+         FROM sessions WHERE started_at > ?`,
+      )
+      .all(cutoff) as Array<Record<string, unknown>>;
+
+    db.close();
+
+    const vals = (row: Record<string, unknown>) => Object.values(row);
+
+    return {
+      daily: daily.map((r) => {
+        const v = vals(r);
+        return {
+          day: String(v[0]),
+          input: Number(v[1]) || 0,
+          output: Number(v[2]) || 0,
+          cache: Number(v[3]) || 0,
+          reasoning: Number(v[4]) || 0,
+          cost: Number(v[5]) || 0,
+          sessions: Number(v[6]) || 0,
+        };
+      }),
+      models: models.map((r) => {
+        const v = vals(r);
+        return {
+          model: String(v[0]),
+          input: Number(v[1]) || 0,
+          output: Number(v[2]) || 0,
+          cost: Number(v[3]) || 0,
+          sessions: Number(v[4]) || 0,
+        };
+      }),
+      totals: (() => {
+        const v = totals[0] ? vals(totals[0]) : [];
+        return {
+          input: Number(v[0]) || 0,
+          output: Number(v[1]) || 0,
+          cache: Number(v[2]) || 0,
+          reasoning: Number(v[3]) || 0,
+          estimated: Number(v[4]) || 0,
+          actual: Number(v[5]) || 0,
+          sessions: Number(v[6]) || 0,
+        };
+      })(),
+    };
+  } catch {
+    return empty;
+  }
+}
+
 /** Search result from FTS5 full-text search */
 export interface SearchResult {
   source: Source;
