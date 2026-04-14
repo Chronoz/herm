@@ -1,845 +1,543 @@
-// Using OpenTUI React, not standard React
-import { useEffect, useState, useRef, useCallback } from "react";
-import type { HermesApiClient } from "../utils/hermes-api-client";
-import type { Message } from "../types/message";
-import { text as msgText } from "../types/message";
+/**
+ * Context tab — two-level drill-down context window visualizer.
+ *
+ * Level 0: System & Prompt | Tools | Conversation | Free
+ * Level 1: Click a group → grid expands to show children
+ * Detail:  Click a leaf → right panel shows content
+ *
+ * The grid always fills 16×16 = 256 cells.
+ * At level 0, cells are proportional to the full context window.
+ * At level 1, cells are proportional to the drilled group's total.
+ */
+
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
+import type { HermesApiClient } from "../utils/hermes-api-client"
+import type { Message } from "../types/message"
+import { text as msgText } from "../types/message"
 import {
   readHermesHome,
   type HermesHomeSnapshot,
   type SessionRow,
-} from "../utils/hermes-home";
-import { FileLink } from "../components/ui/FileLink";
-import { useTheme, type Theme } from "../theme";
+  type ToolInfo,
+} from "../utils/hermes-home"
+import {
+  parse,
+  build,
+  drill,
+  cells as buildCells,
+  type Segment,
+  type Section,
+} from "../utils/context-segments"
+import { FileLink } from "../components/ui/FileLink"
+import { useTheme, type Theme } from "../theme"
+import type { RGBA } from "@opentui/core"
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-interface ContextTabProps {
-  description?: string;
-  client?: HermesApiClient | null;
-  messages?: Message[];
-  sessionStart?: number;
+type Props = {
+  description?: string
+  client?: HermesApiClient | null
+  messages?: Message[]
+  sessionStart?: number
 }
 
-interface TokenUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
+type Wire = { input: number; output: number; total: number; calls: number }
 
-interface WireMetrics {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  apiCalls: number;
-}
-
-type SegmentId = "system" | "memory" | "conversation" | "free";
-
-interface GridSegment {
-  id: SegmentId;
-  label: string;
-  tokens: number;
-  percentage: number;
-}
-
-interface GridCell {
-  segmentId: SegmentId;
+type TokenUsage = {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
 }
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
-  // Claude 4.6 (1M)
-  "claude-opus-4-6": 1_000_000,
-  "claude-sonnet-4-6": 1_000_000,
-  "claude-opus-4.6": 1_000_000,
-  "claude-sonnet-4.6": 1_000_000,
-  // Claude 4 (200K)
-  "claude-opus-4": 200_000,
-  "claude-sonnet-4": 200_000,
-  // Claude 3.x
-  "claude-3.5-sonnet": 200_000,
-  "claude-3-opus": 200_000,
-  "claude-3-sonnet": 200_000,
-  "claude-3-haiku": 200_000,
-  // OpenAI
-  "gpt-4.1": 1_047_576,
-  "gpt-4o": 128_000,
-  "gpt-4": 128_000,
-  // Google
-  gemini: 1_048_576,
-  // Others
-  deepseek: 128_000,
-  llama: 131_072,
-  qwen: 131_072,
-};
+const CTX: Record<string, number> = {
+  "claude-opus-4-6": 1_000_000, "claude-sonnet-4-6": 1_000_000,
+  "claude-opus-4.6": 1_000_000, "claude-sonnet-4.6": 1_000_000,
+  "claude-opus-4": 200_000, "claude-sonnet-4": 200_000,
+  "claude-3.5-sonnet": 200_000, "claude-3-opus": 200_000,
+  "claude-3-sonnet": 200_000, "claude-3-haiku": 200_000,
+  "gpt-4.1": 1_047_576, "gpt-4o": 128_000, "gpt-4": 128_000,
+  gemini: 1_048_576, deepseek: 128_000, llama: 131_072, qwen: 131_072,
+}
+const DEFAULT_CTX = 128_000
+const CPT = 4
+const COLS = 16
+const WARN = 80
+const CRIT = 95
 
-const DEFAULT_CONTEXT_LENGTH = 128_000;
-const CHARS_PER_TOKEN = 4;
-const GRID_SIZE = 256;
-const GRID_COLS = 16;
-const THRESHOLD_GOOD = 50;
-const THRESHOLD_WARN = 80;
-const THRESHOLD_CRITICAL = 95;
+// ─── Colors ──────────────────────────────────────────────────────────
 
-/** Map segment ID to its theme color */
-const segmentColor = (id: SegmentId, theme: Theme): any => {
-  const map: Record<SegmentId, any> = {
-    system: theme.info,
-    memory: theme.warning,
-    conversation: theme.error,
-    free: theme.borderSubtle,
-  };
-  return map[id];
-};
+const PALETTE: Record<string, (t: Theme) => RGBA> = {
+  // Top-level groups
+  system: t => t.info,
+  tools: t => t.error,
+  conversation: t => t.secondary,
+  free: t => t.borderSubtle,
+  // System children
+  soul: t => t.info,
+  memory: t => t.warning,
+  user: t => t.accent,
+  mem0: t => t.warning,
+  skills: t => t.primary,
+  project: t => t.success,
+  meta: t => t.textMuted,
+  other: t => t.textMuted,
+}
 
-/** Segment highlight background on hover/select */
-const segmentHighlight = (id: SegmentId, theme: Theme): any =>
-  segmentColor(id, theme);
+const clr = (id: string, theme: Theme) => (PALETTE[id] ?? PALETTE.other)(theme)
 
 // ─── Utilities ───────────────────────────────────────────────────────
 
-const formatTokens = (tokens: number): string => {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 10_000) return `${Math.round(tokens / 1000)}k`;
-  if (tokens >= 1_000) return `${(tokens / 1000).toFixed(1)}k`;
-  return tokens.toString();
-};
+const fmt = (n: number) => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`
+  if (n >= 1_000) return `${(n / 1000).toFixed(1)}k`
+  return String(n)
+}
 
-const formatChars = (count: number, limit: number): string =>
-  `${count.toLocaleString()} / ${limit.toLocaleString()}`;
+const est = (s: string) => s ? Math.ceil(s.length / CPT) : 0
 
-const resolveContextLength = (model: string): number => {
-  const lower = model.toLowerCase();
-  const bare = lower.includes("/") ? lower.split("/").pop()! : lower;
-  if (MODEL_CONTEXT_LENGTHS[bare]) return MODEL_CONTEXT_LENGTHS[bare];
-  for (const [key, value] of Object.entries(MODEL_CONTEXT_LENGTHS)) {
-    if (bare.startsWith(key)) return value;
-  }
-  return DEFAULT_CONTEXT_LENGTH;
-};
+const bar = (pct: number, w = 20) => {
+  const f = Math.round((Math.max(0, Math.min(100, pct)) / 100) * w)
+  return `[${"█".repeat(f)}${"░".repeat(Math.max(0, w - f))}]`
+}
 
-const estimateTokens = (text: string): number =>
-  text ? Math.ceil(text.length / CHARS_PER_TOKEN) : 0;
+const resolveCtx = (model: string) => {
+  const bare = (model.includes("/") ? model.split("/").pop()! : model).toLowerCase()
+  if (CTX[bare]) return CTX[bare]
+  for (const [k, v] of Object.entries(CTX)) { if (bare.startsWith(k)) return v }
+  return DEFAULT_CTX
+}
 
-const formatDuration = (ms: number): string => {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h${m % 60}m`;
-};
+const status = (pct: number, theme: Theme) => {
+  if (pct >= CRIT) return { label: "CRITICAL", color: theme.error }
+  if (pct >= WARN) return { label: "HIGH", color: theme.error }
+  if (pct >= 50) return { label: "MODERATE", color: theme.warning }
+  return { label: "HEALTHY", color: theme.success }
+}
 
-const buildBar = (percent: number, width: number = 20): string => {
-  const safe = Math.max(0, Math.min(100, percent));
-  const filled = Math.round((safe / 100) * width);
-  return `[${"█".repeat(filled)}${"░".repeat(Math.max(0, width - filled))}]`;
-};
+// ─── Detail Panels ──────────────────────────────────────────────────
 
-const getUsageStatus = (
-  percent: number,
-  theme: Theme,
-): { label: string; color: any } => {
-  if (percent >= THRESHOLD_CRITICAL)
-    return { label: "CRITICAL", color: theme.error };
-  if (percent >= THRESHOLD_WARN) return { label: "HIGH", color: theme.error };
-  if (percent >= THRESHOLD_GOOD)
-    return { label: "MODERATE", color: theme.warning };
-  return { label: "HEALTHY", color: theme.success };
-};
-
-// ─── Segments ────────────────────────────────────────────────────────
-
-const buildSegments = (
-  contextLength: number,
-  inputTokens: number,
-  home: HermesHomeSnapshot | null,
-  messages: Message[],
-): GridSegment[] => {
-  const segments: GridSegment[] = [];
-  const memoryTokens = home?.memory ? estimateTokens(home.memory.content) : 0;
-  const userTokens = home?.userProfile
-    ? estimateTokens(home.userProfile.content)
-    : 0;
-  const conversationTokens = estimateTokens(
-    messages
-      .filter((m) => m.role !== "system")
-      .map((m) => msgText(m))
-      .join(""),
-  );
-  const knownSegments = memoryTokens + userTokens + conversationTokens;
-  const systemOverhead = Math.max(0, inputTokens - knownSegments);
-  const freeTokens = Math.max(0, contextLength - inputTokens);
-
-  if (systemOverhead > 0)
-    segments.push({
-      id: "system",
-      label: "System & Tools",
-      tokens: systemOverhead,
-      percentage: (systemOverhead / contextLength) * 100,
-    });
-  if (memoryTokens + userTokens > 0)
-    segments.push({
-      id: "memory",
-      label: "Memory",
-      tokens: memoryTokens + userTokens,
-      percentage: ((memoryTokens + userTokens) / contextLength) * 100,
-    });
-  if (conversationTokens > 0)
-    segments.push({
-      id: "conversation",
-      label: "Conversation",
-      tokens: Math.min(conversationTokens, inputTokens),
-      percentage:
-        (Math.min(conversationTokens, inputTokens) / contextLength) * 100,
-    });
-  segments.push({
-    id: "free",
-    label: "Free",
-    tokens: freeTokens,
-    percentage: (freeTokens / contextLength) * 100,
-  });
-
-  return segments;
-};
-
-const generateGrid = (segments: GridSegment[]): GridCell[] => {
-  const grid: GridCell[] = [];
-  for (const seg of segments) {
-    const count = Math.round((seg.percentage / 100) * GRID_SIZE);
-    for (let i = 0; i < count; i++) grid.push({ segmentId: seg.id });
-  }
-  while (grid.length < GRID_SIZE) grid.push({ segmentId: "free" });
-  return grid.slice(0, GRID_SIZE);
-};
-
-// ─── Detail Panels (data-driven from ~/.hermes/) ─────────────────────
-
-const SystemDetail = ({
-  home,
-  segment,
-}: {
-  home: HermesHomeSnapshot | null;
-  segment: GridSegment;
-}) => {
-  const { theme } = useTheme();
-  // Group skills by category
-  const skillsByCategory: Record<string, number> = {};
-  for (const skill of home?.skills ?? []) {
-    const cat = skill.category || "(uncategorized)";
-    skillsByCategory[cat] = (skillsByCategory[cat] ?? 0) + 1;
-  }
-  const sortedCategories = Object.entries(skillsByCategory).sort(
-    (a, b) => b[1] - a[1],
-  );
-
-  // Tool schema overhead
-  const tools = home?.toolsInfo?.tools ?? [];
-  const toolChars = tools.reduce(
-    (sum: number, t: { descriptionLength: number; paramsLength: number }) =>
-      sum + t.descriptionLength + t.paramsLength,
-    0,
-  );
-  const toolTokens = Math.ceil(toolChars / CHARS_PER_TOKEN);
-
+/** Generic section detail — shows raw content */
+const SectionPanel = ({ seg, theme }: { seg: Segment; theme: Theme }) => {
+  const sec = seg.section
+  if (!sec) return null
+  const lines = sec.text.split("\n").filter(l => l.trim())
+  const preview = lines.slice(0, 80)
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>
-          <span fg={theme.info}>◼</span> System & Tools —{" "}
-          {formatTokens(segment.tokens)} tokens
-        </strong>
+        <strong><span fg={clr(seg.id, theme)}>◼</span> {seg.label} — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
       </text>
+      <text>{sec.chars.toLocaleString()} chars · ~{fmt(sec.tokens)} tokens</text>
+      {sec.source ? <box flexDirection="row" height={1}><text>Source: </text><FileLink source={sec.source} /></box> : null}
       <text> </text>
-
-      {/* System prompt */}
-      {home?.systemPrompt && (
-        <>
-          <text>
-            <strong>System Prompt</strong> — ~
-            {formatTokens(home.systemPrompt.tokenEstimate)} tokens (
-            {home.systemPrompt.totalChars.toLocaleString()} chars)
-          </text>
-          {home.soul && (
-            <box flexDirection="row" height={1}>
-              <text>· </text>
-              <FileLink source={home.soul.source} />
-              <text>
-                {" "}
-                — ~{formatTokens(home.soul.tokenEstimate)} tokens (
-                {home.soul.charCount.toLocaleString()} chars)
-              </text>
-            </box>
-          )}
-        </>
-      )}
-      <text> </text>
-
-      {/* Tools */}
-      {tools.length > 0 && (
-        <>
-          <text>
-            <strong>Tools</strong> — {tools.length} registered (~
-            {formatTokens(toolTokens)} tokens in schemas)
-          </text>
-          {tools.map((t) => (
-            <text key={t.name} fg={theme.text}>
-              · {t.name}
-            </text>
-          ))}
-        </>
-      )}
-      <text> </text>
-
-      {/* Skills */}
-      {(home?.skills ?? []).length > 0 && (
-        <>
-          <text>
-            <strong>Skills</strong> — {home!.skills.length} installed
-          </text>
-          {sortedCategories.map(([cat, count]) => (
-            <text key={cat} fg={theme.text}>
-              · {cat} ({count})
-            </text>
-          ))}
-        </>
-      )}
+      {preview.map((l, i) => <text key={i} fg={theme.text}>{l}</text>)}
+      {lines.length > 80 ? <text fg={theme.textMuted}>... {lines.length - 80} more lines</text> : null}
     </scrollbox>
-  );
-};
+  )
+}
 
-const MemoryDetail = ({
-  home,
-  segment,
-}: {
-  home: HermesHomeSnapshot | null;
-  segment: GridSegment;
-}) => {
-  const { theme } = useTheme();
-  const parseEntries = (content: string | undefined) =>
-    (content ?? "")
-      .split("§")
-      .map((s) => s.trim())
-      .filter(Boolean);
+/** Memory detail with capacity bar + entries */
+const MemoryPanel = ({ seg, theme, label, chars, limit, pct, entries, source }: {
+  seg: Segment; theme: Theme; label: string
+  chars: number; limit: number; pct: number; entries: string[]
+  source?: { file: string; relative: string; label: string }
+}) => (
+  <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
+    <text>
+      <strong><span fg={clr(seg.id, theme)}>◼</span> {seg.label} — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
+    </text>
+    <text> </text>
+    <box flexDirection="row" height={1}>
+      <text><strong>{label}</strong></text>
+      {source ? <><text> (</text><FileLink source={source} /><text>)</text></> : null}
+    </box>
+    <text>{chars.toLocaleString()} / {limit.toLocaleString()} chars ({pct}%)</text>
+    <text>{bar(pct, 25)}{pct >= 95 ? " ⚠ near limit" : ""}</text>
+    <text> </text>
+    <text>{entries.length} entries:</text>
+    {entries.map((e, i) => <text key={i} fg={theme.text}>· {e}</text>)}
+  </scrollbox>
+)
 
-  const memEntries = parseEntries(home?.memory?.content);
-  const userEntries = parseEntries(home?.userProfile?.content);
+/** Skills detail with category breakdown */
+const SkillsPanel = ({ seg, theme }: { seg: Segment; theme: Theme }) => {
+  const sec = seg.section
+  if (!sec) return null
+  const cats: Record<string, number> = {}
+  for (const line of sec.text.split("\n")) {
+    if (line.match(/^\s{2}(\S[\w-]*(?:\/\S+)?):\s/)) {
+      const cat = line.match(/^\s{2}(\S[\w-]*(?:\/\S+)?):\s/)![1]
+      if (!cats[cat]) cats[cat] = 0
+    }
+    if (line.match(/^\s{4}- \S+:/)) {
+      const last = Object.keys(cats).pop()
+      if (last) cats[last]++
+    }
+  }
+  const sorted = Object.entries(cats).sort((a, b) => b[1] - a[1])
+  const total = sorted.reduce((s, [, n]) => s + n, 0)
 
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>
-          <span fg={theme.warning}>◼</span> Memory —{" "}
-          {formatTokens(segment.tokens)} tokens
-        </strong>
+        <strong><span fg={clr("skills", theme)}>◼</span> Skills Catalog — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
+      </text>
+      {sec.source ? <box flexDirection="row" height={1}><text>Source: </text><FileLink source={sec.source} /></box> : null}
+      <text> </text>
+      <text>{total} skills in {sorted.length} categories · {sec.chars.toLocaleString()} chars</text>
+      <text fg={theme.textMuted}>Largest context section — skill names + descriptions injected every turn.</text>
+      <text> </text>
+      {sorted.map(([cat, n]) => <text key={cat} fg={theme.text}>· {cat} ({n})</text>)}
+    </scrollbox>
+  )
+}
+
+/** Tools detail */
+const ToolsPanel = ({ seg, theme, tools }: {
+  seg: Segment; theme: Theme; tools: ReadonlyArray<ToolInfo>
+}) => {
+  const sorted = [...tools].sort((a, b) =>
+    (b.descriptionLength + b.paramsLength) - (a.descriptionLength + a.paramsLength),
+  )
+  return (
+    <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
+      <text>
+        <strong><span fg={clr("tools", theme)}>◼</span> Tool Schemas — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
       </text>
       <text> </text>
-
-      {home?.memory && (
-        <>
-          <box flexDirection="row" height={1}>
-            <text>
-              <strong>Agent Notes</strong> (
-            </text>
-            <FileLink source={home.memory.source} />
-            <text>
-              ) — {formatChars(home.memory.charCount, home.memory.charLimit)}{" "}
-              chars ({home.memory.usagePercent}%)
-            </text>
-          </box>
-          <text>
-            {buildBar(home.memory.usagePercent, 25)}
-            {home.memory.usagePercent >= 95 ? " ⚠ near limit" : ""}
-          </text>
-          <text> </text>
-          {memEntries.map((entry, i) => (
-            <text key={i} fg={theme.text}>
-              · {entry}
-            </text>
-          ))}
-        </>
-      )}
+      <text>{tools.length} tools — JSON schemas sent with every API call.</text>
       <text> </text>
-
-      {home?.userProfile && (
-        <>
-          <box flexDirection="row" height={1}>
-            <text>
-              <strong>User Profile</strong> (
-            </text>
-            <FileLink source={home.userProfile.source} />
-            <text>
-              ) —{" "}
-              {formatChars(
-                home.userProfile.charCount,
-                home.userProfile.charLimit,
-              )}{" "}
-              chars ({home.userProfile.usagePercent}%)
-            </text>
-          </box>
-          <text>
-            {buildBar(home.userProfile.usagePercent, 25)}
-            {home.userProfile.usagePercent >= 95 ? " ⚠ near limit" : ""}
-          </text>
-          <text> </text>
-          {userEntries.map((entry, i) => (
-            <text key={i} fg={theme.text}>
-              · {entry}
-            </text>
-          ))}
-        </>
-      )}
-      <text> </text>
-      <box flexDirection="row" height={1}>
-        <text fg={theme.info}>
-          Provider: {home?.config?.memory?.provider ?? "unknown"}
+      {sorted.map(t => (
+        <text key={t.name} fg={theme.text}>
+          · {t.name} ({fmt(Math.ceil((t.descriptionLength + t.paramsLength) / CPT))} tok)
         </text>
-        {home?.config?.source && (
-          <>
-            <text> · </text>
-            <FileLink source={home.config.source} />
-          </>
-        )}
-      </box>
+      ))}
     </scrollbox>
-  );
-};
+  )
+}
 
-const ConversationDetail = ({
-  segment,
-  messages,
-  outputTokens,
-}: {
-  segment: GridSegment;
-  messages: Message[];
-  outputTokens: number;
+/** Conversation detail */
+const ConvPanel = ({ seg, theme, messages, output }: {
+  seg: Segment; theme: Theme; messages: Message[]; output: number
 }) => {
-  const { theme } = useTheme();
-  const userMsgs = messages.filter((m) => m.role === "user");
-  const assistantMsgs = messages.filter((m) => m.role === "assistant");
-  const userTokens = estimateTokens(userMsgs.map((m) => msgText(m)).join(""));
-  const assistantTokens = estimateTokens(
-    assistantMsgs.map((m) => msgText(m)).join(""),
-  );
-  const nonSystem = messages.filter((m) => m.role !== "system");
-
+  const user = messages.filter(m => m.role === "user")
+  const asst = messages.filter(m => m.role === "assistant")
+  const non = messages.filter(m => m.role !== "system")
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong>
-          <span fg={theme.error}>◼</span> Conversation —{" "}
-          {formatTokens(segment.tokens)} tokens
-        </strong>
+        <strong><span fg={clr("conversation", theme)}>◼</span> Conversation — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
       </text>
       <text> </text>
-      <text>
-        User: {userMsgs.length} messages (~{formatTokens(userTokens)} tokens)
-      </text>
-      <text>
-        Assistant: {assistantMsgs.length} messages (~
-        {formatTokens(assistantTokens)} tokens)
-      </text>
-      {outputTokens > 0 && (
-        <text>Output generated: {formatTokens(outputTokens)} tokens</text>
-      )}
+      <text>User: {user.length} msgs (~{fmt(est(user.map(m => msgText(m)).join("")))} tok)</text>
+      <text>Agent: {asst.length} msgs (~{fmt(est(asst.map(m => msgText(m)).join("")))} tok)</text>
+      {output > 0 ? <text>Output generated: {fmt(output)} tokens</text> : null}
       <text> </text>
-      {nonSystem.length > 0 && (
+      {non.length > 0 ? (
         <>
           <text fg={theme.info}>Messages:</text>
           <text> </text>
-          {nonSystem.map((m, i) => {
-            const prefix = m.role === "user" ? "▸ You" : "◂ Agent";
-            return (
-              <text key={i}>
-                <span fg={m.role === "user" ? theme.info : theme.success}>
-                  {prefix}
-                </span>{" "}
-                ({formatTokens(estimateTokens(msgText(m)))}){" "}
-                {msgText(m).replace(/\n/g, " ")}
-              </text>
-            );
-          })}
+          {non.map((m, i) => (
+            <text key={i}>
+              <span fg={m.role === "user" ? theme.info : theme.success}>
+                {m.role === "user" ? "▸ You" : "◂ Agent"}
+              </span>{" "}({fmt(est(msgText(m)))}) {msgText(m).replace(/\n/g, " ")}
+            </text>
+          ))}
         </>
-      )}
-      {nonSystem.length === 0 && (
-        <text fg={theme.warning}>No messages yet</text>
-      )}
+      ) : <text fg={theme.warning}>No messages yet</text>}
     </scrollbox>
-  );
-};
+  )
+}
 
-const FreeDetail = ({
-  segment,
-  contextLength,
-  compressionThreshold,
-  home,
-}: {
-  segment: GridSegment;
-  contextLength: number;
-  compressionThreshold: number;
-  home: HermesHomeSnapshot | null;
+/** Free space detail */
+const FreePanel = ({ seg, theme, ctxLen, home }: {
+  seg: Segment; theme: Theme; ctxLen: number; home: HermesHomeSnapshot | null
 }) => {
-  const { theme } = useTheme();
-  const used = contextLength - segment.tokens;
-  const compressionPercent =
-    compressionThreshold > 0
-      ? Math.min(100, Math.round((used / compressionThreshold) * 100))
-      : 0;
-  const comp = home?.config?.compression;
-
+  const used = ctxLen - seg.tokens
+  const comp = home?.config?.compression
+  const threshold = Math.round(ctxLen * (comp?.threshold ?? 0.5))
+  const pct = threshold > 0 ? Math.min(100, Math.round((used / threshold) * 100)) : 0
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
-      <text>
-        <strong>
-          <span fg={theme.borderSubtle}>◻</span> Free Space —{" "}
-          {formatTokens(segment.tokens)} tokens
-        </strong>
-      </text>
+      <text><strong><span fg={clr("free", theme)}>◻</span> Free Space — {fmt(seg.tokens)} tokens</strong></text>
       <text> </text>
-      <text>Context window: {formatTokens(contextLength)}</text>
-      <text>
-        Used: {formatTokens(used)} ({Math.round((used / contextLength) * 100)}%)
-      </text>
-      <text>
-        Available: {formatTokens(segment.tokens)} (
-        {segment.percentage.toFixed(1)}%)
-      </text>
+      <text>Context window: {fmt(ctxLen)}</text>
+      <text>Used: {fmt(used)} ({Math.round((used / ctxLen) * 100)}%)</text>
+      <text>Available: {fmt(seg.tokens)} ({seg.percent.toFixed(1)}%)</text>
       <text> </text>
-      {comp && (
+      {comp ? (
         <>
-          <text>
-            <strong>Compression</strong>
-          </text>
-          <text>
-            {comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold{" "}
-            {Math.round(comp.threshold * 100)}% (
-            {formatTokens(compressionThreshold)})
-          </text>
-          <text>
-            {buildBar(compressionPercent)} {compressionPercent}%
-          </text>
-          <text>
-            Protect last {comp.protect_last_n} messages · target ratio{" "}
-            {Math.round(comp.target_ratio * 100)}%
-          </text>
-          {comp.summary_model && (
-            <text>Summary model: {comp.summary_model}</text>
-          )}
+          <text><strong>Compression</strong></text>
+          <text>{comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold {Math.round(comp.threshold * 100)}% ({fmt(threshold)})</text>
+          <text>{bar(pct)} {pct}%</text>
+          <text>Protect last {comp.protect_last_n} messages · target ratio {Math.round(comp.target_ratio * 100)}%</text>
+          {comp.summary_model ? <text>Summary model: {comp.summary_model}</text> : null}
         </>
-      )}
+      ) : null}
     </scrollbox>
-  );
-};
+  )
+}
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = ({
-  description,
-  client,
-  messages = [],
-  sessionStart,
-}: ContextTabProps) => {
-  const [home, setHome] = useState<HermesHomeSnapshot | null>(null);
-  const [wire, setWire] = useState<WireMetrics>({
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    apiCalls: 0,
-  });
-  const wireRef = useRef(wire);
-  const { theme } = useTheme();
-  const [hoveredSegment, setHoveredSegment] = useState<SegmentId | null>(null);
-  const [selectedSegment, setSelectedSegment] = useState<SegmentId | null>(null);
-  const [sessionIdx, setSessionIdx] = useState(0);
+export const Context = ({ client, messages = [] }: Props) => {
+  const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
+  const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
+  const wireRef = useRef(wire)
+  const { theme } = useTheme()
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [drilled, setDrilled] = useState<string | null>(null)
+  const [sidx, setSidx] = useState(0)
 
-  // Read ~/.hermes/
-  const refreshHome = useCallback(async () => {
-    try {
-      setHome(await readHermesHome());
-    } catch {
-      /* show what we have */
-    }
-  }, []);
+  const refresh = useCallback(async () => {
+    try { setHome(await readHermesHome()) } catch { /* partial */ }
+  }, [])
 
   useEffect(() => {
-    refreshHome();
-    const interval = setInterval(refreshHome, 10_000);
-    return () => clearInterval(interval);
-  }, [refreshHome]);
+    refresh()
+    const iv = setInterval(refresh, 10_000)
+    return () => clearInterval(iv)
+  }, [refresh])
 
-  // Wire metrics from SSE
   useEffect(() => {
-    if (!client) return;
+    if (!client) return
     const onDone = (data: { reason: string; usage?: TokenUsage }) => {
-      if (!data.usage) return;
-      const updated: WireMetrics = {
-        inputTokens: wireRef.current.inputTokens + data.usage.prompt_tokens,
-        outputTokens:
-          wireRef.current.outputTokens + data.usage.completion_tokens,
-        totalTokens: wireRef.current.totalTokens + data.usage.total_tokens,
-        apiCalls: wireRef.current.apiCalls + 1,
-      };
-      wireRef.current = updated;
-      setWire(updated);
-    };
-    client.on("done", onDone);
-    return () => {
-      client.removeListener("done", onDone);
-    };
-  }, [client]);
+      if (!data.usage) return
+      const next: Wire = {
+        input: wireRef.current.input + data.usage.prompt_tokens,
+        output: wireRef.current.output + data.usage.completion_tokens,
+        total: wireRef.current.total + data.usage.total_tokens,
+        calls: wireRef.current.calls + 1,
+      }
+      wireRef.current = next
+      setWire(next)
+    }
+    client.on("done", onDone)
+    return () => { client.removeListener("done", onDone) }
+  }, [client])
 
-  // Derived values
-  const sessions = home?.recentSessions ?? [];
-  const dbSession: SessionRow | undefined = sessions[sessionIdx];
-  const modelName = dbSession?.model ?? home?.config?.model?.default ?? "unknown";
-  const contextLength = resolveContextLength(modelName);
-  const compressionThreshold = Math.round(
-    contextLength * (home?.config?.compression?.threshold ?? 0.5),
-  );
-  // Find matching live session for last_prompt_tokens (actual context fill)
-  const liveSession = dbSession
-    ? Object.values(home?.liveSessions ?? {}).find(
-        (ls) => ls.session_id === dbSession.id,
-      )
-    : undefined;
+  // Derived
+  const sessions = home?.recentSessions ?? []
+  const session: SessionRow | undefined = sessions[sidx]
+  const model = session?.model ?? home?.config?.model?.default ?? "unknown"
+  const ctxLen = resolveCtx(model)
 
-  // Context fill priority:
-  //   1. Wire data (active herm session — real prompt_tokens from SSE)
-  //   2. Live session's last_prompt_tokens (actual context window fill)
-  //   3. Estimate from cumulative data: last call likely used ~(total / msg_count * growth_factor)
-  //      but that's unreliable. Instead, show cumulative with a label.
-  const lastPrompt = liveSession?.last_prompt_tokens ?? 0;
-  const contextFill = wire.apiCalls > 0
-    ? wire.inputTokens
-    : lastPrompt > 0
-      ? lastPrompt
-      : (dbSession?.input_tokens ?? 0);
-  const isCumulative = wire.apiCalls === 0 && lastPrompt === 0 && (dbSession?.input_tokens ?? 0) > 0;
+  const live = session
+    ? Object.values(home?.liveSessions ?? {}).find(ls => ls.session_id === session.id)
+    : undefined
 
-  // Cumulative totals for the session info display
-  const totalInput = dbSession?.input_tokens ?? 0;
-  const totalOutput = dbSession?.output_tokens ?? 0;
-  const outputTokens = wire.apiCalls > 0 ? wire.outputTokens : totalOutput;
+  const lastPrompt = live?.last_prompt_tokens ?? 0
+  const fill = wire.calls > 0 ? wire.input : lastPrompt > 0 ? lastPrompt : (session?.input_tokens ?? 0)
+  const cumulative = wire.calls === 0 && lastPrompt === 0 && (session?.input_tokens ?? 0) > 0
+  const output = wire.calls > 0 ? wire.output : (session?.output_tokens ?? 0)
+  const pct = ctxLen > 0 ? Math.round((fill / ctxLen) * 100) : 0
+  const st = status(pct, theme)
+  const gateway = home?.gateway?.platforms?.api_server?.state === "connected"
 
-  const usagePercent =
-    contextLength > 0 ? Math.round((contextFill / contextLength) * 100) : 0;
+  // Parse + build
+  const sections = useMemo(() => parse(home?.systemPrompt?.text ?? ""), [home?.systemPrompt?.text])
+  const convTok = est(messages.filter(m => m.role !== "system").map(m => msgText(m)).join(""))
 
-  const status = getUsageStatus(usagePercent, theme);
-  const segments = buildSegments(contextLength, contextFill, home, messages);
-  const grid = generateGrid(segments);
-  const elapsed = sessionStart ? Date.now() - sessionStart : 0;
-  const messageCount = messages.filter((m) => m.role !== "system").length;
-  const hasWireData = wire.apiCalls > 0;
-  const gatewayConnected =
-    home?.gateway?.platforms?.api_server?.state === "connected";
+  const top = useMemo(() => build({
+    contextLength: ctxLen,
+    inputTokens: fill,
+    sections,
+    conversationTokens: convTok,
+    tools: home?.toolsInfo?.tools ?? [],
+  }), [ctxLen, fill, sections, convTok, home?.toolsInfo?.tools])
 
-  const findSegment = (id: SegmentId) => segments.find((s) => s.id === id);
+  // Current view: top-level or drilled
+  const drilledGroup = drilled ? top.find(s => s.id === drilled) : null
+  const view = drilledGroup ? drill(drilledGroup) : top
+  const grid = useMemo(
+    () => buildCells(view, drilledGroup ? drilledGroup.children?.[0]?.id ?? "other" : "free"),
+    [view],
+  )
+
+  // Helpers
+  const findSeg = (id: string) => {
+    if (drilledGroup) return view.find(s => s.id === id)
+    return top.find(s => s.id === id)
+  }
+
+  const memEntries = (home?.memory?.content ?? "").split("§").map(s => s.trim()).filter(Boolean)
+  const userEntries = (home?.userProfile?.content ?? "").split("§").map(s => s.trim()).filter(Boolean)
+
+  // Click handler
+  const click = (id: string) => {
+    // Already drilled — clicking selects detail or deselects
+    if (drilled) {
+      setSelected(selected === id ? null : id)
+      return
+    }
+    // Top level — if group with children, drill in
+    const seg = top.find(s => s.id === id)
+    if (seg?.children && seg.children.length > 0) {
+      setDrilled(id)
+      setSelected(null)
+      return
+    }
+    // Leaf at top level — toggle detail
+    setSelected(selected === id ? null : id)
+  }
+
+  const back = () => {
+    setDrilled(null)
+    setSelected(null)
+  }
 
   // Detail panel router
-  const renderDetailPanel = () => {
-    if (!selectedSegment) return null;
-    const seg = findSegment(selectedSegment);
-    if (!seg) return null;
-    switch (selectedSegment) {
-      case "system":
-        return <SystemDetail home={home} segment={seg} />;
-      case "memory":
-        return <MemoryDetail home={home} segment={seg} />;
-      case "conversation":
-        return (
-          <ConversationDetail
-            segment={seg}
-            messages={messages}
-            outputTokens={outputTokens}
-          />
-        );
-      case "free":
-        return (
-          <FreeDetail
-            segment={seg}
-            contextLength={contextLength}
-            compressionThreshold={compressionThreshold}
-            home={home}
-          />
-        );
+  const detail = () => {
+    if (!selected) return null
+    const seg = findSeg(selected)
+    if (!seg) return null
+
+    if (selected === "memory" && home?.memory) {
+      return <MemoryPanel seg={seg} theme={theme} label="Agent Notes" chars={home.memory.charCount} limit={home.memory.charLimit} pct={home.memory.usagePercent} entries={memEntries} source={home.memory.source} />
     }
-  };
+    if (selected === "user" && home?.userProfile) {
+      return <MemoryPanel seg={seg} theme={theme} label="User Profile" chars={home.userProfile.charCount} limit={home.userProfile.charLimit} pct={home.userProfile.usagePercent} entries={userEntries} source={home.userProfile.source} />
+    }
+    if (selected === "skills") return <SkillsPanel seg={seg} theme={theme} />
+    if (selected === "tools" && home?.toolsInfo) return <ToolsPanel seg={seg} theme={theme} tools={home.toolsInfo.tools} />
+    if (selected === "conversation") return <ConvPanel seg={seg} theme={theme} messages={messages} output={output} />
+    if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} home={home} />
+    return <SectionPanel seg={seg} theme={theme} />
+  }
 
-  // Overview panels
-  const renderOverview = () => (
-    <>
-      <box borderStyle="single" padding={1} marginBottom={1}>
-        <text>
-          <strong>Breakdown</strong>
-          <span fg={theme.info}> (click grid to inspect)</span>
-        </text>
-        {segments
-          .filter((s) => s.tokens > 0)
-          .map((s) => (
-            <text key={s.id}>
-              <span fg={segmentColor(s.id, theme)}>
-                {s.id === "free" ? "◻" : "◼"}
-              </span>{" "}
-              {s.label} — {formatTokens(s.tokens)} ({s.percentage.toFixed(1)}%)
-            </text>
-          ))}
-        {outputTokens > 0 && (
-          <text>
-            <span fg={theme.success}>◼</span> Output —{" "}
-            {formatTokens(outputTokens)} tokens
-          </text>
+  // Breakdown panel
+  const breakdown = () => (
+    <box borderStyle="single" padding={1} marginBottom={1}>
+      <text>
+        <strong>Breakdown</strong>
+        {drilledGroup ? (
+          <span fg={theme.info}> · {drilledGroup.label} ({fmt(drilledGroup.tokens)} tok)</span>
+        ) : (
+          <span fg={theme.info}> (click group to expand)</span>
         )}
-      </box>
-
-      {home?.memory && home?.userProfile && (
-        <box borderStyle="single" padding={1} marginBottom={1}>
-          <text>
-            <strong>Memory</strong>
-          </text>
-          <text>
-            Notes: {formatChars(home.memory.charCount, home.memory.charLimit)} (
-            {home.memory.usagePercent}%)
-            {home.memory.usagePercent >= 95 ? " ⚠" : ""}
-          </text>
-          <text>
-            Profile:{" "}
-            {formatChars(
-              home.userProfile.charCount,
-              home.userProfile.charLimit,
-            )}{" "}
-            ({home.userProfile.usagePercent}%)
-            {home.userProfile.usagePercent >= 95 ? " ⚠" : ""}
-          </text>
-        </box>
-      )}
-
-      <box borderStyle="single" padding={1}>
-        <text>
-          <strong>Session</strong>
-          <span fg={theme.textMuted}> ({sessionIdx + 1}/{sessions.length || 1})</span>
+      </text>
+      {view.filter(s => s.tokens > 0).map(s => (
+        <text key={s.id}>
+          <span fg={clr(s.id, theme)}>{s.id === "free" ? "◻" : "◼"}</span>{" "}
+          {s.label} — {fmt(s.tokens)} ({s.percent.toFixed(1)}%)
+          {s.children ? <span fg={theme.textMuted}> ▸</span> : null}
         </text>
-        {dbSession && (
-          <>
-            <text>
-              {dbSession.model?.split("/").pop() ?? "?"} · {dbSession.sessionSource} · {dbSession.message_count} msgs · {dbSession.tool_call_count} tools
-            </text>
-            <text>
-              Total in: {formatTokens(dbSession.input_tokens)} · out: {formatTokens(dbSession.output_tokens)} · cache: {formatTokens(dbSession.cache_read_tokens)}
-            </text>
-            {liveSession && (
-              <text>Context fill: {formatTokens(liveSession.last_prompt_tokens)}</text>
-            )}
-            {dbSession.estimated_cost_usd != null && (
-              <text>Cost: ${dbSession.estimated_cost_usd.toFixed(2)}</text>
-            )}
-          </>
-        )}
-        <text>
-          <span fg={status.color}>{status.label}</span>
-          {" · "}
-          <span fg={gatewayConnected ? theme.success : theme.error}>
-            {gatewayConnected ? "●" : "○"} gateway
-          </span>
-          {" · "}Skills: {home?.skills?.length ?? "?"}
-        </text>
-        {sessions.length > 1 && (
-          <box flexDirection="row" height={1} marginTop={1}>
-            <box
-              onMouseDown={() => setSessionIdx(Math.max(0, sessionIdx - 1))}
-            >
-              <text fg={sessionIdx > 0 ? theme.info : theme.textMuted}>
-                ◀ prev
-              </text>
-            </box>
-            <text>  </text>
-            <box
-              onMouseDown={() => setSessionIdx(Math.min(sessions.length - 1, sessionIdx + 1))}
-            >
-              <text fg={sessionIdx < sessions.length - 1 ? theme.info : theme.textMuted}>
-                next ▶
-              </text>
-            </box>
+      ))}
+      {output > 0 && !drilled ? (
+        <text><span fg={theme.success}>◼</span> Output — {fmt(output)} tokens</text>
+      ) : null}
+    </box>
+  )
+
+  // Session panel
+  const sessionPanel = () => (
+    <box borderStyle="single" padding={1}>
+      <text><strong>Session</strong><span fg={theme.textMuted}> ({sidx + 1}/{sessions.length || 1})</span></text>
+      {session ? (
+        <>
+          <text>{session.model?.split("/").pop() ?? "?"} · {session.sessionSource} · {session.message_count} msgs · {session.tool_call_count} tools</text>
+          <text>Total in: {fmt(session.input_tokens)} · out: {fmt(session.output_tokens)} · cache: {fmt(session.cache_read_tokens)}</text>
+          {live ? <text>Context fill: {fmt(live.last_prompt_tokens)}</text> : null}
+          {session.estimated_cost_usd != null ? <text>Cost: ${session.estimated_cost_usd.toFixed(2)}</text> : null}
+        </>
+      ) : null}
+      <text>
+        <span fg={st.color}>{st.label}</span>{" · "}
+        <span fg={gateway ? theme.success : theme.error}>{gateway ? "●" : "○"} gateway</span>
+        {" · "}Skills: {home?.skills?.length ?? "?"}
+      </text>
+      {sessions.length > 1 ? (
+        <box flexDirection="row" height={1} marginTop={1}>
+          <box onMouseDown={() => setSidx(Math.max(0, sidx - 1))}>
+            <text fg={sidx > 0 ? theme.info : theme.textMuted}>◀ prev</text>
           </box>
-        )}
-      </box>
+          <text>  </text>
+          <box onMouseDown={() => setSidx(Math.min(sessions.length - 1, sidx + 1))}>
+            <text fg={sidx < sessions.length - 1 ? theme.info : theme.textMuted}>next ▶</text>
+          </box>
+        </box>
+      ) : null}
+    </box>
+  )
+
+  // Overview (no detail selected)
+  const overview = () => (
+    <>
+      {breakdown()}
+      {home?.memory && home?.userProfile ? (
+        <box borderStyle="single" padding={1} marginBottom={1}>
+          <text><strong>Memory</strong></text>
+          <text>Notes: {home.memory.charCount.toLocaleString()} / {home.memory.charLimit.toLocaleString()} ({home.memory.usagePercent}%){home.memory.usagePercent >= 95 ? " ⚠" : ""}</text>
+          <text>Profile: {home.userProfile.charCount.toLocaleString()} / {home.userProfile.charLimit.toLocaleString()} ({home.userProfile.usagePercent}%){home.userProfile.usagePercent >= 95 ? " ⚠" : ""}</text>
+        </box>
+      ) : null}
+      {sessionPanel()}
     </>
-  );
+  )
 
   return (
     <box flexGrow={1} flexDirection="column" padding={1}>
-      {/* Header */}
+      {/* Header + breadcrumb */}
       <box marginBottom={1}>
         <text>
           <strong>Context Window</strong>
-          <span>
-            {" "}
-            {formatTokens(contextFill)} / {formatTokens(contextLength)} (
-            {usagePercent}%)
-          </span>
-          {selectedSegment && (
-            <span fg={theme.info}>
-              {" "}
-              · viewing {findSegment(selectedSegment)?.label} · click grid to
-              close
-            </span>
-          )}
-          {!selectedSegment && !hasWireData && contextFill === 0 && (
-            <span fg={theme.warning}> [no data]</span>
-          )}
-          {!selectedSegment && !hasWireData && isCumulative && (
-            <span fg={theme.warning}> [cumulative — not current fill]</span>
-          )}
-          {!selectedSegment && !hasWireData && !isCumulative && contextFill > 0 && (
-            <span fg={theme.info}> [live session]</span>
-          )}
+          <span> {fmt(fill)} / {fmt(ctxLen)} ({pct}%)</span>
+          {drilled ? (
+            <>
+              <span fg={theme.textMuted}> · </span>
+              <span fg={theme.info}>{drilledGroup?.label}</span>
+              {selected ? <span fg={theme.textMuted}> · {findSeg(selected)?.label}</span> : null}
+            </>
+          ) : null}
+          {!drilled && !selected && wire.calls === 0 && fill === 0 ? <span fg={theme.warning}> [no data]</span> : null}
+          {!drilled && !selected && cumulative ? <span fg={theme.warning}> [cumulative — not current fill]</span> : null}
+          {!drilled && !selected && wire.calls === 0 && !cumulative && fill > 0 ? <span fg={theme.info}> [live session]</span> : null}
         </text>
       </box>
 
       {/* Grid + right panel */}
       <box flexDirection="row">
-        <box borderStyle="single" paddingTop={1} paddingX={2} marginRight={2}>
-          {[...Array(GRID_COLS)].map((_, row) => (
-            <box key={row} flexDirection="row" height={1}>
-              {[...Array(GRID_COLS)].map((_, col) => {
-                const idx = row * GRID_COLS + col;
-                const cell = grid[idx];
-                const highlight =
-                  hoveredSegment === cell.segmentId ||
-                  selectedSegment === cell.segmentId;
-                return (
-                  <box
-                    height={1}
-                    width={2}
-                    key={col}
-                    backgroundColor={
-                      highlight
-                        ? segmentHighlight(cell.segmentId, theme)
-                        : undefined
-                    }
-                    onMouseOver={() => setHoveredSegment(cell.segmentId)}
-                    onMouseOut={() => setHoveredSegment(null)}
-                    onMouseDown={() =>
-                      setSelectedSegment(
-                        selectedSegment === cell.segmentId
-                          ? null
-                          : cell.segmentId,
-                      )
-                    }
-                  >
-                    <text fg={segmentColor(cell.segmentId, theme)}>
-                      {cell.segmentId === "free" ? "◻" : "◼"}
-                    </text>
-                  </box>
-                );
-              })}
+        <box flexDirection="column" marginRight={2} flexShrink={0}>
+          {/* Back button when drilled */}
+          {drilled ? (
+            <box height={1} marginBottom={1} onMouseDown={back}>
+              <text fg={theme.info}>◀ Back to overview</text>
             </box>
-          ))}
+          ) : null}
+          <box borderStyle="single" paddingTop={1} paddingX={2}>
+            {[...Array(COLS)].map((_, row) => (
+              <box key={row} flexDirection="row" height={1}>
+                {[...Array(COLS)].map((_, col) => {
+                  const cell = grid[row * COLS + col]
+                  const hl = hovered === cell.id || selected === cell.id
+                  return (
+                    <box
+                      height={1} width={2} key={col}
+                      backgroundColor={hl ? clr(cell.id, theme) : undefined}
+                      onMouseOver={() => setHovered(cell.id)}
+                      onMouseOut={() => setHovered(null)}
+                      onMouseDown={() => click(cell.id)}
+                    >
+                      <text fg={clr(cell.id, theme)}>
+                        {cell.id === "free" ? "◻" : "◼"}
+                      </text>
+                    </box>
+                  )
+                })}
+              </box>
+            ))}
+          </box>
         </box>
 
         <box flexDirection="column" flexGrow={1}>
-          {selectedSegment ? renderDetailPanel() : renderOverview()}
+          {selected ? detail() : overview()}
         </box>
       </box>
     </box>
-  );
-};
+  )
+}

@@ -190,6 +190,7 @@ export interface SystemPromptInfo {
   source: Source;
   totalChars: number;
   tokenEstimate: number;
+  text: string;
 }
 
 /** Tool list with its source session file */
@@ -579,22 +580,23 @@ export async function readToolsFromLatestSession(): Promise<ToolsInfo | null> {
   }
 }
 
-/** Read system prompt size from the most recent state.db session */
+/** Read system prompt from the most recent state.db session */
 export function readSystemPromptInfo(): SystemPromptInfo | null {
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
     const row = db
       .query(
-        `SELECT length(system_prompt) as sp_len
+        `SELECT system_prompt, length(system_prompt) as sp_len
          FROM sessions
          WHERE system_prompt IS NOT NULL AND length(system_prompt) > 0
          ORDER BY started_at DESC LIMIT 1`,
       )
-      .get() as { sp_len: number } | null;
+      .get() as { system_prompt: string; sp_len: number } | null;
     db.close();
     if (!row) return null;
     return {
       source: makeSource("state.db"),
+      text: row.system_prompt,
       totalChars: row.sp_len,
       tokenEstimate: Math.ceil(row.sp_len / 4),
     };
