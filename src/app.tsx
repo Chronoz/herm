@@ -10,6 +10,7 @@ import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
 import type { MessageRow } from "./utils/hermes-home"
 import { Memory } from "./tabs/Memory"
+import { Skills } from "./tabs/Skills"
 import type { Message, Usage, ToolPart } from "./types/message"
 import { mid } from "./types/message"
 import { copySelection } from "./utils/clipboard"
@@ -443,6 +444,7 @@ const AppInner = () => {
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
     { name: "Sessions", description: "Session history" },
+    { name: "Skills", description: "Installed skills browser" },
     { name: "Memory", description: "Agent memory browser" },
   ]
 
@@ -478,7 +480,8 @@ const AppInner = () => {
           />
         )
       case 3: return <Sessions onSwitch={switchSession} />
-      case 4: return <Memory />
+      case 4: return <Skills />
+      case 5: return <Memory />
       default: return null
     }
   }

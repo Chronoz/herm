@@ -174,6 +174,8 @@ export interface SkillInfo {
   source: Source;
   category: string;
   name: string;
+  description: string;
+  tags: string[];
 }
 
 /** SOUL.md info */
@@ -500,7 +502,6 @@ export function searchSessions(query: string, limit: number = 20): SearchResult[
   const dbSource = makeSource("state.db");
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
-    // Add prefix wildcards for partial matching (same as web_server.py)
     const terms = query.trim().split(/\s+/).map(t =>
       t.startsWith('"') || t.endsWith("*") ? t : t + "*"
     );
@@ -554,6 +555,22 @@ export function deleteSession(sid: string): boolean {
   }
 }
 
+/** Parse YAML frontmatter from a SKILL.md file */
+function parseFrontmatter(text: string): { description: string; tags: string[] } {
+  const match = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return { description: "", tags: [] };
+  const block = match[1];
+  let description = "";
+  let tags: string[] = [];
+  for (const line of block.split("\n")) {
+    const dm = line.match(/^description:\s*(.+)/);
+    if (dm) description = dm[1].trim();
+    const tm = line.match(/^tags:\s*\[(.+)\]/);
+    if (tm) tags = tm[1].split(",").map(t => t.trim());
+  }
+  return { description, tags };
+}
+
 /** List installed skills with category info */
 export async function listSkills(): Promise<SkillInfo[]> {
   try {
@@ -563,10 +580,20 @@ export async function listSkills(): Promise<SkillInfo[]> {
       const parts = path.replace("/SKILL.md", "").split("/");
       const name = parts[parts.length - 1];
       const category = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+      let description = "";
+      let tags: string[] = [];
+      try {
+        const text = await Bun.file(hermesPath(`skills/${path}`)).text();
+        const fm = parseFrontmatter(text);
+        description = fm.description;
+        tags = fm.tags;
+      } catch { /* skip unreadable files */ }
       skills.push({
         source: makeSource(`skills/${path}`, `${name}/SKILL.md`),
         category,
         name,
+        description,
+        tags,
       });
     }
     return skills.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
@@ -627,26 +654,29 @@ export async function readToolsFromLatestSession(): Promise<ToolsInfo | null> {
 
 /** Read system prompt from the most recent state.db session that has a full one */
 export function readSystemPromptInfo(): SystemPromptInfo | null {
-  const db = new Database(hermesPath("state.db"), { readonly: true });
-  // Grab the largest recent system_prompt — short ones (~700 chars) are
-  // the generic fallback and don't contain SOUL/memory/skills sections.
-  const row = db
-    .query(
-      `SELECT id, system_prompt
-       FROM sessions
-       WHERE system_prompt IS NOT NULL AND length(system_prompt) > 1000
-       ORDER BY started_at DESC LIMIT 1`,
-    )
-    .get() as { id: string; system_prompt: string } | null;
-  db.close();
-  if (!row) return null;
-  return {
-    source: makeSource("state.db"),
-    sessionId: row.id,
-    text: row.system_prompt,
-    totalChars: row.system_prompt.length,
-    tokenEstimate: Math.ceil(row.system_prompt.length / 4),
-  };
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true });
+    // Short prompts (~700 chars) are the generic fallback without SOUL/memory/skills.
+    const row = db
+      .query(
+        `SELECT id, system_prompt
+         FROM sessions
+         WHERE system_prompt IS NOT NULL AND length(system_prompt) > 1000
+         ORDER BY started_at DESC LIMIT 1`,
+      )
+      .get() as { id: string; system_prompt: string } | null;
+    db.close();
+    if (!row) return null;
+    return {
+      source: makeSource("state.db"),
+      sessionId: row.id,
+      text: row.system_prompt,
+      totalChars: row.system_prompt.length,
+      tokenEstimate: Math.ceil(row.system_prompt.length / 4),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Composite Reader ────────────────────────────────────────────────
