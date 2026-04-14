@@ -9,7 +9,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 // ─── Path Resolution ─────────────────────────────────────────────────
 
@@ -265,6 +265,12 @@ export async function readConfig(): Promise<HermesConfig | null> {
   } catch {
     return null;
   }
+}
+
+/** Write config object to config.yaml */
+export async function writeConfig(config: Record<string, unknown>): Promise<void> {
+  const text = stringifyYaml(config);
+  await Bun.write(hermesPath("config.yaml"), text);
 }
 
 /** Read a memory file (MEMORY.md or USER.md) with limit context */
