@@ -13,6 +13,8 @@ import type { MessageRow } from "./utils/hermes-home"
 import { Memory } from "./tabs/Memory"
 import { Skills } from "./tabs/Skills"
 import { Config } from "./tabs/Config"
+import { Toolsets } from "./tabs/Toolsets"
+import { Env } from "./tabs/Env"
 import type { Message, Usage, ToolPart } from "./types/message"
 import { mid } from "./types/message"
 import { copySelection } from "./utils/clipboard"
@@ -368,7 +370,7 @@ const AppInner = () => {
     }
 
     if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
-    if (key.ctrl && key.name === "right") { setTab(t => Math.min(7, t + 1)); return }
+    if (key.ctrl && key.name === "right") { setTab(t => Math.min(9, t + 1)); return }
 
     // Chat-only keys
     if (tab !== 1) return
@@ -448,7 +450,9 @@ const AppInner = () => {
     { name: "Sessions", description: "Session history" },
     { name: "Analytics", description: "Token usage and costs" },
     { name: "Skills", description: "Installed skills browser" },
+    { name: "Toolsets", description: "Available toolsets manager" },
     { name: "Config", description: "Configuration editor" },
+    { name: "Env", description: "API keys & env variables" },
     { name: "Memory", description: "Agent memory browser" },
   ]
 
@@ -486,8 +490,10 @@ const AppInner = () => {
       case 3: return <Sessions onSwitch={switchSession} />
       case 4: return <Analytics />
       case 5: return <Skills />
-      case 6: return <Config />
-      case 7: return <Memory />
+      case 6: return <Toolsets />
+      case 7: return <Config />
+      case 8: return <Env />
+      case 9: return <Memory />
       default: return null
     }
   }
