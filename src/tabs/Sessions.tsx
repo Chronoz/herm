@@ -76,7 +76,7 @@ const timeAgo = (ts: number): string => {
 // ─── Detail Panel ────────────────────────────────────────────────────
 
 const DetailPanel = (props: { session: SessionRow }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const s = props.session;
 
   const rows: Array<{ label: string; value: string }> = [
@@ -135,7 +135,7 @@ const DetailPanel = (props: { session: SessionRow }) => {
 // ─── Search Detail Panel ─────────────────────────────────────────────
 
 const SearchDetailPanel = (props: { result: SearchResult }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const r = props.result;
 
   // Render snippet with >>> <<< markers as highlights
@@ -214,7 +214,7 @@ const SearchDetailPanel = (props: { result: SearchResult }) => {
 // ─── Empty State ─────────────────────────────────────────────────────
 
 const EmptyState = (props: { searching: boolean }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   return (
     <box flexGrow={1} padding={2}>
       <text>
@@ -235,7 +235,7 @@ const ConfirmDelete = (props: {
   onConfirm: () => void;
   onCancel: () => void;
 }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const [hover, setHover] = useState<"yes" | "no" | null>(null);
 
   useKeyboard((key) => {
@@ -298,7 +298,7 @@ const SessionItem = (props: {
   onHover: () => void;
   onDelete: () => void;
 }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const s = props.session;
   const title = truncate(s.title ?? "Untitled", 30);
   const badge = formatSourceBadge(s.sessionSource);
@@ -358,7 +358,7 @@ const SearchItem = (props: {
   onSelect: () => void;
   onHover: () => void;
 }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const r = props.result;
   const title = truncate(r.title ?? "Untitled", 30);
   const badge = formatSourceBadge(r.sessionSource);
@@ -394,8 +394,8 @@ type SessionsProps = {
   onSwitch?: (sid: string, rows: MessageRow[]) => void;
 };
 
-export const Sessions = ({ onSwitch }: SessionsProps) => {
-  const { theme } = useTheme();
+export const Sessions = (props: SessionsProps) => {
+  const theme = useTheme().theme;
   const dialog = useDialog();
   const toast = useToast();
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -431,16 +431,16 @@ export const Sessions = ({ onSwitch }: SessionsProps) => {
   const activate = useCallback(() => {
     if (searching) {
       const r = results[selected];
-      if (!r || !onSwitch) return;
+      if (!r || !props.onSwitch) return;
       const rows = querySessionMessages(r.session_id);
-      onSwitch(r.session_id, rows);
+      props.onSwitch(r.session_id, rows);
       return;
     }
     const s = sessions[selected];
-    if (!s || !onSwitch) return;
+    if (!s || !props.onSwitch) return;
     const rows = querySessionMessages(s.id);
-    onSwitch(s.id, rows);
-  }, [sessions, results, selected, onSwitch, searching]);
+    props.onSwitch(s.id, rows);
+  }, [sessions, results, selected, props.onSwitch, searching]);
 
   const confirmDelete = useCallback(
     (s: SessionRow) => {

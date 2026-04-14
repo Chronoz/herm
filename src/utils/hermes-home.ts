@@ -559,16 +559,12 @@ export function deleteSession(sid: string): boolean {
 function parseFrontmatter(text: string): { description: string; tags: string[] } {
   const match = text.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return { description: "", tags: [] };
-  const block = match[1];
-  let description = "";
-  let tags: string[] = [];
-  for (const line of block.split("\n")) {
-    const dm = line.match(/^description:\s*(.+)/);
-    if (dm) description = dm[1].trim();
-    const tm = line.match(/^tags:\s*\[(.+)\]/);
-    if (tm) tags = tm[1].split(",").map(t => t.trim());
-  }
-  return { description, tags };
+  const desc = match[1].match(/^description:\s*(.+)/m);
+  const tags = match[1].match(/^tags:\s*\[(.+)\]/m);
+  return {
+    description: desc ? desc[1].trim() : "",
+    tags: tags ? tags[1].split(",").map(t => t.trim()) : [],
+  };
 }
 
 /** List installed skills with category info */
@@ -580,20 +576,15 @@ export async function listSkills(): Promise<SkillInfo[]> {
       const parts = path.replace("/SKILL.md", "").split("/");
       const name = parts[parts.length - 1];
       const category = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
-      let description = "";
-      let tags: string[] = [];
-      try {
-        const text = await Bun.file(hermesPath(`skills/${path}`)).text();
-        const fm = parseFrontmatter(text);
-        description = fm.description;
-        tags = fm.tags;
-      } catch { /* skip unreadable files */ }
+      const fm = await Bun.file(hermesPath(`skills/${path}`)).text()
+        .then(parseFrontmatter)
+        .catch(() => ({ description: "", tags: [] as string[] }));
       skills.push({
         source: makeSource(`skills/${path}`, `${name}/SKILL.md`),
         category,
         name,
-        description,
-        tags,
+        description: fm.description,
+        tags: fm.tags,
       });
     }
     return skills.sort((a, b) => a.source.relative.localeCompare(b.source.relative));

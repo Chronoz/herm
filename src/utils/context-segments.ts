@@ -165,18 +165,15 @@ export function build(opts: Opts): Segment[] {
   const result: Segment[] = []
 
   // System prompt children
-  const children: Segment[] = []
-  for (const sec of opts.sections) {
-    if (SYSTEM_IDS.has(sec.id) && sec.tokens > 0) {
-      children.push({
-        id: sec.id,
-        label: sec.label,
-        tokens: sec.tokens,
-        percent: pct(sec.tokens),
-        section: sec,
-      })
-    }
-  }
+  const children = opts.sections
+    .filter(sec => SYSTEM_IDS.has(sec.id) && sec.tokens > 0)
+    .map(sec => ({
+      id: sec.id,
+      label: sec.label,
+      tokens: sec.tokens,
+      percent: pct(sec.tokens),
+      section: sec,
+    }))
 
   // System group
   const sysTok = children.reduce((s, c) => s + c.tokens, 0)
@@ -205,8 +202,8 @@ export function build(opts: Opts): Segment[] {
   }
 
   // Free
-  const used = result.reduce((s, g) => s + g.tokens, 0)
-  const free = Math.max(0, opts.contextLength - used)
+  const taken = result.reduce((s, g) => s + g.tokens, 0)
+  const free = Math.max(0, opts.contextLength - taken)
   result.push({ id: "free", label: "Free", tokens: free, percent: pct(free) })
 
   return result
@@ -229,11 +226,9 @@ export function drill(group: Segment): Segment[] {
 
 /** Generate 256 cells from segments, proportional to percent */
 export function cells(segments: ReadonlyArray<Segment>, fallback = "free"): Cell[] {
-  const result: Cell[] = []
-  for (const seg of segments) {
-    const n = Math.round((seg.percent / 100) * GRID)
-    for (let i = 0; i < n; i++) result.push({ id: seg.id })
-  }
-  while (result.length < GRID) result.push({ id: fallback })
-  return result.slice(0, GRID)
+  const filled = segments.flatMap(seg =>
+    Array.from({ length: Math.round((seg.percent / 100) * GRID) }, () => ({ id: seg.id }))
+  )
+  const pad = Array.from({ length: Math.max(0, GRID - filled.length) }, () => ({ id: fallback }))
+  return [...filled, ...pad].slice(0, GRID)
 }

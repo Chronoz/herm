@@ -18,7 +18,7 @@ const SkillRow = (props: {
   onSelect: () => void;
   onHover: () => void;
 }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const s = props.skill;
   const bg = props.selected ? theme.backgroundElement : undefined;
   const indicator = props.selected ? "▸ " : "  ";
@@ -50,7 +50,7 @@ const SkillRow = (props: {
 // ─── Detail Panel ────────────────────────────────────────────────────
 
 const DetailPanel = (props: { skill: SkillInfo }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const s = props.skill;
 
   return (
@@ -105,7 +105,7 @@ const DetailPanel = (props: { skill: SkillInfo }) => {
 // ─── Empty State ─────────────────────────────────────────────────────
 
 const EmptyState = (props: { searching: boolean }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   return (
     <box flexGrow={1} padding={2}>
       <text>
@@ -122,7 +122,7 @@ const EmptyState = (props: { searching: boolean }) => {
 // ─── Main Component ──────────────────────────────────────────────────
 
 export const Skills = () => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
@@ -149,20 +149,13 @@ export const Skills = () => {
     : skills;
 
   // Group by category for display
-  const groups: Map<string, SkillInfo[]> = new Map();
-  for (const s of filtered) {
-    const cat = s.category || "uncategorized";
-    const arr = groups.get(cat);
-    if (arr) arr.push(s);
-    else groups.set(cat, [s]);
-  }
+  const groups = Map.groupBy(filtered, s => s.category || "uncategorized");
 
   // Flat list for keyboard navigation
-  const flat: Array<{ type: "header"; category: string } | { type: "skill"; skill: SkillInfo }> = [];
-  for (const [cat, items] of groups) {
-    flat.push({ type: "header", category: cat });
-    for (const s of items) flat.push({ type: "skill", skill: s });
-  }
+  const flat = [...groups].flatMap(([cat, items]) => [
+    { type: "header" as const, category: cat },
+    ...items.map(s => ({ type: "skill" as const, skill: s })),
+  ]);
 
   // Count only skill rows for navigation
   const skillRows = flat.filter(r => r.type === "skill");
