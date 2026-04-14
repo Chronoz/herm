@@ -180,20 +180,13 @@ export const Config = () => {
   useEffect(() => { load(); }, [load]);
 
   const entries = flatten(raw);
-  const grouped = new Map<Category, Field[]>();
-  for (const c of CATEGORIES) grouped.set(c, []);
-
-  for (const [key, val] of entries) {
+  const grouped = entries.reduce((map, [key, val]) => {
     const c = categorize(key);
     const label = key.split(".").slice(1).join(".") || key;
-    grouped.get(c)!.push({
-      key,
-      label,
-      type: classify(key, val),
-      value: val,
-      options: SELECTS[key],
-    });
-  }
+    if (!map.has(c)) map.set(c, []);
+    map.get(c)!.push({ key, label, type: classify(key, val), value: val, options: SELECTS[key] });
+    return map;
+  }, new Map<Category, Field[]>(CATEGORIES.map(c => [c, []])));
 
   const active = CATEGORIES[cat];
   const fields = searching && query.trim()

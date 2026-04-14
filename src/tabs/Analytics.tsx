@@ -62,7 +62,6 @@ export const Analytics = () => {
 
   const totals = data.totals;
   const daily = data.daily;
-  const models = data.models;
   const peak = daily.reduce((m, d) => Math.max(m, d.input + d.output), 0);
   const width = 40;
 
@@ -161,7 +160,7 @@ export const Analytics = () => {
             </span>
           </text>
         </box>
-        {models.map((m: ModelRow) => (
+        {data.models.map((m: ModelRow) => (
           <box key={m.model} height={1}>
             <text>
               <span fg={theme.text}>{pad(truncate(m.model, 30), 32)}</span>

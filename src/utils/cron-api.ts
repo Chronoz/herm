@@ -4,7 +4,7 @@
  */
 
 const BASE = "http://localhost:8642"
-const KEY = process.env.API_SERVER_KEY || ""
+const KEY = Bun.env.API_SERVER_KEY ?? ""
 
 const headers = () => {
   const h: Record<string, string> = { "Content-Type": "application/json" }

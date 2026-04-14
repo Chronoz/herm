@@ -158,27 +158,20 @@ export const Env = () => {
   useEffect(() => { load(); }, [load]);
 
   // Build rows
-  const rows: Row[] = [];
-  for (const group of ENV_CATALOG) {
+  const rows: Row[] = ENV_CATALOG.flatMap((group) => {
     const keys = searching && query.trim()
       ? group.keys.filter(k => k.toLowerCase().includes(query.toLowerCase()))
       : group.keys;
-    if (keys.length === 0) continue;
+    if (keys.length === 0) return [];
 
     const hide = collapsed[group.category] ?? false;
-    rows.push({ type: "header", category: group.category, collapsed: hide });
-    if (!hide) {
-      for (const key of keys) {
-        rows.push({ type: "var", key, value: vars[key] });
-      }
-    }
-  }
+    const header: Row = { type: "header", category: group.category, collapsed: hide };
+    if (hide) return [header];
+    return [header, ...keys.map((key): Row => ({ type: "var", key, value: vars[key] }))];
+  });
 
-  // Navigable items (headers + vars)
-  const nav = rows;
-  const count = nav.length;
-
-  const current = nav[selected];
+  const count = rows.length;
+  const current = rows[selected];
 
   const edit = useCallback((key: string) => {
     const initial = vars[key] ?? "";
@@ -285,8 +278,6 @@ export const Env = () => {
     }
   });
 
-  let idx = -1;
-
   return (
     <box
       flexDirection="column"
@@ -346,11 +337,8 @@ export const Env = () => {
         </box>
       ) : (
         <scrollbox scrollY>
-          {rows.map((row) => {
-            idx++;
-            const i = idx;
+          {rows.map((row, i) => {
             if (row.type === "header") {
-              const arrow = row.collapsed ? "▸" : "▾";
               return (
                 <box
                   key={`h-${row.category}`}
@@ -360,7 +348,7 @@ export const Env = () => {
                 >
                   <text>
                     <span fg={theme.info}>
-                      <strong>{`${arrow} ${row.category}`}</strong>
+                      <strong>{`${row.collapsed ? "▸" : "▾"} ${row.category}`}</strong>
                     </span>
                   </text>
                 </box>

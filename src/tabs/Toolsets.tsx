@@ -149,8 +149,7 @@ export const Toolsets = () => {
   const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
-    const rows = await readToolsets();
-    setToolsets(rows);
+    setToolsets(await readToolsets());
   }, []);
 
   useEffect(() => {
