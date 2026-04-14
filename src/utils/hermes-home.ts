@@ -183,9 +183,11 @@ export interface SoulInfo {
   tokenEstimate: number;
 }
 
-/** System prompt breakdown */
+/** System prompt breakdown — full text for section parsing */
 export interface SystemPromptInfo {
   source: Source;
+  sessionId: string;
+  text: string;
   totalChars: number;
   tokenEstimate: number;
 }
@@ -480,6 +482,78 @@ export function querySessionMessages(sid: string): MessageRow[] {
   }
 }
 
+/** Search result from FTS5 full-text search */
+export interface SearchResult {
+  source: Source;
+  session_id: string;
+  snippet: string;
+  role: string;
+  sessionSource: string;
+  model: string | null;
+  started_at: number;
+  title: string | null;
+}
+
+/** Full-text search across session messages via FTS5 */
+export function searchSessions(query: string, limit: number = 20): SearchResult[] {
+  if (!query.trim()) return [];
+  const dbSource = makeSource("state.db");
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true });
+    // Add prefix wildcards for partial matching (same as web_server.py)
+    const terms = query.trim().split(/\s+/).map(t =>
+      t.startsWith('"') || t.endsWith("*") ? t : t + "*"
+    );
+    const fts = terms.join(" ");
+    const rows = db
+      .query(
+        `SELECT s.id as session_id,
+                snippet(messages_fts, 0, '>>>', '<<<', '…', 32) as snippet,
+                m.role,
+                s.source as sessionSource,
+                s.model,
+                s.started_at,
+                COALESCE(s.title, SUBSTR(
+                  (SELECT m2.content FROM messages m2
+                   WHERE m2.session_id = s.id AND m2.role = 'user'
+                   ORDER BY m2.id ASC LIMIT 1), 1, 120)) AS title
+         FROM messages_fts
+         JOIN messages m ON messages_fts.rowid = m.rowid
+         JOIN sessions s ON m.session_id = s.id
+         WHERE messages_fts MATCH ?
+         GROUP BY s.id
+         ORDER BY s.started_at DESC
+         LIMIT ?`,
+      )
+      .all(fts, limit) as Array<{
+      session_id: string;
+      snippet: string;
+      role: string;
+      sessionSource: string;
+      model: string | null;
+      started_at: number;
+      title: string | null;
+    }>;
+    db.close();
+    return rows.map(r => ({ source: dbSource, ...r }));
+  } catch {
+    return [];
+  }
+}
+
+/** Delete a session and its messages from state.db */
+export function deleteSession(sid: string): boolean {
+  try {
+    const db = new Database(hermesPath("state.db"));
+    db.run("DELETE FROM messages WHERE session_id = ?", [sid]);
+    db.run("DELETE FROM sessions WHERE session_id = ?", [sid]);
+    db.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** List installed skills with category info */
 export async function listSkills(): Promise<SkillInfo[]> {
   try {
@@ -551,28 +625,28 @@ export async function readToolsFromLatestSession(): Promise<ToolsInfo | null> {
   }
 }
 
-/** Read system prompt size from the most recent state.db session */
+/** Read system prompt from the most recent state.db session that has a full one */
 export function readSystemPromptInfo(): SystemPromptInfo | null {
-  try {
-    const db = new Database(hermesPath("state.db"), { readonly: true });
-    const row = db
-      .query(
-        `SELECT length(system_prompt) as sp_len
-         FROM sessions
-         WHERE system_prompt IS NOT NULL AND length(system_prompt) > 0
-         ORDER BY started_at DESC LIMIT 1`,
-      )
-      .get() as { sp_len: number } | null;
-    db.close();
-    if (!row) return null;
-    return {
-      source: makeSource("state.db"),
-      totalChars: row.sp_len,
-      tokenEstimate: Math.ceil(row.sp_len / 4),
-    };
-  } catch {
-    return null;
-  }
+  const db = new Database(hermesPath("state.db"), { readonly: true });
+  // Grab the largest recent system_prompt — short ones (~700 chars) are
+  // the generic fallback and don't contain SOUL/memory/skills sections.
+  const row = db
+    .query(
+      `SELECT id, system_prompt
+       FROM sessions
+       WHERE system_prompt IS NOT NULL AND length(system_prompt) > 1000
+       ORDER BY started_at DESC LIMIT 1`,
+    )
+    .get() as { id: string; system_prompt: string } | null;
+  db.close();
+  if (!row) return null;
+  return {
+    source: makeSource("state.db"),
+    sessionId: row.id,
+    text: row.system_prompt,
+    totalChars: row.system_prompt.length,
+    tokenEstimate: Math.ceil(row.system_prompt.length / 4),
+  };
 }
 
 // ─── Composite Reader ────────────────────────────────────────────────
