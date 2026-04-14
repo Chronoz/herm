@@ -18,48 +18,22 @@ export const AnimatedAvatar = ({ state = "idle" }: { state?: AvatarState }) => {
   const [frame, setFrame] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const PAUSE_FIRST = 5000
-  const PAUSE_LAST = 1000
-
   // Restart animation loop when state changes
   useEffect(() => {
     let idx = 0
-    let phase: "pause-first" | "forward" | "pause-last" | "reverse" = "pause-first"
+    let dir = 1
 
     const tick = () => {
-      const frames = STATE_FRAMES[state]
-      const count = frames.length
-
-      switch (phase) {
-        case "pause-first":
-          phase = "forward"
-          idx = 0
-          timer.current = setTimeout(tick, PAUSE_FIRST)
-          break
-
-        case "forward":
-          idx++
-          setFrame(idx)
-          if (idx >= count - 1) phase = "pause-last"
-          timer.current = setTimeout(tick, phase === "pause-last" ? PAUSE_LAST : 1000 / FPS)
-          break
-
-        case "pause-last":
-          phase = "reverse"
-          timer.current = setTimeout(tick, 0)
-          break
-
-        case "reverse":
-          idx--
-          setFrame(idx)
-          if (idx <= 0) phase = "pause-first"
-          timer.current = setTimeout(tick, phase === "pause-first" ? PAUSE_FIRST : 1000 / FPS)
-          break
-      }
+      const count = STATE_FRAMES[state].length
+      idx += dir
+      if (idx >= count - 1) dir = -1
+      if (idx <= 0) dir = 1
+      setFrame(idx)
+      timer.current = setTimeout(tick, 1000 / FPS)
     }
 
     setFrame(0)
-    timer.current = setTimeout(tick, 1)
+    timer.current = setTimeout(tick, 1000 / FPS)
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [state])
 
