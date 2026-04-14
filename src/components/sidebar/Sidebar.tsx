@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from "react"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
 import { useTheme } from "../../theme"
 import { readHermesHome, type HermesHomeSnapshot } from "../../utils/hermes-home"
+import type { AvatarState } from "../avatar/states"
 
-export const Sidebar = ({ activeTools, memoryCount }: { activeTools: string[]; memoryCount: number }) => {
+export const Sidebar = ({ activeTools, memoryCount, agentState = "idle" }: { activeTools: string[]; memoryCount: number; agentState?: AvatarState }) => {
   const { theme } = useTheme()
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
 
@@ -29,7 +30,12 @@ export const Sidebar = ({ activeTools, memoryCount }: { activeTools: string[]; m
     <box width={48} flexDirection="column">
       {/* Avatar (bust) */}
       <box flexDirection="column" height={24} overflow="hidden">
-        <AnimatedAvatar />
+        <AnimatedAvatar state={agentState} />
+      </box>
+      <box justifyContent="center">
+        <text fg={agentState === "error" ? theme.error : agentState === "idle" ? theme.hermBodyText : theme.warning}>
+          {agentState === "idle" ? "● Idle" : agentState === "thinking" ? "◐ Thinking..." : agentState === "speaking" ? "◉ Speaking..." : agentState === "working" ? "⚙ Working..." : agentState === "listening" ? "◎ Listening..." : "✖ Disconnected"}
+        </text>
       </box>
 
       {/* Body (pillar) */}

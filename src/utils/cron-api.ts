@@ -28,7 +28,8 @@ export type CronJob = {
 export async function list(): Promise<CronJob[]> {
   const res = await fetch(`${BASE}/api/jobs`, { headers: headers() })
   if (!res.ok) throw new Error(`Failed to list jobs: ${res.status}`)
-  return res.json()
+  const body = await res.json()
+  return Array.isArray(body) ? body : body.jobs ?? []
 }
 
 export async function create(job: {

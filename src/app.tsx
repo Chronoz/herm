@@ -2,6 +2,7 @@ import { useKeyboard, useRenderer } from "@opentui/react"
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { HermesApiClient } from "./utils/hermes-api-client"
 import type { DonePayload } from "./utils/hermes-api-client"
+import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
 import { Overview } from "./tabs/Overview"
@@ -49,6 +50,8 @@ const AppInner = () => {
   const [model] = useState("hermes-agent")
   const [ready, setReady] = useState(false)
   const [streaming, setStreaming] = useState(false)
+  const [hasContent, setHasContent] = useState(false)
+  const [toolActive, setToolActive] = useState(false)
   const [session, setSession] = useState(`herm-${Date.now()}`)
   const [tab, setTab] = useState(1)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
@@ -60,6 +63,17 @@ const AppInner = () => {
   const histIdx = useRef(-1)
   const stash = useRef("")
   const lastEsc = useRef(0)
+
+  // Derive avatar state from agent activity signals
+  const agentState: AvatarState = !ready
+    ? "error"
+    : toolActive
+      ? "working"
+      : streaming && hasContent
+        ? "speaking"
+        : streaming
+          ? "thinking"
+          : "idle"
 
   const renderer = useRenderer()
   const client = useRef<HermesApiClient | null>(null)
@@ -112,10 +126,14 @@ const AppInner = () => {
   const wire = useCallback((api: HermesApiClient) => {
     api.on("start", () => {
       setStreaming(true)
+      setHasContent(false)
+      setToolActive(false)
       buf.current = ""
     })
 
     api.on("content", (chunk: string) => {
+      setHasContent(true)
+      setToolActive(false)
       buf.current += chunk
       const text = buf.current
       setMessages(prev => {
@@ -137,6 +155,8 @@ const AppInner = () => {
     })
 
     api.on("tool", (tc: { id: string; name: string; status: string }) => {
+      setToolActive(tc.status === "running")
+      setHasContent(false)
       setMessages(prev => {
         const last = prev[prev.length - 1]
         if (last?.role === "assistant") {
@@ -162,6 +182,8 @@ const AppInner = () => {
 
     api.on("done", (data: DonePayload) => {
       setStreaming(false)
+      setHasContent(false)
+      setToolActive(false)
       buf.current = ""
       setMessages(prev => {
         const last = prev[prev.length - 1]
@@ -182,6 +204,8 @@ const AppInner = () => {
 
     api.on("aborted", () => {
       setStreaming(false)
+      setHasContent(false)
+      setToolActive(false)
       buf.current = ""
       setMessages(prev => {
         const last = prev[prev.length - 1]
@@ -197,6 +221,8 @@ const AppInner = () => {
 
     api.on("error", (err: Error) => {
       setStreaming(false)
+      setHasContent(false)
+      setToolActive(false)
       buf.current = ""
       setMessages(prev => [...prev, {
         id: mid(),
@@ -514,7 +540,7 @@ const AppInner = () => {
       <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
       <box flexGrow={1} flexDirection="row">
         {content()}
-        <Sidebar activeTools={[]} memoryCount={0} />
+        <Sidebar activeTools={[]} memoryCount={0} agentState={agentState} />
       </box>
     </box>
   )

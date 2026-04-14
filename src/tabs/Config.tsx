@@ -160,6 +160,7 @@ export const Config = () => {
   const [buf, setBuf] = useState("");
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  const [focus, setFocus] = useState<"categories" | "fields">("categories");
 
   const load = useCallback(async () => {
     const file = Bun.file(hermesPath("config.yaml"));
@@ -288,8 +289,16 @@ export const Config = () => {
       return;
     }
 
-    if (key.name === "left") { setCat(c => Math.max(0, c - 1)); setCursor(0); return; }
-    if (key.name === "right") { setCat(c => Math.min(CATEGORIES.length - 1, c + 1)); setCursor(0); return; }
+    if (key.name === "left") { setFocus("categories"); return; }
+    if (key.name === "right") { setFocus("fields"); return; }
+
+    if (focus === "categories") {
+      if (key.name === "up") { setCat(c => Math.max(0, c - 1)); setCursor(0); return; }
+      if (key.name === "down") { setCat(c => Math.min(CATEGORIES.length - 1, c + 1)); setCursor(0); return; }
+      if (key.name === "return") { setFocus("fields"); return; }
+      return;
+    }
+
     if (key.name === "up") { setCursor(c => Math.max(0, c - 1)); return; }
     if (key.name === "down") { setCursor(c => Math.min(count - 1, c + 1)); return; }
 
@@ -358,7 +367,7 @@ export const Config = () => {
           <span fg={theme.textMuted}>{" — "}</span>
           <span fg={theme.accent}>Form</span>
           <span fg={theme.textMuted}>
-            {"  Tab yaml  ←→ category  ↑↓ navigate  / search  Ctrl+S save"}
+            {"  Tab yaml  ←→ pane  ↑↓ navigate  / search  Ctrl+S save"}
           </span>
           {hasChanges ? <span fg={theme.warning}>{" ● unsaved"}</span> : null}
         </text>
@@ -369,7 +378,7 @@ export const Config = () => {
           flexDirection="column"
           width={20}
           border
-          borderColor={theme.border}
+          borderColor={focus === "categories" ? theme.borderActive : theme.border}
           backgroundColor={theme.backgroundPanel}
           paddingTop={1}
           paddingBottom={1}
@@ -380,19 +389,20 @@ export const Config = () => {
           <text>{" "}</text>
           {CATEGORIES.map((c, i) => {
             const sel = i === cat && !searching;
+            const focused = sel && focus === "categories";
             const items = grouped.get(c) ?? [];
             const dirty = items.some(f => changed(f.key));
             return (
               <box
                 key={c}
-                backgroundColor={sel ? theme.backgroundElement : undefined}
-                onMouseDown={() => { setCat(i); setCursor(0); }}
+                backgroundColor={focused ? theme.backgroundElement : undefined}
+                onMouseDown={() => { setCat(i); setCursor(0); setFocus("categories"); }}
               >
                 <text>
                   <span fg={dirty ? theme.warning : theme.textMuted}>
                     {dirty ? "●" : " "}
                   </span>
-                  <span fg={sel ? theme.accent : theme.text}>
+                  <span fg={focused ? theme.accent : sel ? theme.primary : theme.text}>
                     {sel ? "▸ " : "  "}{c}
                   </span>
                   <span fg={theme.textMuted}>{` (${items.length})`}</span>
@@ -406,7 +416,7 @@ export const Config = () => {
           flexDirection="column"
           flexGrow={1}
           border
-          borderColor={theme.border}
+          borderColor={focus === "fields" ? theme.borderActive : theme.border}
           backgroundColor={theme.backgroundPanel}
           padding={1}
         >
@@ -453,7 +463,7 @@ export const Config = () => {
                 <FieldRow
                   key={f.key}
                   field={f}
-                  active={i === cursor}
+                  active={i === cursor && focus === "fields"}
                   changed={changed(f.key)}
                   editing={editing && i === cursor}
                   buf={buf}
