@@ -63,6 +63,7 @@ const AppInner = () => {
 
   const [history, setHistory] = useState<string[]>([])
   const [popCursor, setPopCursor] = useState(0)
+  const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const histIdx = useRef(-1)
   const stash = useRef("")
   const lastEsc = useRef(0)
@@ -323,8 +324,8 @@ const AppInner = () => {
   }, [connect])
 
   // Control server bridge (CONTROL=1) — uses refs to avoid stale closures
-  const state = useRef({ tab, ready, streaming, messages, session, input })
-  state.current = { tab, ready, streaming, messages, session, input }
+  const state = useRef({ tab, ready, streaming, messages, session, input, focusRegion })
+  state.current = { tab, ready, streaming, messages, session, input, focusRegion }
   useEffect(() => {
     if (!controlEnabled) return
     setBridge({
@@ -347,6 +348,8 @@ const AppInner = () => {
       session: () => state.current.session,
       input: () => state.current.input,
       setInput: (v: string) => setInput(v),
+      focusRegion: () => state.current.focusRegion,
+      setFocusRegion: (r: "input" | "content") => setFocusRegion(r),
       renderer: () => renderer,
     })
   }, [])
@@ -467,6 +470,9 @@ const AppInner = () => {
     setReady(true)
   }, [model, wire])
 
+  // Input is focused when: region is "input", not streaming, no dialog/command open
+  const inputFocused = focusRegion === "input" && !streaming
+
   // Keyboard handler
   useKeyboard((key) => {
     if (key.ctrl && key.name === "c") {
@@ -475,8 +481,8 @@ const AppInner = () => {
       return
     }
 
-    if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); return }
-    if (key.ctrl && key.name === "right") { setTab(t => Math.min(10, t + 1)); return }
+    if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); setFocusRegion("input"); return }
+    if (key.ctrl && key.name === "right") { setTab(t => Math.min(10, t + 1)); setFocusRegion("input"); return }
 
     // --- Popover open: route navigation keys to popover ---
     if (popOpen) {
@@ -502,7 +508,13 @@ const AppInner = () => {
       return
     }
 
-    // --- Popover closed: normal chat keys ---
+    // --- Tab: toggle focus between input and content ---
+    if (key.name === "tab" && !streaming) {
+      setFocusRegion(r => r === "input" ? "content" : "input")
+      return
+    }
+
+    // --- Escape handling ---
     if (key.name === "escape") {
       if (streaming) {
         const now = Date.now()
@@ -522,27 +534,41 @@ const AppInner = () => {
             }]
           })
         }
+      } else if (focusRegion === "content") {
+        // Escape from content → back to input
+        setFocusRegion("input")
       }
       return
     }
 
     if (key.ctrl && key.name === "y") { copyLast(); return }
 
-    if (key.name === "up" && !streaming) {
-      if (history.length === 0) return
-      if (histIdx.current === -1) stash.current = input
-      const next = Math.min(histIdx.current + 1, history.length - 1)
-      histIdx.current = next
-      setInput(history[next])
-      return
+    // --- Input-focused keys ---
+    if (focusRegion === "input" && !streaming) {
+      if (key.name === "up") {
+        if (history.length === 0) return
+        if (histIdx.current === -1) stash.current = input
+        const next = Math.min(histIdx.current + 1, history.length - 1)
+        histIdx.current = next
+        setInput(history[next])
+        return
+      }
+
+      if (key.name === "down") {
+        if (histIdx.current === -1) return
+        const next = histIdx.current - 1
+        histIdx.current = next
+        setInput(next === -1 ? stash.current : history[next])
+        return
+      }
     }
 
-    if (key.name === "down" && !streaming) {
-      if (histIdx.current === -1) return
-      const next = histIdx.current - 1
-      histIdx.current = next
-      setInput(next === -1 ? stash.current : history[next])
-      return
+    // --- Content-focused: typing a printable char refocuses input ---
+    if (focusRegion === "content" && !streaming && !key.ctrl && !key.meta) {
+      if (key.name.length === 1 && key.name !== " ") {
+        setFocusRegion("input")
+        // Don't return — let the key propagate to the now-focused input
+      }
     }
   })
 
@@ -613,7 +639,7 @@ const AppInner = () => {
                 value={input}
                 onChange={setInput}
                 onSubmit={send}
-                focused={!streaming}
+                focused={inputFocused}
                 ready={ready}
                 streaming={streaming}
                 model={model}

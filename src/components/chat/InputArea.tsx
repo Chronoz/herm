@@ -113,7 +113,9 @@ export const InputArea = memo(({
                 ? "Esc×2: Interrupt"
                 : open
                   ? "↑↓: Navigate · Enter/Tab: Select · Esc: Close"
-                  : "Enter: Send · ↑↓: History · /: Commands"}
+                  : focused
+                    ? "Enter: Send · ↑↓: History · /: Commands · Tab: Content"
+                    : "Tab: Focus input · Esc: Focus input"}
             </span>
           </text>
         </box>

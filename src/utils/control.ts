@@ -35,6 +35,8 @@ export type Bridge = {
   session: () => string
   input: () => string
   setInput: (v: string) => void
+  focusRegion: () => "input" | "content"
+  setFocusRegion: (r: "input" | "content") => void
   renderer: () => unknown // OpenTUI renderer instance
 }
 
@@ -230,6 +232,7 @@ async function handle(req: Request): Promise<Response> {
       messages: bridge.messages(),
       session: bridge.session(),
       input: bridge.input(),
+      focusRegion: bridge.focusRegion(),
       rss: Math.round(m.rss / 1024 / 1024),
       heap: Math.round(m.heapUsed / 1024 / 1024),
     })
