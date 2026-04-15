@@ -54,11 +54,11 @@ const truncate = (str: string, max: number): string => {
 // ─── Component ────────────────────────────────────────────────────────
 
 export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
-  const [snapshot, setSnapshot] = useState<HermesHomeSnapshot | null>(null);
+  const [snap, setSnap] = useState<HermesHomeSnapshot | null>(null);
   const { theme } = useTheme();
 
   const refresh = useCallback(async () => {
-    setSnapshot(await snapshot());
+    setSnap(await snapshot());
   }, []);
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
     return () => clearInterval(timer);
   }, [refresh, visible]);
 
-  if (!snapshot) {
+  if (!snap) {
     return (
       <box flexGrow={1} justifyContent="center" alignItems="center">
         <text fg={theme.textMuted}>Loading overview…</text>
@@ -76,11 +76,11 @@ export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
     );
   }
 
-  const config = snapshot.config;
-  const sessions = snapshot.recentSessions;
-  const memory = snapshot.memory;
-  const profile = snapshot.userProfile;
-  const skills = snapshot.skills;
+  const config = snap.config;
+  const sessions = snap.recentSessions;
+  const memory = snap.memory;
+  const profile = snap.userProfile;
+  const skills = snap.skills;
 
   // ── Stats
   const totalSessions = sessions.length;
@@ -217,10 +217,10 @@ export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
         </box>
 
         {/* ── Errors (if any) ───────────────────── */}
-        {snapshot.errors.length > 0 ? (
+        {snap.errors.length > 0 ? (
           <box flexDirection="column" marginBottom={1}>
             <text fg={theme.warning} attributes={BOLD}>{"═══ Warnings ═══"}</text>
-            {snapshot.errors.map((err, idx) => (
+            {snap.errors.map((err, idx) => (
               <text key={String(idx)} fg={theme.warning}>
                 {"  ⚠ "}
                 {err}

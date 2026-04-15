@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { memo, useState, useEffect } from "react"
 import type { ToolPart } from "../../types/message"
 import { useTheme } from "../../theme"
 
@@ -69,7 +69,7 @@ function summary(name: string, raw: string): string {
   }
 }
 
-export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
+export const ToolCallItem = memo(({ tool }: { tool: ToolPart }) => {
   const { theme, syntaxStyle } = useTheme()
   const [expanded, setExpanded] = useState(false)
 
@@ -80,10 +80,11 @@ export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
   const spin = running ? "◌ " : failed ? "✗ " : "✓ "
   const arrow = expanded ? "▾" : "▸"
 
-  const [elapsed, setElapsed] = useState(0)
+  const [elapsed, setElapsed] = useState(() =>
+    running && tool.startedAt ? Math.floor((Date.now() - tool.startedAt) / 1000) : 0
+  )
   useEffect(() => {
     if (!running || !tool.startedAt) return
-    setElapsed(Math.floor((Date.now() - tool.startedAt) / 1000))
     const tid = setInterval(() => setElapsed(Math.floor((Date.now() - tool.startedAt!) / 1000)), 1000)
     return () => clearInterval(tid)
   }, [running, tool.startedAt])
@@ -117,4 +118,4 @@ export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
       )}
     </box>
   )
-}
+})
