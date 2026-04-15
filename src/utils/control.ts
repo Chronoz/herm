@@ -2,16 +2,22 @@
  * control.ts — HTTP control server for headless/automated interaction.
  *
  * Runs on CONTROL_PORT (default 7777) when CONTROL=1 env is set.
- * Exposes imperative actions: tab navigation, message sending, perf dumps.
+ * Exposes imperative actions: tab navigation, message sending, perf dumps,
+ * key injection, and DOM queries for automated testing.
  *
  * Usage:
  *   CONTROL=1 bun run dev              # start with control server
  *   curl localhost:7777/status          # get app state
  *   curl localhost:7777/tab/3           # switch to Sessions tab
  *   curl -X POST localhost:7777/send -d '{"message":"hello"}'
+ *   curl -X POST localhost:7777/key -d '{"name":"tab"}'
+ *   curl localhost:7777/focus           # get focus tree
  *   curl localhost:7777/perf            # dump perf report
  *
  * The bridge is set by AppInner via control.setBridge({...}).
+ *
+ * SAFETY: Key injection is blocked for keys that would mutate state
+ * on dangerous tabs (Config, Sessions) unless safe=false is passed.
  */
 
 import * as perf from "./perf"
@@ -27,6 +33,9 @@ export type Bridge = {
   streaming: () => boolean
   messages: () => number
   session: () => string
+  input: () => string
+  setInput: (v: string) => void
+  renderer: () => unknown // OpenTUI renderer instance
 }
 
 let bridge: Bridge | null = null
@@ -41,6 +50,160 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   })
 
+// ─── Tab safety metadata ─────────────────────────────────────────────
+
+const TAB_NAMES = [
+  "Overview", "Chat", "Context", "Sessions", "Analytics",
+  "Skills", "Cron", "Toolsets", "Config", "Env", "Memory",
+]
+
+// Keys that can mutate state on specific tabs
+const DANGEROUS_KEYS: Record<number, Set<string>> = {
+  1: new Set(["return"]),           // Chat: Enter sends message
+  3: new Set(["d", "delete", "return"]), // Sessions: d=delete, Enter=switch session
+  8: new Set(["space", "return", "h", "l", "]", "[", "ctrl+s"]), // Config: toggles, edits, save
+  9: new Set(["return", "space", "d", "delete"]), // Env: potential mutations
+}
+
+function isDangerous(tab: number, keyName: string, ctrl: boolean): boolean {
+  const set = DANGEROUS_KEYS[tab]
+  if (!set) return false
+  const id = ctrl ? `ctrl+${keyName}` : keyName
+  return set.has(id)
+}
+
+// ─── Key injection ───────────────────────────────────────────────────
+
+interface ParsedKey {
+  name: string
+  ctrl: boolean
+  meta: boolean
+  shift: boolean
+  option: boolean
+  sequence: string
+  number: boolean
+  raw: string
+  eventType: "press" | "release"
+  source: "raw" | "kitty"
+  repeated?: boolean
+}
+
+function makeKey(opts: {
+  name: string
+  ctrl?: boolean
+  shift?: boolean
+  meta?: boolean
+  raw?: string
+}): ParsedKey {
+  return {
+    name: opts.name,
+    ctrl: opts.ctrl ?? false,
+    meta: opts.meta ?? false,
+    shift: opts.shift ?? false,
+    option: false,
+    sequence: opts.raw ?? opts.name,
+    number: false,
+    raw: opts.raw ?? opts.name,
+    eventType: "press",
+    source: "raw",
+  }
+}
+
+function injectKey(renderer: unknown, key: ParsedKey): boolean {
+  const r = renderer as { keyInput?: { processParsedKey?: (k: ParsedKey) => boolean } }
+  if (!r?.keyInput?.processParsedKey) return false
+  return r.keyInput.processParsedKey(key)
+}
+
+// ─── Focus tree query ────────────────────────────────────────────────
+
+interface FocusNode {
+  type: string
+  focused: boolean
+  focusable: boolean
+  children: FocusNode[]
+  text?: string
+}
+
+type AnyNode = {
+  constructor?: { name?: string }
+  focused?: boolean
+  focusable?: boolean
+  getChildren?: () => AnyNode[]
+  getChildrenCount?: () => number
+  _childrenInLayoutOrder?: AnyNode[]
+  textContent?: string
+  text?: string
+  value?: string
+  id?: string
+  _type?: string
+  tagName?: string
+}
+
+function getNodeChildren(n: AnyNode): AnyNode[] {
+  if (n.getChildren) return n.getChildren()
+  if (n._childrenInLayoutOrder) return [...n._childrenInLayoutOrder]
+  return []
+}
+
+function getNodeType(n: AnyNode): string {
+  return n._type || n.tagName || n.constructor?.name || "unknown"
+}
+
+function buildFocusTree(node: unknown, depth = 0): FocusNode | null {
+  if (!node || typeof node !== "object") return null
+  const n = node as AnyNode
+
+  const type = getNodeType(n)
+  const focused = n.focused ?? false
+  const focusable = n.focusable ?? false
+  const children: FocusNode[] = []
+
+  if (depth < 20) {
+    for (const child of getNodeChildren(n)) {
+      const c = buildFocusTree(child, depth + 1)
+      if (c) children.push(c)
+    }
+  }
+
+  // Skip non-focusable nodes with no focusable descendants
+  const hasFocusable = focusable || children.some(c =>
+    c.focusable || c.focused || c.children.length > 0
+  )
+  if (!hasFocusable && !focused && depth > 0) return null
+
+  const text = (n.value || n.textContent || n.text || undefined) as string | undefined
+
+  return { type, focused, focusable, children, text }
+}
+
+function findFocused(node: unknown): string | null {
+  if (!node || typeof node !== "object") return null
+  const n = node as AnyNode
+  if (n.focused) return getNodeType(n)
+  for (const child of getNodeChildren(n)) {
+    const found = findFocused(child)
+    if (found) return found
+  }
+  return null
+}
+
+function countNodes(node: unknown): { total: number; focusable: number; focused: number } {
+  const result = { total: 0, focusable: 0, focused: 0 }
+  function walk(n: unknown) {
+    if (!n || typeof n !== "object") return
+    const nd = n as AnyNode
+    result.total++
+    if (nd.focusable) result.focusable++
+    if (nd.focused) result.focused++
+    for (const child of getNodeChildren(nd)) walk(child)
+  }
+  walk(node)
+  return result
+}
+
+// ─── Request handler ─────────────────────────────────────────────────
+
 async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url)
   const path = url.pathname
@@ -50,12 +213,15 @@ async function handle(req: Request): Promise<Response> {
   // GET /status — app state snapshot
   if (path === "/status") {
     const m = process.memoryUsage()
+    const tab = bridge.tab()
     return json({
-      tab: bridge.tab(),
+      tab,
+      tabName: TAB_NAMES[tab] ?? "unknown",
       ready: bridge.ready(),
       streaming: bridge.streaming(),
       messages: bridge.messages(),
       session: bridge.session(),
+      input: bridge.input(),
       rss: Math.round(m.rss / 1024 / 1024),
       heap: Math.round(m.heapUsed / 1024 / 1024),
     })
@@ -66,8 +232,9 @@ async function handle(req: Request): Promise<Response> {
   if (tabMatch) {
     const n = Number(tabMatch[1])
     if (n < 0 || n > 10) return json({ error: "tab 0-10" }, 400)
-    bridge.setTab(n)
-    return json({ tab: n })
+    // Queue via queueMicrotask to ensure React processes the update
+    queueMicrotask(() => bridge!.setTab(n))
+    return json({ tab: n, tabName: TAB_NAMES[n] })
   }
 
   // POST /send — send a message
@@ -78,6 +245,123 @@ async function handle(req: Request): Promise<Response> {
     if (bridge.streaming()) return json({ error: "already streaming" }, 409)
     bridge.send(body.message)
     return json({ sent: true, message: body.message })
+  }
+
+  // POST /key — inject a key event
+  //
+  // Body: { name: "tab", ctrl?: bool, shift?: bool, meta?: bool, raw?: string, safe?: bool }
+  //
+  // safe (default true): blocks keys known to mutate state on current tab.
+  // Set safe=false to override (use for intentional mutation testing).
+  if (path === "/key" && req.method === "POST") {
+    const body = await req.json() as {
+      name?: string
+      ctrl?: boolean
+      shift?: boolean
+      meta?: boolean
+      raw?: string
+      safe?: boolean
+    }
+    if (!body.name) return json({ error: "name required" }, 400)
+
+    const renderer = bridge.renderer()
+    if (!renderer) return json({ error: "renderer not available" }, 503)
+
+    const safe = body.safe !== false // default true
+    const tab = bridge.tab()
+
+    if (safe && isDangerous(tab, body.name, !!body.ctrl)) {
+      return json({
+        error: "blocked",
+        reason: `Key "${body.ctrl ? "ctrl+" : ""}${body.name}" is dangerous on tab ${TAB_NAMES[tab]} (index ${tab}). Pass safe=false to override.`,
+        tab,
+        tabName: TAB_NAMES[tab],
+      }, 403)
+    }
+
+    const key = makeKey({
+      name: body.name,
+      ctrl: body.ctrl,
+      shift: body.shift,
+      meta: body.meta,
+      raw: body.raw ?? (body.name.length === 1 ? body.name : ""),
+    })
+
+    const handled = injectKey(renderer, key)
+    return json({ injected: true, handled, key: body.name, tab, tabName: TAB_NAMES[tab] })
+  }
+
+  // POST /keys — inject a sequence of key events
+  //
+  // Body: { keys: [{name, ctrl?, ...}, ...], delay?: number, safe?: bool }
+  if (path === "/keys" && req.method === "POST") {
+    const body = await req.json() as {
+      keys?: Array<{ name: string; ctrl?: boolean; shift?: boolean; meta?: boolean; raw?: string }>
+      delay?: number
+      safe?: boolean
+    }
+    if (!body.keys?.length) return json({ error: "keys array required" }, 400)
+
+    const renderer = bridge.renderer()
+    if (!renderer) return json({ error: "renderer not available" }, 503)
+
+    const safe = body.safe !== false
+    const tab = bridge.tab()
+    const delay = body.delay ?? 0
+    const results: Array<{ key: string; injected: boolean; handled: boolean; blocked?: boolean }> = []
+
+    for (const k of body.keys) {
+      if (safe && isDangerous(tab, k.name, !!k.ctrl)) {
+        results.push({ key: k.name, injected: false, handled: false, blocked: true })
+        continue
+      }
+      const key = makeKey({
+        name: k.name,
+        ctrl: k.ctrl,
+        shift: k.shift,
+        meta: k.meta,
+        raw: k.raw ?? (k.name.length === 1 ? k.name : ""),
+      })
+      const handled = injectKey(renderer, key)
+      results.push({ key: k.name, injected: true, handled })
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
+    }
+
+    return json({ results, tab, tabName: TAB_NAMES[tab] })
+  }
+
+  // POST /type — inject a string as individual keystrokes
+  //
+  // Body: { text: "hello", safe?: bool }
+  if (path === "/type" && req.method === "POST") {
+    const body = await req.json() as { text?: string; safe?: boolean }
+    if (!body.text) return json({ error: "text required" }, 400)
+
+    const renderer = bridge.renderer()
+    if (!renderer) return json({ error: "renderer not available" }, 503)
+
+    const safe = body.safe !== false
+    const tab = bridge.tab()
+    let count = 0
+
+    for (const ch of body.text) {
+      if (safe && isDangerous(tab, ch, false)) continue
+      const key = makeKey({ name: ch, raw: ch })
+      injectKey(renderer, key)
+      count++
+    }
+
+    return json({ typed: count, total: body.text.length, tab, tabName: TAB_NAMES[tab] })
+  }
+
+  // GET /focus — focus tree (focusable elements and their state)
+  if (path === "/focus") {
+    const renderer = bridge.renderer() as { root?: unknown } | null
+    if (!renderer?.root) return json({ error: "no renderer root" }, 503)
+    const counts = countNodes(renderer.root)
+    const tree = buildFocusTree(renderer.root)
+    const focused = findFocused(renderer.root)
+    return json({ focused, counts, tree })
   }
 
   // GET /perf — return all profiling data as JSON
@@ -110,7 +394,21 @@ async function handle(req: Request): Promise<Response> {
     })
   }
 
-  return json({ error: "not found", routes: ["/status", "/tab/:n", "/send", "/perf", "/tabs", "/mem"] }, 404)
+  return json({
+    error: "not found",
+    routes: [
+      "GET  /status",
+      "GET  /tab/:n",
+      "POST /send   {message}",
+      "POST /key    {name, ctrl?, shift?, meta?, raw?, safe?}",
+      "POST /keys   {keys: [{name, ...}], delay?, safe?}",
+      "POST /type   {text, safe?}",
+      "GET  /focus",
+      "GET  /perf",
+      "GET  /tabs",
+      "GET  /mem",
+    ],
+  }, 404)
 }
 
 export function start() {

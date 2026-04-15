@@ -323,8 +323,8 @@ const AppInner = () => {
   }, [connect])
 
   // Control server bridge (CONTROL=1) — uses refs to avoid stale closures
-  const state = useRef({ tab, ready, streaming, messages, session })
-  state.current = { tab, ready, streaming, messages, session }
+  const state = useRef({ tab, ready, streaming, messages, session, input })
+  state.current = { tab, ready, streaming, messages, session, input }
   useEffect(() => {
     if (!controlEnabled) return
     setBridge({
@@ -345,6 +345,9 @@ const AppInner = () => {
       streaming: () => state.current.streaming,
       messages: () => state.current.messages.length,
       session: () => state.current.session,
+      input: () => state.current.input,
+      setInput: (v: string) => setInput(v),
+      renderer: () => renderer,
     })
   }, [])
 
