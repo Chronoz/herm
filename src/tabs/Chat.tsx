@@ -1,8 +1,9 @@
+import { memo } from "react"
 import { MessageList } from "../components/chat/MessageList"
 import { useTheme } from "../theme"
 import type { Message } from "../types/message"
 
-export const Chat = ({
+export const Chat = memo(({
   messages,
   streaming,
 }: {
@@ -19,4 +20,4 @@ export const Chat = ({
       <MessageList messages={messages} streaming={streaming} />
     </box>
   )
-}
+})

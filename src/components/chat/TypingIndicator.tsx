@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, memo } from "react"
 import { useTheme } from "../../theme"
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-export const TypingIndicator = () => {
+export const TypingIndicator = memo(() => {
   const { theme } = useTheme()
   const [frame, setFrame] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -23,4 +23,4 @@ export const TypingIndicator = () => {
       </text>
     </box>
   )
-}
+})

@@ -10,7 +10,7 @@
  * At level 1, cells are proportional to the drilled group's total.
  */
 
-import { useEffect, useState, useRef, useCallback, useMemo } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react"
 import type { HermesApiClient } from "../utils/hermes-api-client"
 import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
@@ -39,6 +39,7 @@ type Props = {
   client?: HermesApiClient | null
   messages?: Message[]
   sessionStart?: number
+  visible?: boolean
 }
 
 type Wire = { input: number; output: number; total: number; calls: number }
@@ -284,7 +285,7 @@ const FreePanel = ({ seg, theme, ctxLen, home }: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = ({ client, messages = [] }: Props) => {
+export const Context = memo(({ client, messages = [], visible = true }: Props) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
   const wireRef = useRef(wire)
@@ -299,10 +300,11 @@ export const Context = ({ client, messages = [] }: Props) => {
   }, [])
 
   useEffect(() => {
+    if (!visible) return
     refresh()
     const iv = setInterval(refresh, 10_000)
     return () => clearInterval(iv)
-  }, [refresh])
+  }, [refresh, visible])
 
   useEffect(() => {
     if (!client) return
@@ -540,4 +542,4 @@ export const Context = ({ client, messages = [] }: Props) => {
       </box>
     </box>
   )
-}
+})

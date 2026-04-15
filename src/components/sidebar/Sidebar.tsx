@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar";
 import { useTheme } from "../../theme";
 import type { AvatarState } from "../avatar/states";
 
 const STATES: AvatarState[] = ["idle", "listening", "thinking", "speaking", "working", "error"];
 
-export const Sidebar = ({
+export const Sidebar = memo(({
   agentState = "idle",
 }: {
   agentState?: AvatarState;
@@ -46,4 +46,4 @@ export const Sidebar = ({
       </box>
     </box>
   );
-};
+});

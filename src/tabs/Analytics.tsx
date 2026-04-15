@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import {
   queryAnalytics,
   type AnalyticsData,
@@ -37,7 +37,7 @@ const truncate = (s: string, max: number): string =>
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Analytics = () => {
+export const Analytics = memo(({ visible = true }: { visible?: boolean }) => {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const theme = useTheme().theme;
@@ -47,10 +47,11 @@ export const Analytics = () => {
   }, [period]);
 
   useEffect(() => {
+    if (!visible) return
     refresh();
     const timer = setInterval(refresh, REFRESH);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, visible]);
 
   if (!data) {
     return (
@@ -173,4 +174,4 @@ export const Analytics = () => {
       </scrollbox>
     </box>
   );
-};
+});

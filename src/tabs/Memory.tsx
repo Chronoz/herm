@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, memo } from "react"
 import {
   readHermesHome,
   readMemoryProviders,
@@ -39,7 +39,7 @@ const ALL = ["builtin", "mem0", "honcho", "hindsight", "holographic", "openvikin
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Memory = () => {
+export const Memory = memo(({ visible = true }: { visible?: boolean }) => {
   const { theme } = useTheme()
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [providers, setProviders] = useState<MemoryProviderInfo[]>([])
@@ -59,10 +59,11 @@ export const Memory = () => {
   }, [])
 
   useEffect(() => {
+    if (!visible) return
     refresh()
     const id = setInterval(refresh, REFRESH)
     return () => clearInterval(id)
-  }, [refresh])
+  }, [refresh, visible])
 
   const cfg = home?.config?.memory
   const current = providers[selected]
@@ -135,7 +136,7 @@ export const Memory = () => {
       </box>
     </box>
   )
-}
+})
 
 // ─── Provider Detail ──────────────────────────────────────────────────
 

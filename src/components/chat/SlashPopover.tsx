@@ -8,7 +8,7 @@
  * (scrollbox needs focus/keyboard to scroll, which conflicts with input).
  */
 
-import { useMemo } from "react"
+import { useMemo, memo } from "react"
 import { useTheme } from "../../theme"
 import type { SlashCommand } from "../../commands/slash"
 import { labels } from "../../commands/slash"
@@ -24,7 +24,7 @@ type Row = { type: "header"; cat: string } | { type: "cmd"; cmd: SlashCommand; f
 
 const MAX_VISIBLE = 14
 
-export const SlashPopover = ({ commands: cmds, cursor, onCursor, onSelect }: Props) => {
+export const SlashPopover = memo(({ commands: cmds, cursor, onCursor, onSelect }: Props) => {
   const { theme } = useTheme()
 
   if (cmds.length === 0) {
@@ -135,4 +135,4 @@ export const SlashPopover = ({ commands: cmds, cursor, onCursor, onSelect }: Pro
       ) : null}
     </box>
   )
-}
+})

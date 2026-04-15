@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { hermesPath, writeConfig } from "../utils/hermes-home";
 import { useTheme } from "../theme";
@@ -147,7 +147,7 @@ const FieldRow = (props: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Config = () => {
+export const Config = memo(() => {
   const theme = useTheme().theme;
   const toast = useToast();
   const [raw, setRaw] = useState<Record<string, unknown>>({});
@@ -475,4 +475,4 @@ export const Config = () => {
       </box>
     </box>
   );
-};
+});

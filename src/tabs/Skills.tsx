@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { listSkills, type SkillInfo } from "../utils/hermes-home";
 import { useTheme } from "../theme";
@@ -121,7 +121,7 @@ const EmptyState = (props: { searching: boolean }) => {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Skills = () => {
+export const Skills = memo(() => {
   const theme = useTheme().theme;
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
@@ -305,4 +305,4 @@ export const Skills = () => {
       {current ? <DetailPanel skill={current} /> : null}
     </box>
   );
-};
+});

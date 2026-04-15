@@ -1,3 +1,4 @@
+import { memo } from "react"
 import type { SubmitEvent } from "@opentui/core"
 import { useTheme } from "../../theme"
 import type { Usage } from "../../types/message"
@@ -28,7 +29,7 @@ function fmt(n: number): string {
   return `${(n / 1_000_000).toFixed(2)}M`
 }
 
-export const InputArea = ({
+export const InputArea = memo(({
   value,
   onChange,
   onSubmit,
@@ -119,4 +120,4 @@ export const InputArea = ({
       </box>
     </box>
   )
-}
+})

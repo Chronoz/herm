@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, memo } from "react"
 import { STATE_FRAMES, FPS, type AvatarState } from "./states"
 import { useTheme } from "../../theme"
 import * as perf from "../../utils/perf"
@@ -14,7 +14,7 @@ import * as perf from "../../utils/perf"
  * Restarts from frame 0 whenever `state` changes.
  */
 
-export const AnimatedAvatar = ({ state = "idle" }: { state?: AvatarState }) => {
+export const AnimatedAvatar = memo(({ state = "idle" }: { state?: AvatarState }) => {
   const { theme } = useTheme()
   const [frame, setFrame] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -55,4 +55,4 @@ export const AnimatedAvatar = ({ state = "idle" }: { state?: AvatarState }) => {
   )
   end()
   return result
-}
+})

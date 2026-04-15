@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { readToolsets, type ToolsetInfo } from "../utils/hermes-home";
 import { useTheme } from "../theme";
@@ -140,7 +140,7 @@ const EmptyState = (props: { searching: boolean }) => {
 
 // ─── Main Component ───────────────────────────────────────────────────
 
-export const Toolsets = () => {
+export const Toolsets = memo(() => {
   const theme = useTheme().theme;
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [selected, setSelected] = useState(0);
@@ -306,4 +306,4 @@ export const Toolsets = () => {
       {current ? <DetailPanel toolset={current} /> : null}
     </box>
   );
-};
+});

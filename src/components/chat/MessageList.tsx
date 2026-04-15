@@ -1,9 +1,10 @@
+import { memo } from "react"
 import { MessageItem } from "./MessageItem"
 import { TypingIndicator } from "./TypingIndicator"
 import { useTheme } from "../../theme"
 import type { Message } from "../../types/message"
 
-export const MessageList = ({ messages, streaming }: { messages: Message[]; streaming: boolean }) => {
+export const MessageList = memo(({ messages, streaming }: { messages: Message[]; streaming: boolean }) => {
   const { theme } = useTheme()
 
   if (messages.length === 0) {
@@ -76,4 +77,4 @@ export const MessageList = ({ messages, streaming }: { messages: Message[]; stre
       </box>
     </scrollbox>
   )
-}
+})

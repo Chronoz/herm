@@ -202,6 +202,7 @@ const AppInner = () => {
         }
         return prev
       })
+      setMessages(prev => prev.length > 200 ? prev.slice(-200) : prev)
       setMsgCount(c => c + 1)
       if (data.usage) {
         setUsage(data.usage)
@@ -492,7 +493,7 @@ const AppInner = () => {
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Overview />
+        case 0: return <Overview visible={tab === 0} />
         case 1:
           return (
             <Chat messages={messages} streaming={streaming} />
@@ -504,16 +505,17 @@ const AppInner = () => {
               client={client.current}
               messages={messages}
               sessionStart={Date.now()}
+              visible={tab === 2}
             />
           )
         case 3: return <Sessions onSwitch={switchSession} />
-        case 4: return <Analytics />
+        case 4: return <Analytics visible={tab === 4} />
         case 5: return <Skills />
         case 6: return <Cron />
         case 7: return <Toolsets />
         case 8: return <Config />
         case 9: return <Env />
-        case 10: return <Memory />
+        case 10: return <Memory visible={tab === 10} />
         default: return null
       }
     })()

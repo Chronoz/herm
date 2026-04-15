@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, memo } from "react"
 import type { Message, TextPart } from "../../types/message"
 import { ToolCallItem } from "./ToolCallItem"
 import { useTheme } from "../../theme"
@@ -31,11 +31,11 @@ function extract(msg: Message): string {
     .join("")
 }
 
-export const MessageItem = ({ message, streaming }: { message: Message; streaming: boolean }) => {
+export const MessageItem = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
   if (message.role === "system") return <SystemMessage message={message} />
   if (message.role === "user") return <UserMessage message={message} />
   return <AssistantMessage message={message} streaming={streaming} />
-}
+})
 
 const SystemMessage = ({ message }: { message: Message }) => {
   const { theme } = useTheme()

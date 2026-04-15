@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import {
   queryRecentSessions,
@@ -394,7 +394,7 @@ type SessionsProps = {
   onSwitch?: (sid: string, rows: MessageRow[]) => void;
 };
 
-export const Sessions = (props: SessionsProps) => {
+export const Sessions = memo((props: SessionsProps) => {
   const theme = useTheme().theme;
   const dialog = useDialog();
   const toast = useToast();
@@ -612,4 +612,4 @@ export const Sessions = (props: SessionsProps) => {
       ) : null}
     </box>
   );
-};
+});

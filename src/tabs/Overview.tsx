@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, memo } from "react";
 import { TextAttributes } from "@opentui/core";
 import {
   readHermesHome,
@@ -53,7 +53,7 @@ const truncate = (str: string, max: number): string => {
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Overview = () => {
+export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
   const [snapshot, setSnapshot] = useState<HermesHomeSnapshot | null>(null);
   const { theme } = useTheme();
 
@@ -63,10 +63,11 @@ export const Overview = () => {
   }, []);
 
   useEffect(() => {
+    if (!visible) return
     refresh();
     const timer = setInterval(refresh, REFRESH_INTERVAL);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, visible]);
 
   if (!snapshot) {
     return (
@@ -231,4 +232,4 @@ export const Overview = () => {
       </scrollbox>
     </box>
   );
-};
+});

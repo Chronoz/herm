@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import * as api from "../utils/cron-api";
 import type { CronJob } from "../utils/cron-api";
@@ -170,7 +170,7 @@ const CreateDialog = (props: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Cron = () => {
+export const Cron = memo(() => {
   const theme = useTheme().theme;
   const dialog = useDialog();
   const toast = useToast();
@@ -294,4 +294,4 @@ export const Cron = () => {
       {current ? <DetailPanel job={current} /> : null}
     </box>
   );
-};
+});

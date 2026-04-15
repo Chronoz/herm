@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import {
   readEnvFile,
@@ -140,7 +140,7 @@ const VarRow = (props: {
 
 // ─── Main Component ───────────────────────────────────────────────
 
-export const Env = () => {
+export const Env = memo(() => {
   const theme = useTheme().theme;
   const dialog = useDialog();
   const toast = useToast();
@@ -369,4 +369,4 @@ export const Env = () => {
       )}
     </box>
   );
-};
+});

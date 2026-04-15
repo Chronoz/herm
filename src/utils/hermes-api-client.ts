@@ -48,12 +48,35 @@ export class HermesApiClient extends EventEmitter {
   private pending: Map<number, ToolCall> = new Map()
   private start = 0
 
+  // 16ms microbatch queue
+  private queue: Array<() => void> = []
+  private timer?: ReturnType<typeof setTimeout>
+  private lastFlush = 0
+
   constructor(cfg: ApiConfig = {}) {
     super()
     this.url = cfg.url || "http://localhost:8642/v1"
     this.key = cfg.key
     this.session = cfg.session || `herm-${Date.now()}`
     this.model = cfg.model || "hermes-agent"
+  }
+
+  private flush() {
+    const batch = this.queue
+    this.queue = []
+    this.timer = undefined
+    this.lastFlush = Date.now()
+    for (const fn of batch) fn()
+  }
+
+  private schedule(fn: () => void) {
+    this.queue.push(fn)
+    if (this.timer) return
+    if (Date.now() - this.lastFlush < 16) {
+      this.timer = setTimeout(() => this.flush(), 16)
+      return
+    }
+    this.flush()
   }
 
   async connect(): Promise<void> {
@@ -135,6 +158,7 @@ export class HermesApiClient extends EventEmitter {
       }
 
       // Finalize
+      this.flush()
       const duration = Date.now() - this.start
       const collected = Array.from(this.pending.values())
       this.emit("done", { reason: "stop", duration, tools: collected } satisfies DonePayload)
@@ -156,7 +180,8 @@ export class HermesApiClient extends EventEmitter {
 
     // Text content
     if (choice.delta?.content) {
-      this.emit("content", choice.delta.content)
+      const chunk = choice.delta.content
+      this.schedule(() => this.emit("content", chunk))
     }
 
     // Tool call deltas — accumulate
@@ -172,11 +197,8 @@ export class HermesApiClient extends EventEmitter {
             args: tc.function?.arguments || "",
           })
           // Emit tool start
-          this.emit("tool", {
-            id: tc.id || `tc-${tc.index}`,
-            name: tc.function?.name || "unknown",
-            status: "running",
-          })
+          const tool = { id: tc.id || `tc-${tc.index}`, name: tc.function?.name || "unknown", status: "running" }
+          this.schedule(() => this.emit("tool", tool))
         }
       }
     }
@@ -190,9 +212,11 @@ export class HermesApiClient extends EventEmitter {
       const collected = Array.from(this.pending.values())
       // Mark tools as done
       for (const tc of collected) {
-        this.emit("tool", { id: tc.id, name: tc.name, status: "done" })
+        const ev = { id: tc.id, name: tc.name, status: "done" }
+        this.schedule(() => this.emit("tool", ev))
       }
-      this.emit("done", { reason: choice.finish_reason, usage, duration, tools: collected } satisfies DonePayload)
+      const payload = { reason: choice.finish_reason, usage, duration, tools: collected } satisfies DonePayload
+      this.schedule(() => this.emit("done", payload))
     }
   }
 
@@ -201,6 +225,7 @@ export class HermesApiClient extends EventEmitter {
   }
 
   disconnect(): void {
+    if (this.timer) clearTimeout(this.timer)
     this.interrupt()
     this.removeAllListeners()
   }

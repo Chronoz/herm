@@ -11,6 +11,8 @@ const main = async () => {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false, // We handle Ctrl+C ourselves
     useMouse: true, // Enable mouse for text selection & copy-on-select
+    targetFps: 60,
+    gatherStats: false,
   });
   end()
 

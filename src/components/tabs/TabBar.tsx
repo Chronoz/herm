@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { useTheme } from "../../theme"
 
 type Tab = {
@@ -11,7 +12,7 @@ type TabBarProps = {
   onTabChange: (index: number) => void
 }
 
-export const TabBar = ({ tabs, activeTab, onTabChange }: TabBarProps) => {
+export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
   const { theme } = useTheme()
 
   return (
@@ -40,4 +41,4 @@ export const TabBar = ({ tabs, activeTab, onTabChange }: TabBarProps) => {
       </box>
     </box>
   )
-}
+})
