@@ -15,11 +15,11 @@ import type { HermesApiClient } from "../utils/hermes-api-client"
 import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
 import {
-  readHermesHome,
   type HermesHomeSnapshot,
   type SessionRow,
   type ToolInfo,
 } from "../utils/hermes-home"
+import { snapshot } from "../utils/cache"
 import {
   parse,
   build,
@@ -296,7 +296,7 @@ export const Context = memo(({ client, messages = [], visible = true }: Props) =
   const [sidx, setSidx] = useState(0)
 
   const refresh = useCallback(async () => {
-    try { setHome(await readHermesHome()) } catch { /* partial */ }
+    try { setHome(await snapshot()) } catch { /* partial */ }
   }, [])
 
   useEffect(() => {

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, memo } from "react"
 import {
-  readHermesHome,
   readMemoryProviders,
   type HermesHomeSnapshot,
   type MemoryProviderInfo,
   type MemoryFileInfo,
 } from "../utils/hermes-home"
+import { snapshot } from "../utils/cache"
 import { useTheme, type Theme } from "../theme"
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ export const Memory = memo(({ visible = true }: { visible?: boolean }) => {
   const [selected, setSelected] = useState(0)
 
   const refresh = useCallback(async () => {
-    const snap = await readHermesHome()
+    const snap = await snapshot()
     setHome(snap)
     const active = snap.config?.memory?.provider || ""
     const found = await readMemoryProviders(active)

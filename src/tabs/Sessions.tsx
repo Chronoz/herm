@@ -12,6 +12,7 @@ import {
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
+import { invalidate } from "../utils/cache";
 
 // ─── Formatting Helpers ──────────────────────────────────────────────
 
@@ -451,6 +452,7 @@ export const Sessions = memo((props: SessionsProps) => {
             const ok = deleteSession(s.id);
             dialog.clear();
             if (ok) {
+              invalidate();
               toast.show({ variant: "success", message: "Session deleted" });
               load();
               setSelected((prev) => Math.min(prev, sessions.length - 2));

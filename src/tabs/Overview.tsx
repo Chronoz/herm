@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, memo } from "react";
 import { TextAttributes } from "@opentui/core";
 import {
-  readHermesHome,
   type HermesHomeSnapshot,
   type SessionRow,
 } from "../utils/hermes-home";
+import { snapshot } from "../utils/cache";
 import { useTheme } from "../theme";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -58,8 +58,7 @@ export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
   const { theme } = useTheme();
 
   const refresh = useCallback(async () => {
-    const data = await readHermesHome();
-    setSnapshot(data);
+    setSnapshot(await snapshot());
   }, []);
 
   useEffect(() => {
