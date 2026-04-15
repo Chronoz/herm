@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
+    "dev:perf": "PERF=1 bun run --watch src/index.tsx",
+    "dev:perf:verbose": "PERF=verbose bun run --watch src/index.tsx",
+    "dev:smol": "bun --smol run --watch src/index.tsx",
+    "dev:profile": "bun --cpu-prof --cpu-prof-dir=./profiles run src/index.tsx",
+    "dev:heap": "bun --heap-prof --heap-prof-dir=./profiles run src/index.tsx",
     "build": "bun build src/index.tsx --target=node --outdir=dist",
     "start": "bun run dist/index.js"
   },

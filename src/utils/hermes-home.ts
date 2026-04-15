@@ -10,6 +10,7 @@
 
 import { Database } from "bun:sqlite";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import * as perf from "./perf";
 
 // ─── Path Resolution ─────────────────────────────────────────────────
 
@@ -327,6 +328,7 @@ export async function readLiveSessions(): Promise<
 
 /** Query state.db for recent sessions — falls back to first user message as title */
 export function queryRecentSessions(limit: number = 30): SessionRow[] {
+  const end = perf.mark("io:queryRecentSessions")
   const dbSource = makeSource("state.db");
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
@@ -363,7 +365,7 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       parent_session_id: string | null;
     }>;
     db.close();
-    return rows.map((row) => ({
+    const mapped = rows.map((row) => ({
       source: dbSource,
       id: row.id,
       sessionSource: row.source,
@@ -382,7 +384,10 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       title: row.title,
       parent_session_id: row.parent_session_id,
     }));
+    end()
+    return mapped
   } catch {
+    end()
     return [];
   }
 }
@@ -528,6 +533,7 @@ export interface AnalyticsData {
 
 /** Query analytics aggregates from state.db for the last N days */
 export function queryAnalytics(days: number): AnalyticsData {
+  const endTiming = perf.mark("io:queryAnalytics")
   const cutoff = Math.floor(Date.now() / 1000) - days * 86400;
   const empty: AnalyticsData = {
     daily: [],
@@ -571,7 +577,7 @@ export function queryAnalytics(days: number): AnalyticsData {
 
     const vals = (row: Record<string, unknown>) => Object.values(row);
 
-    return {
+    const data = {
       daily: daily.map((r) => {
         const v = vals(r);
         return {
@@ -607,7 +613,10 @@ export function queryAnalytics(days: number): AnalyticsData {
         };
       })(),
     };
+    endTiming()
+    return data
   } catch {
+    endTiming()
     return empty;
   }
 }
@@ -849,6 +858,7 @@ export async function readToolsets(): Promise<ToolsetInfo[]> {
  * Resilient — individual read failures are logged but don't block others.
  */
 export async function readHermesHome(): Promise<HermesHomeSnapshot> {
+  const end = perf.mark("io:readHermesHome")
   const errors: string[] = [];
   const snapshot: HermesHomeSnapshot = {
     config: null,
@@ -923,6 +933,7 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
     errors.push(`systemPrompt: ${e.message}`);
   }
 
+  end()
   return snapshot;
 }
 

@@ -1,5 +1,6 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { Profiler, useState, useEffect, useRef, useCallback, useMemo } from "react"
+import * as perf from "./utils/perf"
 import { HermesApiClient } from "./utils/hermes-api-client"
 import type { DonePayload } from "./utils/hermes-api-client"
 import type { AvatarState } from "./components/avatar/states"
@@ -126,6 +127,8 @@ const AppInner = () => {
   // Wire API client event handlers — shared between connect() and switchSession()
   const wire = useCallback((api: HermesApiClient) => {
     api.on("start", () => {
+      perf.count("stream:start")
+      perf.mem("stream-start")
       setStreaming(true)
       setHasContent(false)
       setToolActive(false)
@@ -133,6 +136,7 @@ const AppInner = () => {
     })
 
     api.on("content", (chunk: string) => {
+      perf.count("stream:chunk")
       setHasContent(true)
       setToolActive(false)
       buf.current += chunk
@@ -182,6 +186,8 @@ const AppInner = () => {
     })
 
     api.on("done", (data: DonePayload) => {
+      perf.count("stream:done")
+      perf.mem("stream-done")
       setStreaming(false)
       setHasContent(false)
       setToolActive(false)
@@ -484,68 +490,76 @@ const AppInner = () => {
   ]
 
   const content = () => {
-    switch (tab) {
-      case 0: return <Overview />
-      case 1:
-        return (
-          <Chat messages={messages} streaming={streaming} />
-        )
-      case 2:
-        return (
-          <Context
-            description={tabs[tab].description}
-            client={client.current}
-            messages={messages}
-            sessionStart={Date.now()}
-          />
-        )
-      case 3: return <Sessions onSwitch={switchSession} />
-      case 4: return <Analytics />
-      case 5: return <Skills />
-      case 6: return <Cron />
-      case 7: return <Toolsets />
-      case 8: return <Config />
-      case 9: return <Env />
-      case 10: return <Memory />
-      default: return null
-    }
+    const inner = (() => {
+      switch (tab) {
+        case 0: return <Overview />
+        case 1:
+          return (
+            <Chat messages={messages} streaming={streaming} />
+          )
+        case 2:
+          return (
+            <Context
+              description={tabs[tab].description}
+              client={client.current}
+              messages={messages}
+              sessionStart={Date.now()}
+            />
+          )
+        case 3: return <Sessions onSwitch={switchSession} />
+        case 4: return <Analytics />
+        case 5: return <Skills />
+        case 6: return <Cron />
+        case 7: return <Toolsets />
+        case 8: return <Config />
+        case 9: return <Env />
+        case 10: return <Memory />
+        default: return null
+      }
+    })()
+    const name = tabs[tab]?.name ?? "unknown"
+    return <Profiler id={`tab:${name}`} onRender={perf.onRender}>{inner}</Profiler>
   }
 
   const { theme } = useTheme()
 
   return (
-    <box
-      width="100%"
-      height="100%"
-      flexDirection="column"
-      backgroundColor={theme.background}
-      onMouseUp={() => copySelection(renderer)}
-    >
-      <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
-      <box flexGrow={1} flexDirection="row">
-        <box flexGrow={1} flexDirection="column">
-          {content()}
-          <box flexShrink={0}>
-            <InputArea
-              value={input}
-              onChange={setInput}
-              onSubmit={send}
-              focused={!streaming}
-              ready={ready}
-              streaming={streaming}
-              model={model}
-              usage={usage}
-              cost={cost}
-              turns={msgCount}
-              popover={popover}
-              popCursor={popCursor}
-              onPopCursor={setPopCursor}
-              onPopSelect={slash}
-            />
+    <Profiler id="shell" onRender={perf.onRender}>
+      <box
+        width="100%"
+        height="100%"
+        flexDirection="column"
+        backgroundColor={theme.background}
+        onMouseUp={() => copySelection(renderer)}
+      >
+        <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
+        <box flexGrow={1} flexDirection="row">
+          <box flexGrow={1} flexDirection="column">
+            {content()}
+            <box flexShrink={0}>
+              <InputArea
+                value={input}
+                onChange={setInput}
+                onSubmit={send}
+                focused={!streaming}
+                ready={ready}
+                streaming={streaming}
+                model={model}
+                usage={usage}
+                cost={cost}
+                turns={msgCount}
+                popover={popover}
+                popCursor={popCursor}
+                onPopCursor={setPopCursor}
+                onPopSelect={slash}
+              />
+            </box>
           </box>
+          <Profiler id="sidebar" onRender={perf.onRender}>
+            <Sidebar agentState={agentState} />
+          </Profiler>
         </box>
-        <Sidebar agentState={agentState} />
       </box>
-    </box>
+    </Profiler>
   )
 }

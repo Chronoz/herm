@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { STATE_FRAMES, FPS, type AvatarState } from "./states"
 import { useTheme } from "../../theme"
+import * as perf from "../../utils/perf"
 
 /**
  * Animation loop:
@@ -24,6 +25,7 @@ export const AnimatedAvatar = ({ state = "idle" }: { state?: AvatarState }) => {
     let dir = 1
 
     const tick = () => {
+      perf.count("avatar:tick")
       const count = STATE_FRAMES[state].length
       idx += dir
       if (idx >= count - 1) dir = -1
@@ -37,11 +39,12 @@ export const AnimatedAvatar = ({ state = "idle" }: { state?: AvatarState }) => {
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [state])
 
+  const end = perf.mark("avatar:render")
   const frames = STATE_FRAMES[state]
   const idx = Math.min(frame, frames.length - 1)
   const lines = frames[idx].split("\n").filter(l => l.length > 0)
 
-  return (
+  const result = (
     <box flexDirection="column">
       {lines.map((line, i) => (
         <text key={i}>
@@ -50,4 +53,6 @@ export const AnimatedAvatar = ({ state = "idle" }: { state?: AvatarState }) => {
       ))}
     </box>
   )
+  end()
+  return result
 }
