@@ -193,6 +193,37 @@ export const report = () => {
   log(lines.join("\n"))
 }
 
+/** Return all profiling data as a plain object (for JSON API). */
+export const data = () => {
+  if (!enabled) return null
+  const m = process.memoryUsage()
+  return {
+    memory: {
+      rss: Math.round(m.rss / 1024 / 1024),
+      heap: Math.round(m.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(m.heapTotal / 1024 / 1024),
+      external: Math.round(m.external / 1024 / 1024),
+    },
+    snapshots: snapshots.map(s => ({
+      label: s.label,
+      rss: Math.round(s.rss / 1024 / 1024),
+      heap: Math.round(s.heap / 1024 / 1024),
+      external: Math.round(s.external / 1024 / 1024),
+    })),
+    timings: Object.fromEntries(
+      [...timings.entries()].sort((a, b) => b[1].total - a[1].total)
+        .map(([k, v]) => [k, { count: v.count, avg: +(v.total / v.count).toFixed(2), min: +v.min.toFixed(2), max: +v.max.toFixed(2), total: Math.round(v.total) }])
+    ),
+    renders: Object.fromEntries(
+      [...renders.entries()].sort((a, b) => b[1].count - a[1].count)
+        .map(([k, v]) => [k, { count: v.count, avg: +(v.total / v.count).toFixed(2), max: +v.max.toFixed(2), total: Math.round(v.total) }])
+    ),
+    counters: Object.fromEntries(
+      [...counters.entries()].sort((a, b) => b[1] - a[1])
+    ),
+  }
+}
+
 // ── Internal ──────────────────────────────────────────────────────────
 
 const log = (msg: string) => process.stderr.write(msg + "\n")

@@ -80,16 +80,11 @@ async function handle(req: Request): Promise<Response> {
     return json({ sent: true, message: body.message })
   }
 
-  // GET /perf — dump perf data
+  // GET /perf — return all profiling data as JSON
   if (path === "/perf") {
-    perf.report()
-    const m = process.memoryUsage()
-    return json({
-      rss: Math.round(m.rss / 1024 / 1024),
-      heap: Math.round(m.heapUsed / 1024 / 1024),
-      external: Math.round(m.external / 1024 / 1024),
-      note: "full report written to stderr",
-    })
+    const d = perf.data()
+    if (!d) return json({ error: "PERF not enabled" }, 400)
+    return json(d)
   }
 
   // GET /tabs — cycle through all tabs with a delay
