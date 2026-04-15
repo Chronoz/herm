@@ -2,6 +2,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
 import * as perf from "./utils/perf";
+import * as control from "./utils/control";
 
 // Initialize and render
 const main = async () => {
@@ -28,6 +29,9 @@ const main = async () => {
 
   // Periodic memory monitor (every 15s when PERF=1)
   perf.monitor(15_000)
+
+  // Control server for headless interaction (CONTROL=1)
+  control.start()
 };
 
 main().catch(console.error);

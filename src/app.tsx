@@ -1,6 +1,7 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
 import { Profiler, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import * as perf from "./utils/perf"
+import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { HermesApiClient } from "./utils/hermes-api-client"
 import type { DonePayload } from "./utils/hermes-api-client"
 import type { AvatarState } from "./components/avatar/states"
@@ -280,6 +281,30 @@ const AppInner = () => {
     connect()
     return () => { client.current?.disconnect() }
   }, [connect])
+
+  // Control server bridge (CONTROL=1)
+  useEffect(() => {
+    if (!controlEnabled) return
+    setBridge({
+      tab: () => tab,
+      setTab,
+      send: (msg: string) => {
+        if (!ready || streaming) return
+        setMessages(prev => [...prev, {
+          id: mid(),
+          role: "user",
+          parts: [{ type: "text", content: msg, streaming: false }],
+          timestamp: Date.now() / 1000,
+        }])
+        client.current?.send(msg)
+        setTab(1)
+      },
+      ready: () => ready,
+      streaming: () => streaming,
+      messages: () => messages.length,
+      session: () => session,
+    })
+  })
 
   // Handle slash commands
   const slash = useCallback((cmd: SlashCommand) => {
