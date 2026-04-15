@@ -19,7 +19,7 @@ import { Config } from "./tabs/Config"
 import { Cron } from "./tabs/Cron"
 import { Toolsets } from "./tabs/Toolsets"
 import { Env } from "./tabs/Env"
-import type { Message, Usage, ToolPart } from "./types/message"
+import type { Message, Usage, ToolPart, ThinkingPart } from "./types/message"
 import { mid } from "./types/message"
 import { copySelection } from "./utils/clipboard"
 import { ThemeProvider, useTheme } from "./theme"
@@ -160,26 +160,66 @@ const AppInner = () => {
       })
     })
 
-    api.on("tool", (tc: { id: string; name: string; status: string }) => {
+    api.on("tool", (tc: { id?: string; name: string; status: string; preview?: string; duration?: number }) => {
       setToolActive(tc.status === "running")
       setHasContent(false)
       setMessages(prev => {
         const last = prev[prev.length - 1]
         if (last?.role === "assistant") {
-          const existing = last.parts.find(p => p.type === "tool" && p.id === tc.id)
+          // For tool.completed from runs API — match by name (last running tool with that name)
+          if (!tc.id && tc.status !== "running") {
+            const idx = last.parts.findIndex(p => p.type === "tool" && p.name === tc.name && p.status === "running")
+            if (idx >= 0) {
+              const tool = last.parts[idx] as ToolPart
+              const parts = [...last.parts]
+              parts[idx] = {
+                ...tool,
+                status: tc.status as ToolPart["status"],
+                duration: tc.duration ?? (tool.startedAt ? Date.now() - tool.startedAt : undefined),
+              }
+              return [...prev.slice(0, -1), { ...last, parts }]
+            }
+          }
+          const existing = tc.id ? last.parts.find(p => p.type === "tool" && p.id === tc.id) : null
           if (existing) {
             const parts = last.parts.map(p =>
               p.type === "tool" && p.id === tc.id ? { ...p, status: tc.status, ...(tc.status === "done" && (p as ToolPart).startedAt ? { duration: Date.now() - (p as ToolPart).startedAt! } : {}) } as ToolPart : p
             )
             return [...prev.slice(0, -1), { ...last, parts }]
           }
-          const part: ToolPart = { type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"], startedAt: Date.now() }
+          const toolId = tc.id || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+          const part: ToolPart = { type: "tool", id: toolId, name: tc.name, args: "", status: tc.status as ToolPart["status"], startedAt: Date.now(), preview: tc.preview }
           return [...prev.slice(0, -1), { ...last, parts: [...last.parts, part] }]
         }
+        const toolId = tc.id || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
         return [...prev, {
           id: mid(),
           role: "assistant",
-          parts: [{ type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"] }],
+          parts: [{ type: "tool", id: toolId, name: tc.name, args: "", status: tc.status as ToolPart["status"], preview: tc.preview }],
+          timestamp: Date.now() / 1000,
+          model,
+        }]
+      })
+    })
+
+    // Thinking/reasoning from runs API
+    api.on("thinking", (text: string) => {
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant") {
+          const thinkingPart = last.parts.find(p => p.type === "thinking")
+          if (thinkingPart) {
+            const parts = last.parts.map(p =>
+              p.type === "thinking" ? { ...p, content: text, streaming: false } as ThinkingPart : p
+            )
+            return [...prev.slice(0, -1), { ...last, parts }]
+          }
+          return [...prev.slice(0, -1), { ...last, parts: [{ type: "thinking" as const, content: text, streaming: false }, ...last.parts] }]
+        }
+        return [...prev, {
+          id: mid(),
+          role: "assistant" as const,
+          parts: [{ type: "thinking" as const, content: text, streaming: false }],
           timestamp: Date.now() / 1000,
           model,
         }]
@@ -282,14 +322,16 @@ const AppInner = () => {
     return () => { client.current?.disconnect() }
   }, [connect])
 
-  // Control server bridge (CONTROL=1)
+  // Control server bridge (CONTROL=1) — uses refs to avoid stale closures
+  const state = useRef({ tab, ready, streaming, messages, session })
+  state.current = { tab, ready, streaming, messages, session }
   useEffect(() => {
     if (!controlEnabled) return
     setBridge({
-      tab: () => tab,
+      tab: () => state.current.tab,
       setTab,
       send: (msg: string) => {
-        if (!ready || streaming) return
+        if (!state.current.ready || state.current.streaming) return
         setMessages(prev => [...prev, {
           id: mid(),
           role: "user",
@@ -299,12 +341,12 @@ const AppInner = () => {
         client.current?.send(msg)
         setTab(1)
       },
-      ready: () => ready,
-      streaming: () => streaming,
-      messages: () => messages.length,
-      session: () => session,
+      ready: () => state.current.ready,
+      streaming: () => state.current.streaming,
+      messages: () => state.current.messages.length,
+      session: () => state.current.session,
     })
-  })
+  }, [])
 
   // Handle slash commands
   const slash = useCallback((cmd: SlashCommand) => {
@@ -501,7 +543,7 @@ const AppInner = () => {
     }
   })
 
-  const tabs = [
+  const tabs = useMemo(() => [
     { name: "Overview", description: "Dashboard" },
     { name: "Chat", description: "Main chat interface" },
     { name: "Context", description: "Context and session info" },
@@ -513,7 +555,7 @@ const AppInner = () => {
     { name: "Config", description: "Configuration editor" },
     { name: "Env", description: "API keys & env variables" },
     { name: "Memory", description: "Agent memory browser" },
-  ]
+  ], [])
 
   const content = () => {
     const inner = (() => {

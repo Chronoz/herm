@@ -82,7 +82,7 @@ export const ThemeProvider = ({
 
   const syntaxStyle = useMemo(() => syntax(resolved), [resolved]);
 
-  const value: ThemeContext = {
+  const value = useMemo<ThemeContext>(() => ({
     theme: resolved,
     syntaxStyle,
     name: active,
@@ -90,7 +90,7 @@ export const ThemeProvider = ({
     set,
     names,
     has,
-  };
+  }), [resolved, syntaxStyle, active, mode, set, names, has]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 };
