@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { ToolPart } from "../../types/message"
 import { useTheme } from "../../theme"
 
@@ -80,6 +80,20 @@ export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
   const spin = running ? "◌ " : failed ? "✗ " : "✓ "
   const arrow = expanded ? "▾" : "▸"
 
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!running || !tool.startedAt) return
+    setElapsed(Math.floor((Date.now() - tool.startedAt) / 1000))
+    const tid = setInterval(() => setElapsed(Math.floor((Date.now() - tool.startedAt!) / 1000)), 1000)
+    return () => clearInterval(tid)
+  }, [running, tool.startedAt])
+
+  const time = running && tool.startedAt && elapsed > 0
+    ? ` ${elapsed}s`
+    : tool.status === "done" && tool.duration && tool.duration > 1000
+      ? ` ${(tool.duration / 1000).toFixed(1)}s`
+      : ""
+
   return (
     <box
       flexDirection="column"
@@ -92,6 +106,7 @@ export const ToolCallItem = ({ tool }: { tool: ToolPart }) => {
           <span fg={theme.textMuted}>{icon(tool.name)} </span>
           <span fg={theme.text}>{label(tool.name)}</span>
           {sum ? <span fg={theme.textMuted}> — {sum.length > 70 ? sum.slice(0, 70) + "…" : sum}</span> : null}
+          {time ? <span fg={theme.textMuted}>{time}</span> : null}
           {tool.args ? <span fg={theme.borderSubtle}> {arrow}</span> : null}
         </text>
       </box>

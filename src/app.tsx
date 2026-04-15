@@ -168,11 +168,11 @@ const AppInner = () => {
           const existing = last.parts.find(p => p.type === "tool" && p.id === tc.id)
           if (existing) {
             const parts = last.parts.map(p =>
-              p.type === "tool" && p.id === tc.id ? { ...p, status: tc.status } as ToolPart : p
+              p.type === "tool" && p.id === tc.id ? { ...p, status: tc.status, ...(tc.status === "done" && (p as ToolPart).startedAt ? { duration: Date.now() - (p as ToolPart).startedAt! } : {}) } as ToolPart : p
             )
             return [...prev.slice(0, -1), { ...last, parts }]
           }
-          const part: ToolPart = { type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"] }
+          const part: ToolPart = { type: "tool", id: tc.id, name: tc.name, args: "", status: tc.status as ToolPart["status"], startedAt: Date.now() }
           return [...prev.slice(0, -1), { ...last, parts: [...last.parts, part] }]
         }
         return [...prev, {

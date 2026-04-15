@@ -12,6 +12,8 @@ export type ToolPart = {
   name: string
   args: string
   status: "running" | "done" | "error"
+  startedAt?: number
+  duration?: number
 }
 
 export type Part = TextPart | ToolPart
