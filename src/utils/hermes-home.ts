@@ -684,7 +684,7 @@ export function deleteSession(sid: string): boolean {
   try {
     const db = new Database(hermesPath("state.db"));
     db.run("DELETE FROM messages WHERE session_id = ?", [sid]);
-    db.run("DELETE FROM sessions WHERE session_id = ?", [sid]);
+    db.run("DELETE FROM sessions WHERE id = ?", [sid]);
     db.close();
     return true;
   } catch {
