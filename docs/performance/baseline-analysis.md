@@ -122,3 +122,38 @@ The avatar animation is the primary driver of the render storm. Each tick propag
 | RSS steady state | 338MB | <200MB | Reduce render objects, pause polling |
 | `readHermesHome` | 122ms avg | <50ms or async | Cache, pause when inactive |
 | CPU in reconciliation | ~47% | <10% | All of the above |
+
+---
+
+## Post-Optimization Results (2026-04-15)
+
+Automated test via HTTP control server (`CONTROL=1`). Tab cycling + message send + 3s idle.
+
+### What was implemented
+- React.memo on 19 components (Sidebar, AnimatedAvatar, all tabs, chat components)
+- 16ms SSE microbatch in hermes-api-client
+- targetFps:60 + gatherStats:false on renderer
+- Inactive tab polling pause (visible prop guard)
+- 5s TTL data cache deduplicating readHermesHome across tabs
+- 200 message cap per session
+
+### Results
+
+| Metric | Baseline | After | Change |
+|--------|----------|-------|--------|
+| Sidebar total CPU | 4,565ms | 103ms | **97.7% ↓** |
+| Shell total CPU | 18,682ms | 2,193ms | **88.3% ↓** |
+| Tab render cost (avg) | 0.01-1.95ms | 0.00ms | memo bailout |
+| RSS (idle after tab cycle) | 338MB | 206MB | **39% ↓** |
+| readHermesHome calls | 3 in 30s | 2 (cache hit) | cache dedup |
+
+### Known floor: shell render count
+
+`useKeyboard` from `@opentui/react` forces its host to re-render on every OpenTUI event
+(mouse, key). Since it lives in AppInner, every event triggers shell reconciliation.
+Attempted extraction to an isolated leaf component — did not work because the hook's
+subscription mechanism forces the containing component tree to re-render regardless.
+This is a framework constraint in OpenTUI React bindings.
+
+At 0.02ms avg per shell render, the ~2s total CPU is the floor with current OpenTUI React.
+All child renders are contained by memo to near-zero cost.
