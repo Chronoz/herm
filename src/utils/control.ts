@@ -39,9 +39,15 @@ export type Bridge = {
 }
 
 let bridge: Bridge | null = null
+let pendingTab: number | null = null
 
 export function setBridge(b: Bridge) {
   bridge = b
+}
+
+function currentTab(): number {
+  if (pendingTab !== null) return pendingTab
+  return bridge?.tab() ?? 0
 }
 
 const json = (data: unknown, status = 200) =>
@@ -213,7 +219,9 @@ async function handle(req: Request): Promise<Response> {
   // GET /status — app state snapshot
   if (path === "/status") {
     const m = process.memoryUsage()
-    const tab = bridge.tab()
+    const tab = currentTab()
+    // Clear pending tab once React has had time to commit
+    pendingTab = null
     return json({
       tab,
       tabName: TAB_NAMES[tab] ?? "unknown",
@@ -227,13 +235,29 @@ async function handle(req: Request): Promise<Response> {
     })
   }
 
-  // GET /tab/:n — switch tab
+  // GET /tab/:n — switch tab by injecting Ctrl+Right/Left key events
   const tabMatch = path.match(/^\/tab\/(\d+)$/)
   if (tabMatch) {
     const n = Number(tabMatch[1])
     if (n < 0 || n > 10) return json({ error: "tab 0-10" }, 400)
-    // Queue via queueMicrotask to ensure React processes the update
-    queueMicrotask(() => bridge!.setTab(n))
+
+    const renderer = bridge.renderer()
+    if (renderer) {
+      // Inject Ctrl+Left/Right keys to navigate to target tab
+      const cur = bridge.tab()
+      const diff = n - cur
+      if (diff !== 0) {
+        const keyName = diff > 0 ? "right" : "left"
+        const steps = Math.abs(diff)
+        for (let i = 0; i < steps; i++) {
+          injectKey(renderer, makeKey({ name: keyName, ctrl: true }))
+        }
+      }
+    } else {
+      // Fallback to direct setState (may not work reliably)
+      bridge.setTab(n)
+    }
+    pendingTab = n
     return json({ tab: n, tabName: TAB_NAMES[n] })
   }
 
@@ -268,7 +292,7 @@ async function handle(req: Request): Promise<Response> {
     if (!renderer) return json({ error: "renderer not available" }, 503)
 
     const safe = body.safe !== false // default true
-    const tab = bridge.tab()
+    const tab = currentTab()
 
     if (safe && isDangerous(tab, body.name, !!body.ctrl)) {
       return json({
@@ -306,12 +330,12 @@ async function handle(req: Request): Promise<Response> {
     if (!renderer) return json({ error: "renderer not available" }, 503)
 
     const safe = body.safe !== false
-    const tab = bridge.tab()
+    const tab = currentTab()
     const delay = body.delay ?? 0
     const results: Array<{ key: string; injected: boolean; handled: boolean; blocked?: boolean }> = []
 
     for (const k of body.keys) {
-      if (safe && isDangerous(tab, k.name, !!k.ctrl)) {
+      if (safe && isDangerous(currentTab(), k.name, !!k.ctrl)) {
         results.push({ key: k.name, injected: false, handled: false, blocked: true })
         continue
       }
@@ -341,7 +365,7 @@ async function handle(req: Request): Promise<Response> {
     if (!renderer) return json({ error: "renderer not available" }, 503)
 
     const safe = body.safe !== false
-    const tab = bridge.tab()
+    const tab = currentTab()
     let count = 0
 
     for (const ch of body.text) {
@@ -356,12 +380,18 @@ async function handle(req: Request): Promise<Response> {
 
   // GET /focus — focus tree (focusable elements and their state)
   if (path === "/focus") {
-    const renderer = bridge.renderer() as { root?: unknown } | null
-    if (!renderer?.root) return json({ error: "no renderer root" }, 503)
-    const counts = countNodes(renderer.root)
-    const tree = buildFocusTree(renderer.root)
-    const focused = findFocused(renderer.root)
-    return json({ focused, counts, tree })
+    const r = bridge.renderer() as {
+      root?: unknown
+      currentFocusedRenderable?: AnyNode | null
+    } | null
+    if (!r?.root) return json({ error: "no renderer root" }, 503)
+    const counts = countNodes(r.root)
+    const tree = buildFocusTree(r.root)
+    const focused = findFocused(r.root)
+    const currentFocus = r.currentFocusedRenderable
+      ? getNodeType(r.currentFocusedRenderable)
+      : null
+    return json({ focused, currentFocus, counts, tree })
   }
 
   // GET /perf — return all profiling data as JSON
