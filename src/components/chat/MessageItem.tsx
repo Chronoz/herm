@@ -1,5 +1,5 @@
 import { useState, memo } from "react"
-import type { Message, TextPart } from "../../types/message"
+import type { Message, TextPart, ThinkingPart } from "../../types/message"
 import { ToolCallItem } from "./ToolCallItem"
 import { useTheme } from "../../theme"
 
@@ -84,6 +84,7 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
   const parts = message.parts
   const content = extract(message)
   const toolParts = parts.filter(p => p.type === "tool")
+  const thinkingParts = parts.filter((p): p is ThinkingPart => p.type === "thinking")
   const isStreaming = streaming && parts.some(p => p.type === "text" && p.streaming)
   const hasError = !!message.error
   const borderColor = hasError ? theme.error : theme.secondary
@@ -98,6 +99,13 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
           {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
         </text>
       </box>
+
+      {/* Thinking/reasoning — rendered first, OpenCode style */}
+      {thinkingParts.map((p, i) => (
+        <box key={`thinking-${i}`} paddingLeft={2} marginTop={1} border={["left"]} borderColor={theme.borderSubtle}>
+          <text fg={theme.textMuted}>{"💭 Thinking: "}{p.content}</text>
+        </box>
+      ))}
 
       {/* Tool calls — rendered before text like OpenCode */}
       {toolParts.map((p, i) =>

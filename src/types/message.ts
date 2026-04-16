@@ -14,9 +14,16 @@ export type ToolPart = {
   status: "running" | "done" | "error"
   startedAt?: number
   duration?: number
+  preview?: string
 }
 
-export type Part = TextPart | ToolPart
+export type ThinkingPart = {
+  type: "thinking"
+  content: string
+  streaming: boolean
+}
+
+export type Part = TextPart | ToolPart | ThinkingPart
 
 export type Usage = {
   input: number

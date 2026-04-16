@@ -53,6 +53,13 @@ export class HermesApiClient extends EventEmitter {
   private timer?: ReturnType<typeof setTimeout>
   private lastFlush = 0
 
+  // Runs API feature detection: null = untested, true/false = known
+  private runsAvailable: boolean | null = null
+
+  // Track tool names to IDs for runs API (tool.completed only sends name, not id)
+  private toolIds: Map<string, string> = new Map()
+  private toolCounter = 0
+
   constructor(cfg: ApiConfig = {}) {
     super()
     this.url = cfg.url || "http://localhost:8642/v1"
@@ -100,6 +107,25 @@ export class HermesApiClient extends EventEmitter {
   }
 
   async send(content: string): Promise<void> {
+    // Feature-detect runs API on first call
+    if (this.runsAvailable === null) {
+      try {
+        await this.sendViaRuns(content)
+        this.runsAvailable = true
+        return
+      } catch (err: unknown) {
+        const is404 = err instanceof Error && err.message.includes("404")
+        if (is404) {
+          this.runsAvailable = false
+          // Fall through to chat completions
+        } else {
+          throw err
+        }
+      }
+    }
+
+    if (this.runsAvailable) return this.sendViaRuns(content)
+
     this.abort = new AbortController()
     this.pending.clear()
     this.start = Date.now()
@@ -217,6 +243,157 @@ export class HermesApiClient extends EventEmitter {
       }
       const payload = { reason: choice.finish_reason, usage, duration, tools: collected } satisfies DonePayload
       this.schedule(() => this.emit("done", payload))
+    }
+  }
+
+  private async sendViaRuns(content: string): Promise<void> {
+    this.abort = new AbortController()
+    this.start = Date.now()
+    this.toolIds.clear()
+    this.toolCounter = 0
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    }
+    if (this.key) headers["Authorization"] = `Bearer ${this.key}`
+
+    // 1. Start the run
+    const res = await fetch(`${this.url}/runs`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ input: content, session_id: this.session }),
+      signal: this.abort.signal,
+    })
+
+    if (res.status === 404) throw new Error("404")
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(`Runs API ${res.status}: ${body}`)
+    }
+
+    const { run_id } = await res.json() as { run_id: string }
+
+    // 2. Subscribe to SSE events
+    const sse = await fetch(`${this.url}/runs/${run_id}/events`, {
+      headers: { ...headers, Accept: "text/event-stream" },
+      signal: this.abort.signal,
+    })
+
+    if (!sse.ok) throw new Error(`Runs SSE ${sse.status}`)
+
+    const reader = sse.body?.getReader()
+    if (!reader) throw new Error("No SSE body")
+
+    this.emit("start")
+
+    const decoder = new TextDecoder()
+    let buf = ""
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split("\n")
+        buf = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.startsWith(": ")) continue // keepalive / comments
+          if (!line.startsWith("data: ")) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+
+          try {
+            const evt = JSON.parse(raw) as {
+              event: string
+              run_id: string
+              timestamp: number
+              delta?: string
+              tool?: string
+              preview?: string
+              duration?: number
+              error?: boolean | string
+              output?: string
+              text?: string
+              usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
+            }
+            this.handleRunEvent(evt)
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        this.emit("aborted")
+      } else {
+        this.emit("error", err)
+      }
+    } finally {
+      this.flush()
+      this.abort = undefined
+      this.toolIds.clear()
+    }
+  }
+
+  private handleRunEvent(evt: {
+    event: string
+    delta?: string
+    tool?: string
+    preview?: string
+    duration?: number
+    error?: boolean | string
+    output?: string
+    text?: string
+    usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
+  }) {
+    switch (evt.event) {
+      case "message.delta":
+        if (evt.delta) {
+          const chunk = evt.delta
+          this.schedule(() => this.emit("content", chunk))
+        }
+        break
+
+      case "tool.started": {
+        this.toolCounter++
+        const id = `run-tool-${this.toolCounter}`
+        const name = evt.tool || "unknown"
+        this.toolIds.set(name, id)
+        this.schedule(() => this.emit("tool", {
+          id, name, status: "running", preview: evt.preview,
+        }))
+        break
+      }
+
+      case "tool.completed": {
+        const name = evt.tool || "unknown"
+        const id = this.toolIds.get(name) || `run-tool-${name}`
+        const status = evt.error ? "error" : "done"
+        const duration = evt.duration ? evt.duration * 1000 : undefined // seconds → ms
+        this.schedule(() => this.emit("tool", { id, name, status, duration }))
+        break
+      }
+
+      case "reasoning.available":
+        if (evt.text) {
+          const text = evt.text
+          this.schedule(() => this.emit("thinking", text))
+        }
+        break
+
+      case "run.completed": {
+        const usage: Usage | undefined = evt.usage
+          ? { input: evt.usage.input_tokens, output: evt.usage.output_tokens, total: evt.usage.total_tokens }
+          : undefined
+        const duration = Date.now() - this.start
+        const payload: DonePayload = { reason: "stop", usage, duration, tools: [] }
+        this.schedule(() => this.emit("done", payload))
+        break
+      }
+
+      case "run.failed":
+        this.schedule(() => this.emit("error", new Error(String(evt.error || "Run failed"))))
+        break
     }
   }
 

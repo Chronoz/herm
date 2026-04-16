@@ -76,7 +76,7 @@ export const ToolCallItem = memo(({ tool }: { tool: ToolPart }) => {
   const running = tool.status === "running"
   const failed = tool.status === "error"
   const color = failed ? theme.error : running ? theme.warning : theme.success
-  const sum = summary(tool.name, tool.args)
+  const sum = summary(tool.name, tool.args) || tool.preview || ""
   const spin = running ? "◌ " : failed ? "✗ " : "✓ "
   const arrow = expanded ? "▾" : "▸"
 
