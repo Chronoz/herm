@@ -122,6 +122,15 @@ const DetailPanel = memo((props: { session: SessionRow }) => {
           <strong>{s.title ?? "Untitled"}</strong>
         </span>
       </text>
+      {s.lastMessage && s.lastMessage !== s.title ? (
+        <>
+          <text> </text>
+          <text>
+            <span fg={theme.textMuted}>{"Last msg     "}</span>
+            <span fg={theme.text}>{` ${s.lastMessage}`}</span>
+          </text>
+        </>
+      ) : null}
       <text> </text>
       {rows.map((row) => (
         <text key={row.label}>

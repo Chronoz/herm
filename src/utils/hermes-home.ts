@@ -133,6 +133,7 @@ export interface SessionRow {
   reasoning_tokens: number;
   estimated_cost_usd: number | null;
   title: string | null;
+  lastMessage: string | null;
   parent_session_id: string | null;
 }
 
@@ -339,10 +340,13 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
                 s.input_tokens, s.output_tokens,
                 s.cache_read_tokens, s.cache_write_tokens, s.reasoning_tokens,
                 s.estimated_cost_usd, s.parent_session_id,
-                COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title
+                COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title,
+                SUBSTR(ml.content, 1, 120) AS lastMessage
          FROM sessions s
          LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
            AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
+         LEFT JOIN messages ml ON ml.session_id = s.id AND ml.role = 'user'
+           AND ml.id = (SELECT MAX(m3.id) FROM messages m3 WHERE m3.session_id = s.id AND m3.role = 'user')
          ORDER BY s.started_at DESC
          LIMIT ?`,
       )
@@ -362,6 +366,7 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       reasoning_tokens: number;
       estimated_cost_usd: number | null;
       title: string | null;
+      lastMessage: string | null;
       parent_session_id: string | null;
     }>;
     db.close();
@@ -382,6 +387,7 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       reasoning_tokens: row.reasoning_tokens,
       estimated_cost_usd: row.estimated_cost_usd,
       title: row.title,
+      lastMessage: row.lastMessage,
       parent_session_id: row.parent_session_id,
     }));
     end()
