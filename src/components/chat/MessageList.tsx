@@ -55,6 +55,7 @@ export const MessageList = memo(({ messages, streaming }: { messages: Message[];
       flexGrow={1}
       scrollY
       stickyScroll
+      stickyStart="bottom"
       style={{
         viewportOptions: { backgroundColor: theme.background },
         scrollbarOptions: {
