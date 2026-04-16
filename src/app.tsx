@@ -31,9 +31,10 @@ import { openThemePicker } from "./dialogs/theme-picker"
 import type { SlashCommand } from "./commands/slash"
 import { filter as filterSlash } from "./commands/slash"
 import { InputArea } from "./components/chat/InputArea"
+import * as preferences from "./utils/preferences"
 
-export const App = () => (
-  <ThemeProvider>
+export const App = ({ initialTheme }: { initialTheme?: string }) => (
+  <ThemeProvider initial={initialTheme}>
     <ToastProvider>
       <DialogProvider>
         <CommandProvider>
@@ -296,6 +297,7 @@ const AppInner = () => {
 
     api.on("connected", () => {
       setReady(true)
+      preferences.set("lastSessionId", session)
       setMessages(prev => [...prev, {
         id: mid(),
         role: "system",

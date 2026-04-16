@@ -9,16 +9,19 @@ import { createRoot } from "@opentui/react";
 import { App } from "./app";
 import * as perf from "./utils/perf";
 import * as control from "./utils/control";
+import * as preferences from "./utils/preferences";
 
 // Initialize and render
 const main = async () => {
   perf.mem("pre-renderer")
 
+  const prefs = preferences.load()
+
   const end = perf.mark("renderer-init")
   const renderer = await createCliRenderer({
     exitOnCtrlC: false, // We handle Ctrl+C ourselves
-    useMouse: true, // Enable mouse for text selection & copy-on-select
-    targetFps: 30,
+    useMouse: prefs.mouse ?? true,
+    targetFps: prefs.targetFps ?? 30,
     gatherStats: false,
   });
   end()
@@ -28,7 +31,7 @@ const main = async () => {
   const root = createRoot(renderer);
 
   const endRender = perf.mark("first-render")
-  root.render(<App />);
+  root.render(<App initialTheme={prefs.theme} />);
   endRender()
 
   perf.mem("post-first-render")

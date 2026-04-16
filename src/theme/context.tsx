@@ -17,6 +17,7 @@ import type { Theme, ThemeJson } from "./types";
 import { resolveTheme } from "./resolve";
 import { DEFAULT_THEMES, DEFAULT_THEME } from "./builtin";
 import { syntax } from "./syntax";
+import * as preferences from "../utils/preferences";
 
 interface ThemeContext {
   /** Resolved theme — all RGBA values ready for JSX props */
@@ -70,6 +71,7 @@ export const ThemeProvider = ({
     (name: string) => {
       if (!themes[name]) return false;
       setActive(name);
+      preferences.set("theme", name);
       return true;
     },
     [themes],
