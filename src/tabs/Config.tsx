@@ -99,7 +99,7 @@ const getNested = (obj: Record<string, unknown>, path: string): unknown => {
 
 // ─── Field Row ───────────────────────────────────────────────────────
 
-const FieldRow = (props: {
+const FieldRow = memo((props: {
   field: Field;
   active: boolean;
   changed: boolean;
@@ -143,7 +143,7 @@ const FieldRow = (props: {
       </text>
     </box>
   );
-};
+});
 
 // ─── Main Component ──────────────────────────────────────────────────
 

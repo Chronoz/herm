@@ -22,7 +22,7 @@ const ago = (iso?: string): string => {
 
 // ─── Job Row ─────────────────────────────────────────────────────────
 
-const JobRow = (props: {
+const JobRow = memo((props: {
   job: CronJob;
   selected: boolean;
   onSelect: () => void;
@@ -51,11 +51,11 @@ const JobRow = (props: {
       </text>
     </box>
   );
-};
+});
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 
-const DetailPanel = (props: { job: CronJob }) => {
+const DetailPanel = memo((props: { job: CronJob }) => {
   const theme = useTheme().theme;
   const j = props.job;
 
@@ -82,7 +82,7 @@ const DetailPanel = (props: { job: CronJob }) => {
       <text wrapMode="word"><span fg={theme.text}>{j.prompt}</span></text>
     </box>
   );
-};
+});
 
 // ─── Confirm Dialog ──────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@ import { useTheme } from "../theme";
 
 // ─── Toolset Row ──────────────────────────────────────────────────────
 
-const ToolsetRow = (props: {
+const ToolsetRow = memo((props: {
   toolset: ToolsetInfo;
   selected: boolean;
   expanded: boolean;
@@ -60,11 +60,11 @@ const ToolsetRow = (props: {
       ) : null}
     </box>
   );
-};
+});
 
 // ─── Detail Panel ─────────────────────────────────────────────────────
 
-const DetailPanel = (props: { toolset: ToolsetInfo }) => {
+const DetailPanel = memo((props: { toolset: ToolsetInfo }) => {
   const theme = useTheme().theme;
   const ts = props.toolset;
 
@@ -119,11 +119,11 @@ const DetailPanel = (props: { toolset: ToolsetInfo }) => {
       ))}
     </box>
   );
-};
+});
 
 // ─── Empty State ──────────────────────────────────────────────────────
 
-const EmptyState = (props: { searching: boolean }) => {
+const EmptyState = memo((props: { searching: boolean }) => {
   const theme = useTheme().theme;
   return (
     <box flexGrow={1} padding={2}>
@@ -136,7 +136,7 @@ const EmptyState = (props: { searching: boolean }) => {
       </text>
     </box>
   );
-};
+});
 
 // ─── Main Component ───────────────────────────────────────────────────
 

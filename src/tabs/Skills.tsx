@@ -12,7 +12,7 @@ const truncate = (s: string, max: number): string => {
 
 // ─── Skill Row ───────────────────────────────────────────────────────
 
-const SkillRow = (props: {
+const SkillRow = memo((props: {
   skill: SkillInfo;
   selected: boolean;
   onSelect: () => void;
@@ -45,11 +45,11 @@ const SkillRow = (props: {
       </text>
     </box>
   );
-};
+});
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 
-const DetailPanel = (props: { skill: SkillInfo }) => {
+const DetailPanel = memo((props: { skill: SkillInfo }) => {
   const theme = useTheme().theme;
   const s = props.skill;
 
@@ -100,11 +100,11 @@ const DetailPanel = (props: { skill: SkillInfo }) => {
       )}
     </box>
   );
-};
+});
 
 // ─── Empty State ─────────────────────────────────────────────────────
 
-const EmptyState = (props: { searching: boolean }) => {
+const EmptyState = memo((props: { searching: boolean }) => {
   const theme = useTheme().theme;
   return (
     <box flexGrow={1} padding={2}>
@@ -117,7 +117,7 @@ const EmptyState = (props: { searching: boolean }) => {
       </text>
     </box>
   );
-};
+});
 
 // ─── Main Component ──────────────────────────────────────────────────
 

@@ -106,7 +106,7 @@ const ConfirmDialog = (props: {
 
 // ─── Var Row ──────────────────────────────────────────────────────
 
-const VarRow = (props: {
+const VarRow = memo((props: {
   name: string;
   value: string | undefined;
   selected: boolean;
@@ -136,7 +136,7 @@ const VarRow = (props: {
       </text>
     </box>
   );
-};
+});
 
 // ─── Main Component ───────────────────────────────────────────────
 

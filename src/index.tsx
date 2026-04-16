@@ -1,3 +1,9 @@
+// NOTE: CPU usage at idle (~40-80% of one core) comes from OpenTUI's render loop,
+// not React's scheduler. The TUI framework renders frames at targetFps (30) to the
+// terminal, which is an inherent cost of continuous TUI rendering. The scheduler
+// override (MessageChannel/setImmediate = undefined) was a red herring — verified
+// via per-thread profiling that the main JS thread drives the render loop.
+
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
@@ -12,7 +18,7 @@ const main = async () => {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false, // We handle Ctrl+C ourselves
     useMouse: true, // Enable mouse for text selection & copy-on-select
-    targetFps: 60,
+    targetFps: 30,
     gatherStats: false,
   });
   end()

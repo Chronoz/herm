@@ -37,7 +37,7 @@ export const MessageItem = memo(({ message, streaming }: { message: Message; str
   return <AssistantMessage message={message} streaming={streaming} />
 })
 
-const SystemMessage = ({ message }: { message: Message }) => {
+const SystemMessage = memo(({ message }: { message: Message }) => {
   const { theme } = useTheme()
   const content = extract(message)
 
@@ -49,9 +49,9 @@ const SystemMessage = ({ message }: { message: Message }) => {
       </text>
     </box>
   )
-}
+})
 
-const UserMessage = ({ message }: { message: Message }) => {
+const UserMessage = memo(({ message }: { message: Message }) => {
   const { theme } = useTheme()
   const [hover, setHover] = useState(false)
   const content = extract(message)
@@ -77,9 +77,9 @@ const UserMessage = ({ message }: { message: Message }) => {
       </box>
     </box>
   )
-}
+})
 
-const AssistantMessage = ({ message, streaming }: { message: Message; streaming: boolean }) => {
+const AssistantMessage = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
   const { theme, syntaxStyle } = useTheme()
   const parts = message.parts
   const content = extract(message)
@@ -138,4 +138,4 @@ const AssistantMessage = ({ message, streaming }: { message: Message; streaming:
       ) : null}
     </box>
   )
-}
+})

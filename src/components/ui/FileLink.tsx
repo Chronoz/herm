@@ -5,7 +5,7 @@
  * in the OS default handler when clicked. Underlines on hover.
  */
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import { TextAttributes } from "@opentui/core";
 import type { Source } from "../../utils/hermes-home";
 import { openFile } from "../../utils/open-file";
@@ -16,7 +16,7 @@ interface FileLinkProps {
   children?: string;
 }
 
-export const FileLink = ({ source, children }: FileLinkProps) => {
+export const FileLink = memo(({ source, children }: FileLinkProps) => {
   const { theme } = useTheme();
   const [hovered, setHovered] = useState(false);
 
@@ -35,4 +35,4 @@ export const FileLink = ({ source, children }: FileLinkProps) => {
       </text>
     </box>
   );
-};
+});

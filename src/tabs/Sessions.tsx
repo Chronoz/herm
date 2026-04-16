@@ -76,7 +76,7 @@ const timeAgo = (ts: number): string => {
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 
-const DetailPanel = (props: { session: SessionRow }) => {
+const DetailPanel = memo((props: { session: SessionRow }) => {
   const theme = useTheme().theme;
   const s = props.session;
 
@@ -131,11 +131,11 @@ const DetailPanel = (props: { session: SessionRow }) => {
       ))}
     </box>
   );
-};
+});
 
 // ─── Search Detail Panel ─────────────────────────────────────────────
 
-const SearchDetailPanel = (props: { result: SearchResult }) => {
+const SearchDetailPanel = memo((props: { result: SearchResult }) => {
   const theme = useTheme().theme;
   const r = props.result;
 
@@ -210,11 +210,11 @@ const SearchDetailPanel = (props: { result: SearchResult }) => {
       </text>
     </box>
   );
-};
+});
 
 // ─── Empty State ─────────────────────────────────────────────────────
 
-const EmptyState = (props: { searching: boolean }) => {
+const EmptyState = memo((props: { searching: boolean }) => {
   const theme = useTheme().theme;
   return (
     <box flexGrow={1} padding={2}>
@@ -227,7 +227,7 @@ const EmptyState = (props: { searching: boolean }) => {
       </text>
     </box>
   );
-};
+});
 
 // ─── Confirm Delete Dialog ───────────────────────────────────────────
 
@@ -292,7 +292,7 @@ const ConfirmDelete = (props: {
 
 // ─── Session Row ─────────────────────────────────────────────────────
 
-const SessionItem = (props: {
+const SessionItem = memo((props: {
   session: SessionRow;
   selected: boolean;
   onSelect: () => void;
@@ -349,11 +349,11 @@ const SessionItem = (props: {
       </box>
     </box>
   );
-};
+});
 
 // ─── Search Result Row ───────────────────────────────────────────────
 
-const SearchItem = (props: {
+const SearchItem = memo((props: {
   result: SearchResult;
   selected: boolean;
   onSelect: () => void;
@@ -387,7 +387,7 @@ const SearchItem = (props: {
       </text>
     </box>
   );
-};
+});
 
 // ─── Main Component ──────────────────────────────────────────────────
 

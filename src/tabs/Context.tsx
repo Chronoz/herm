@@ -121,7 +121,7 @@ const status = (pct: number, theme: Theme) => {
 // ─── Detail Panels ──────────────────────────────────────────────────
 
 /** Generic section detail — shows raw content */
-const SectionPanel = ({ seg, theme }: { seg: Segment; theme: Theme }) => {
+const SectionPanel = memo(({ seg, theme }: { seg: Segment; theme: Theme }) => {
   const sec = seg.section
   if (!sec) return null
   const lines = sec.text.split("\n").filter(l => l.trim())
@@ -138,10 +138,10 @@ const SectionPanel = ({ seg, theme }: { seg: Segment; theme: Theme }) => {
       {lines.length > 80 ? <text fg={theme.textMuted}>... {lines.length - 80} more lines</text> : null}
     </scrollbox>
   )
-}
+})
 
 /** Memory detail with capacity bar + entries */
-const MemoryPanel = ({ seg, theme, label, chars, limit, pct, entries, source }: {
+const MemoryPanel = memo(({ seg, theme, label, chars, limit, pct, entries, source }: {
   seg: Segment; theme: Theme; label: string
   chars: number; limit: number; pct: number; entries: string[]
   source?: { file: string; relative: string; label: string }
@@ -161,10 +161,10 @@ const MemoryPanel = ({ seg, theme, label, chars, limit, pct, entries, source }: 
     <text>{entries.length} entries:</text>
     {entries.map((e, i) => <text key={i} fg={theme.text}>· {e}</text>)}
   </scrollbox>
-)
+))
 
 /** Skills detail with category breakdown */
-const SkillsPanel = ({ seg, theme }: { seg: Segment; theme: Theme }) => {
+const SkillsPanel = memo(({ seg, theme }: { seg: Segment; theme: Theme }) => {
   const sec = seg.section
   if (!sec) return null
   const cats: Record<string, number> = {}
@@ -194,10 +194,10 @@ const SkillsPanel = ({ seg, theme }: { seg: Segment; theme: Theme }) => {
       {sorted.map(([cat, n]) => <text key={cat} fg={theme.text}>· {cat} ({n})</text>)}
     </scrollbox>
   )
-}
+})
 
 /** Tools detail */
-const ToolsPanel = ({ seg, theme, tools }: {
+const ToolsPanel = memo(({ seg, theme, tools }: {
   seg: Segment; theme: Theme; tools: ReadonlyArray<ToolInfo>
 }) => {
   const sorted = [...tools].sort((a, b) =>
@@ -218,10 +218,10 @@ const ToolsPanel = ({ seg, theme, tools }: {
       ))}
     </scrollbox>
   )
-}
+})
 
 /** Conversation detail */
-const ConvPanel = ({ seg, theme, messages, output }: {
+const ConvPanel = memo(({ seg, theme, messages, output }: {
   seg: Segment; theme: Theme; messages: Message[]; output: number
 }) => {
   const user = messages.filter(m => m.role === "user")
@@ -252,10 +252,10 @@ const ConvPanel = ({ seg, theme, messages, output }: {
       ) : <text fg={theme.warning}>No messages yet</text>}
     </scrollbox>
   )
-}
+})
 
 /** Free space detail */
-const FreePanel = ({ seg, theme, ctxLen, home }: {
+const FreePanel = memo(({ seg, theme, ctxLen, home }: {
   seg: Segment; theme: Theme; ctxLen: number; home: HermesHomeSnapshot | null
 }) => {
   const used = ctxLen - seg.tokens
@@ -281,7 +281,7 @@ const FreePanel = ({ seg, theme, ctxLen, home }: {
       ) : null}
     </scrollbox>
   )
-}
+})
 
 // ─── Main Component ──────────────────────────────────────────────────
 
@@ -343,7 +343,7 @@ export const Context = memo(({ client, messages = [], visible = true }: Props) =
 
   // Parse + build
   const sections = useMemo(() => parse(home?.systemPrompt?.text ?? ""), [home?.systemPrompt?.text])
-  const convTok = est(messages.filter(m => m.role !== "system").map(m => msgText(m)).join(""))
+  const convTok = useMemo(() => est(messages.filter(m => m.role !== "system").map(m => msgText(m)).join("")), [messages])
 
   const top = useMemo(() => build({
     contextLength: ctxLen,
@@ -358,7 +358,7 @@ export const Context = memo(({ client, messages = [], visible = true }: Props) =
   const view = drilledGroup ? drill(drilledGroup) : top
   const grid = useMemo(
     () => buildCells(view, drilledGroup ? drilledGroup.children?.[0]?.id ?? "other" : "free"),
-    [view],
+    [view, drilledGroup],
   )
 
   // Helpers
@@ -367,8 +367,8 @@ export const Context = memo(({ client, messages = [], visible = true }: Props) =
     return top.find(s => s.id === id)
   }
 
-  const memEntries = (home?.memory?.content ?? "").split("§").map(s => s.trim()).filter(Boolean)
-  const userEntries = (home?.userProfile?.content ?? "").split("§").map(s => s.trim()).filter(Boolean)
+  const memEntries = useMemo(() => (home?.memory?.content ?? "").split("§").map(s => s.trim()).filter(Boolean), [home?.memory?.content])
+  const userEntries = useMemo(() => (home?.userProfile?.content ?? "").split("§").map(s => s.trim()).filter(Boolean), [home?.userProfile?.content])
 
   // Click handler
   const click = (id: string) => {
@@ -481,6 +481,8 @@ export const Context = memo(({ client, messages = [], visible = true }: Props) =
       {sessionPanel()}
     </>
   )
+
+
 
   return (
     <box flexGrow={1} flexDirection="column" padding={1}>

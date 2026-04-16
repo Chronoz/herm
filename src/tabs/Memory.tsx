@@ -158,7 +158,7 @@ type DetailProps = {
   theme: Theme
 }
 
-const ProviderDetail = ({ provider, active, cfg, home, theme }: DetailProps) => {
+const ProviderDetail = memo(({ provider, active, cfg, home, theme }: DetailProps) => {
   const on = provider.name === "builtin" || provider.name === active
 
   return (
@@ -200,7 +200,7 @@ const ProviderDetail = ({ provider, active, cfg, home, theme }: DetailProps) => 
       </box>
     </scrollbox>
   )
-}
+})
 
 // ─── Builtin Detail ───────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ type BuiltinProps = {
   theme: Theme
 }
 
-const BuiltinDetail = ({ cfg, home, theme }: BuiltinProps) => (
+const BuiltinDetail = memo(({ cfg, home, theme }: BuiltinProps) => (
   <box flexDirection="column">
     {cfg ? (
       <>
@@ -229,11 +229,11 @@ const BuiltinDetail = ({ cfg, home, theme }: BuiltinProps) => (
     <box height={1} />
     <CapacityBar title="Profile (USER.md)" info={home?.userProfile ?? null} theme={theme} />
   </box>
-)
+))
 
 // ─── External Active Detail ───────────────────────────────────────────
 
-const ExternalActiveDetail = ({ cfg, theme }: { cfg: MemoryCfg; theme: Theme }) => (
+const ExternalActiveDetail = memo(({ cfg, theme }: { cfg: MemoryCfg; theme: Theme }) => (
   <box flexDirection="column" marginBottom={1}>
     <box height={1}>
       <text fg={theme.accent}><strong>Agent Settings</strong></text>
@@ -252,11 +252,11 @@ const ExternalActiveDetail = ({ cfg, theme }: { cfg: MemoryCfg; theme: Theme }) 
     </box>
     <box height={1} />
   </box>
-)
+))
 
 // ─── Config Section ───────────────────────────────────────────────────
 
-const ConfigSection = ({ config, theme }: { config: Record<string, string | number | boolean>; theme: Theme }) => (
+const ConfigSection = memo(({ config, theme }: { config: Record<string, string | number | boolean>; theme: Theme }) => (
   <box flexDirection="column">
     <box height={1}>
       <text fg={theme.accent}><strong>Local Configuration</strong></text>
@@ -271,7 +271,7 @@ const ConfigSection = ({ config, theme }: { config: Record<string, string | numb
       </box>
     ))}
   </box>
-)
+))
 
 // ─── Capacity Bar ─────────────────────────────────────────────────────
 
@@ -281,7 +281,7 @@ type CapacityProps = {
   theme: Theme
 }
 
-const CapacityBar = ({ title, info, theme }: CapacityProps) => {
+const CapacityBar = memo(({ title, info, theme }: CapacityProps) => {
   if (!info) {
     return (
       <box height={1}>
@@ -308,4 +308,4 @@ const CapacityBar = ({ title, info, theme }: CapacityProps) => {
       </box>
     </box>
   )
-}
+})

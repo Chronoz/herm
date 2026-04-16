@@ -56,6 +56,7 @@ const AppInner = () => {
   const [hasContent, setHasContent] = useState(false)
   const [toolActive, setToolActive] = useState(false)
   const [session, setSession] = useState(`herm-${Date.now()}`)
+  const sessionStartRef = useRef(Date.now())
   const [tab, setTab] = useState(1)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [cost, setCost] = useState(0)
@@ -93,9 +94,9 @@ const AppInner = () => {
     return m ? filterSlash(m[1]) : null
   }, [input])
 
-  // Reset cursor when input changes
+  // Reset cursor when input changes (skip if already 0)
   useEffect(() => {
-    setPopCursor(0)
+    setPopCursor(c => c === 0 ? c : 0)
   }, [input])
 
   const popOpen = popover !== null && popover.length > 0
@@ -234,17 +235,18 @@ const AppInner = () => {
       setHasContent(false)
       setToolActive(false)
       buf.current = ""
+      // Single setMessages call — finalize streaming + truncate in one pass
       setMessages(prev => {
-        const last = prev[prev.length - 1]
+        let next = prev
+        const last = next[next.length - 1]
         if (last?.role === "assistant") {
           const parts = last.parts.map(p =>
             p.type === "text" && p.streaming ? { ...p, streaming: false } : p
           )
-          return [...prev.slice(0, -1), { ...last, parts, duration: data.duration, usage: data.usage }]
+          next = [...next.slice(0, -1), { ...last, parts, duration: data.duration, usage: data.usage }]
         }
-        return prev
+        return next.length > 200 ? next.slice(-200) : next
       })
-      setMessages(prev => prev.length > 200 ? prev.slice(-200) : prev)
       setMsgCount(c => c + 1)
       if (data.usage) {
         setUsage(data.usage)
@@ -368,6 +370,7 @@ const AppInner = () => {
           client.current?.disconnect()
           setMessages([])
           setSession(sid)
+          sessionStartRef.current = Date.now()
           setCost(0)
           setUsage(undefined)
           setMsgCount(0)
@@ -600,7 +603,7 @@ const AppInner = () => {
               description={tabs[tab].description}
               client={client.current}
               messages={messages}
-              sessionStart={Date.now()}
+              sessionStart={sessionStartRef.current}
               visible={tab === 2}
             />
           )
@@ -620,6 +623,7 @@ const AppInner = () => {
   }
 
   const { theme } = useTheme()
+  const onMouseUp = useCallback(() => copySelection(renderer), [renderer])
 
   return (
     <Profiler id="shell" onRender={perf.onRender}>
@@ -628,7 +632,7 @@ const AppInner = () => {
         height="100%"
         flexDirection="column"
         backgroundColor={theme.background}
-        onMouseUp={() => copySelection(renderer)}
+        onMouseUp={onMouseUp}
       >
         <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
         <box flexGrow={1} flexDirection="row">
