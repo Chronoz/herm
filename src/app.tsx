@@ -32,6 +32,7 @@ import type { SlashCommand } from "./commands/slash"
 import { filter as filterSlash } from "./commands/slash"
 import { InputArea } from "./components/chat/InputArea"
 import * as preferences from "./utils/preferences"
+import { querySessionMessages } from "./utils/hermes-home"
 
 export const App = ({ initialTheme }: { initialTheme?: string }) => (
   <ThemeProvider initial={initialTheme}>
@@ -48,20 +49,45 @@ export const App = ({ initialTheme }: { initialTheme?: string }) => (
 const MAX_HISTORY = 50
 const INTERRUPT_WINDOW = 5000
 
+/** Try to resume the last session — returns initial state or defaults */
+function resumeSession(): { session: string; messages: Message[]; msgCount: number } {
+  const lastSid = preferences.get("lastSessionId")
+  if (!lastSid) return { session: `herm-${Date.now()}`, messages: [], msgCount: 0 }
+
+  try {
+    const rows = querySessionMessages(lastSid)
+    if (!rows.length) return { session: `herm-${Date.now()}`, messages: [], msgCount: 0 }
+
+    const loaded: Message[] = rows
+      .filter(r => r.content && (r.role === "user" || r.role === "assistant"))
+      .map(r => ({
+        id: mid(),
+        role: r.role as "user" | "assistant",
+        parts: [{ type: "text" as const, content: r.content ?? "", streaming: false }],
+        timestamp: r.timestamp,
+      }))
+
+    return { session: lastSid, messages: loaded, msgCount: loaded.length }
+  } catch {
+    return { session: `herm-${Date.now()}`, messages: [], msgCount: 0 }
+  }
+}
+
 const AppInner = () => {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [initial] = useState(resumeSession)
+  const [messages, setMessages] = useState<Message[]>(initial.messages)
   const [input, setInput] = useState("")
   const [model] = useState("hermes-agent")
   const [ready, setReady] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [hasContent, setHasContent] = useState(false)
   const [toolActive, setToolActive] = useState(false)
-  const [session, setSession] = useState(`herm-${Date.now()}`)
+  const [session, setSession] = useState(initial.session)
   const sessionStartRef = useRef(Date.now())
   const [tab, setTab] = useState(1)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [cost, setCost] = useState(0)
-  const [msgCount, setMsgCount] = useState(0)
+  const [msgCount, setMsgCount] = useState(initial.msgCount)
 
   const [history, setHistory] = useState<string[]>([])
   const [popCursor, setPopCursor] = useState(0)
@@ -298,10 +324,14 @@ const AppInner = () => {
     api.on("connected", () => {
       setReady(true)
       preferences.set("lastSessionId", session)
+      const resumed = initial.messages.length > 0 && session === initial.session
+      const label = resumed
+        ? `Resumed session: ${session} (${initial.msgCount} messages)`
+        : `Connected to Hermes. Session: ${session}`
       setMessages(prev => [...prev, {
         id: mid(),
         role: "system",
-        parts: [{ type: "text", content: `Connected to Hermes. Session: ${session}`, streaming: false }],
+        parts: [{ type: "text", content: label, streaming: false }],
         timestamp: Date.now() / 1000,
       }])
     })
