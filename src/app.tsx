@@ -127,6 +127,22 @@ const AppInner = () => {
     return m ? filterSlash(slashCmds, m[1]) : null
   }, [input, slashCmds])
 
+  // Inline ghost-text autocomplete. The top popover entry's name minus
+  // what the user has already typed. Only applies to the /prefix form
+  // (not to subcommand completion, which has spaces). Requires at least
+  // 2 chars typed after `/` to avoid noise on `/` or `/a`.
+  const ghost = useMemo(() => {
+    if (!popover || popover.length === 0) return ""
+    const best = popover[Math.min(popCursor, popover.length - 1)]
+    if (!best || best.name.includes(" ")) return ""
+    const m = input.match(/^\/(\S*)$/)
+    if (!m) return ""
+    const typed = m[1]
+    if (typed.length < 2) return ""
+    if (!best.name.toLowerCase().startsWith(typed.toLowerCase())) return ""
+    return best.name.slice(typed.length)
+  }, [input, popover, popCursor])
+
   // Reset cursor when input changes (skip if already 0)
   useEffect(() => {
     setPopCursor(c => c === 0 ? c : 0)
@@ -549,7 +565,15 @@ const AppInner = () => {
       }
       if (key.name === "tab") {
         const item = popover?.[popCursor]
-        if (item) slash(item)
+        if (!item) return
+        // Subcommand entry (synthetic, has a space) — expand input with trailing space.
+        if (item.name.includes(" ")) {
+          setInput(`/${item.name} `)
+          return
+        }
+        // Normal autocomplete — complete to /{name}. User hits Enter to dispatch,
+        // or types a space if the command takes args/subcommands.
+        setInput(`/${item.name}`)
         return
       }
       // Enter is handled by <input> onSubmit — which calls send(),
@@ -700,6 +724,7 @@ const AppInner = () => {
                 popCursor={popCursor}
                 onPopCursor={setPopCursor}
                 onPopSelect={slash}
+                ghost={ghost}
               />
             </box>
           </box>

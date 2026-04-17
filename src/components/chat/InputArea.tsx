@@ -16,11 +16,11 @@ type InputAreaProps = {
   usage?: Usage
   cost?: number
   turns?: number
-  // Slash popover state — driven by parent
   popover: ReadonlyArray<SlashCommand> | null
   popCursor: number
   onPopCursor: (idx: number) => void
   onPopSelect: (cmd: SlashCommand) => void
+  ghost: string
 }
 
 function fmt(n: number): string {
@@ -44,6 +44,7 @@ export const InputArea = memo(({
   popCursor,
   onPopCursor,
   onPopSelect,
+  ghost,
 }: InputAreaProps) => {
   const { theme } = useTheme()
 
@@ -80,6 +81,7 @@ export const InputArea = memo(({
         borderColor={focused && !streaming ? theme.borderActive : theme.border}
         flexDirection="row"
         height={3}
+        position="relative"
       >
         <box width={2} height={1}>
           <text fg={theme.primary}>{">"} </text>
@@ -96,6 +98,18 @@ export const InputArea = memo(({
           focusedBackgroundColor="transparent"
           flexGrow={1}
         />
+        {/* Inline ghost-text autocomplete — positioned right after typed content.
+            Offsets: prefix width (2) + cursor column (value.length). */}
+        {ghost && focused && !streaming ? (
+          <box
+            position="absolute"
+            top={0}
+            left={2 + value.length}
+            height={1}
+          >
+            <text fg={theme.textMuted}>{ghost}</text>
+          </box>
+        ) : null}
       </box>
       {/* Status bar */}
       <box height={1} flexDirection="row" paddingX={1}>
@@ -112,7 +126,7 @@ export const InputArea = memo(({
               {streaming
                 ? "Esc×2: Interrupt"
                 : open
-                  ? "↑↓: Navigate · Enter/Tab: Select · Esc: Close"
+                  ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
                   : focused
                     ? "Enter: Send · ↑↓: History · /: Commands · Tab: Content"
                     : "Tab: Focus input · Esc: Focus input"}
