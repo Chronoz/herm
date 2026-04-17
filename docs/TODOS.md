@@ -4,6 +4,35 @@ Actionable work items for Herm. Ordered by priority. Each has enough context to 
 
 ---
 
+## 0. BUG: Session context lost on tab switch / restart
+
+**Symptom:** Conversation history / in-flight context disappears when switching tabs
+in the Herm TUI, and when restarting Herm the previous session is not resumed —
+user is dropped into a blank chat.
+
+**Expected:** Herm should resume the last active session (messages + session_id)
+across tab switches and process restarts. `preferences.get("lastSessionId")` +
+`querySessionMessages()` path exists (see commit `10a1d79` in app.tsx
+`resumeSession()`), but it is apparently not holding on all surfaces.
+
+**Investigate:**
+- `src/app.tsx` — `AppInner` unmount/remount on tab switch? `messages` state is
+  scoped to `AppInner`; if the Chat tab component is unmounted when switching
+  tabs the state is lost. Lift chat state above `TabBar` or memoize.
+- Verify `preferences.set("lastSessionId", session)` actually writes on every
+  new session — currently only on `"connected"` event.
+- On restart `resumeSession()` reads from `state.db` via `querySessionMessages`;
+  confirm it's receiving non-empty rows for the stored `lastSessionId`.
+- Also verify assistant tool-call parts are restored (resume currently only
+  loads text parts — thinking and tool parts are dropped).
+
+**Fix sketch:** hoist `messages` + `session` state to `AppInner`'s parent or a
+context so tab remounts don't nuke it; persist `lastSessionId` immediately on
+session change, not only on connect; extend `resumeSession` to reconstruct
+tool/thinking parts from DB if available.
+
+---
+
 ## ~~1. Fix deleteSession bug — sessions never actually delete~~ ✅
 
 Fixed in `8bd455a`. Changed `DELETE FROM sessions WHERE session_id = ?` to `WHERE id = ?`.
