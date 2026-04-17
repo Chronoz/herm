@@ -1,17 +1,19 @@
 /**
- * Slash command popover — OpenCode style.
+ * Slash command popover — OpenCode-inspired visual style.
  *
- * Purely presentational. All keyboard navigation is handled by the parent
- * (app.tsx useKeyboard) to avoid OpenTUI's global keyboard event conflicts.
+ * Purely presentational. Keyboard navigation lives in the parent (app.tsx
+ * useKeyboard) to avoid OpenTUI's global keyboard event conflicts.
  *
- * Uses a sliding window that follows the cursor instead of scrollbox
- * (scrollbox needs focus/keyboard to scroll, which conflicts with input).
+ * Uses a sliding window that follows the cursor rather than scrollbox
+ * (scrollbox requires focus to scroll, which would conflict with the input).
  */
 
 import { useMemo, memo } from "react"
+import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../theme"
-import type { SlashCommand } from "../../commands/slash"
-import { labels } from "../../commands/slash"
+import type { Theme } from "../../theme/types"
+import type { SlashCommand, SlashSource } from "../../commands/slash"
+import { sort } from "../../commands/slash"
 
 type Props = {
   readonly commands: ReadonlyArray<SlashCommand>
@@ -20,9 +22,19 @@ type Props = {
   readonly onSelect: (cmd: SlashCommand) => void
 }
 
-type Row = { type: "header"; cat: string } | { type: "cmd"; cmd: SlashCommand; flat: number }
+type Row =
+  | { type: "header"; cat: string }
+  | { type: "cmd"; cmd: SlashCommand; flat: number }
 
 const MAX_VISIBLE = 14
+
+/** Color for the source badge. Returns null for sources that shouldn't render. */
+function badge(source: SlashSource, theme: Theme): RGBA | null {
+  if (source === "skill") return theme.success
+  if (source === "plugin") return theme.info
+  if (source === "mcp") return theme.warning
+  return null // "command" and "local" get no badge
+}
 
 export const SlashPopover = memo(({ commands: cmds, cursor, onCursor, onSelect }: Props) => {
   const { theme } = useTheme()
@@ -42,25 +54,23 @@ export const SlashPopover = memo(({ commands: cmds, cursor, onCursor, onSelect }
     )
   }
 
-  // Build flat row list with headers interleaved
+  // Build flat row list with category headers, stable order (sort by category).
   const rows = useMemo(() => {
+    const sorted = sort(cmds)
     const result: Row[] = []
-    const groups = new Map<string, { cmd: SlashCommand; flat: number }[]>()
     let flat = 0
-    for (const cmd of cmds) {
-      const cat = cmd.category
-      const arr = groups.get(cat) ?? []
-      arr.push({ cmd, flat: flat++ })
-      groups.set(cat, arr)
-    }
-    for (const [cat, items] of groups) {
-      result.push({ type: "header", cat })
-      for (const item of items) result.push({ type: "cmd", ...item })
+    let lastCat = ""
+    for (const cmd of sorted) {
+      if (cmd.category !== lastCat) {
+        result.push({ type: "header", cat: cmd.category })
+        lastCat = cmd.category
+      }
+      result.push({ type: "cmd", cmd, flat: flat++ })
     }
     return result
   }, [cmds])
 
-  // Find the row index of the cursor for windowing
+  // Find the row index of the cursor to drive the sliding window.
   const cursorRow = rows.findIndex(r => r.type === "cmd" && r.flat === cursor)
   const start = Math.max(0, Math.min(cursorRow - 2, rows.length - MAX_VISIBLE))
   const visible = rows.slice(start, start + MAX_VISIBLE)
@@ -84,19 +94,22 @@ export const SlashPopover = memo(({ commands: cmds, cursor, onCursor, onSelect }
           <text fg={theme.textMuted}>↑ more</text>
         </box>
       ) : null}
-      {visible.map((row, i) => {
+      {visible.map((row) => {
         if (row.type === "header") {
           return (
             <box key={`h-${row.cat}`} height={1} paddingLeft={1}>
               <text>
                 <span fg={theme.textMuted}>
-                  <strong>{labels[row.cat as SlashCommand["category"]] ?? row.cat}</strong>
+                  <strong>{row.cat}</strong>
                 </span>
               </text>
             </box>
           )
         }
+
         const active = row.flat === cursor
+        const color = badge(row.cmd.source, theme)
+
         return (
           <box
             key={`c-${row.cmd.name}`}
@@ -108,22 +121,29 @@ export const SlashPopover = memo(({ commands: cmds, cursor, onCursor, onSelect }
             paddingLeft={2}
             paddingRight={1}
           >
+            {/* Left: /name [args]  description */}
             <box flexGrow={1} height={1}>
               <text>
-                <span fg={active ? theme.primary : theme.text}>
-                  /{row.cmd.name}
-                </span>
-                <span fg={theme.textMuted}>
-                  {"  "}{row.cmd.description}
-                </span>
+                <span fg={active ? theme.primary : theme.text}>/{row.cmd.name}</span>
+                {row.cmd.argsHint ? (
+                  <span fg={theme.textMuted}> {row.cmd.argsHint}</span>
+                ) : null}
+                <span fg={theme.textMuted}>  {row.cmd.description}</span>
               </text>
             </box>
-            <box height={1}>
-              <text>
-                <span fg={row.cmd.target === "gateway" ? theme.info : theme.textMuted}>
-                  {row.cmd.target === "gateway" ? "gateway" : "local"}
-                </span>
-              </text>
+
+            {/* Right: source badge + keybind */}
+            <box height={1} flexDirection="row">
+              {color ? (
+                <text>
+                  <span fg={color}> {row.cmd.source}</span>
+                </text>
+              ) : null}
+              {row.cmd.keybind ? (
+                <text>
+                  <span fg={theme.textMuted}>  {row.cmd.keybind}</span>
+                </text>
+              ) : null}
             </box>
           </box>
         )

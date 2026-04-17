@@ -29,7 +29,8 @@ import { CommandProvider, useCommand } from "./ui/command"
 import { HelpDialog } from "./dialogs/help"
 import { openThemePicker } from "./dialogs/theme-picker"
 import type { SlashCommand } from "./commands/slash"
-import { filter as filterSlash } from "./commands/slash"
+import { filter as filterSlash, matchSub } from "./commands/slash"
+import { fetch_commands } from "./commands/fetch"
 import { InputArea } from "./components/chat/InputArea"
 import * as preferences from "./utils/preferences"
 import { querySessionMessages } from "./utils/hermes-home"
@@ -91,6 +92,7 @@ const AppInner = () => {
 
   const [history, setHistory] = useState<string[]>([])
   const [popCursor, setPopCursor] = useState(0)
+  const [slashCmds, setSlashCmds] = useState<ReadonlyArray<SlashCommand>>([])
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const histIdx = useRef(-1)
   const stash = useRef("")
@@ -115,11 +117,15 @@ const AppInner = () => {
   const themeCtx = useTheme()
   const cmd = useCommand()
 
-  // Slash popover — derived from input value
+  // Slash popover — derived from input value.
+  // If input looks like "/cmd <sub>" and cmd has subcommands, show subcommand matches;
+  // otherwise do the normal prefix filter on /<prefix>.
   const popover = useMemo(() => {
+    const subs = matchSub(slashCmds, input)
+    if (subs) return subs
     const m = input.match(/^\/(\S*)$/)
-    return m ? filterSlash(m[1]) : null
-  }, [input])
+    return m ? filterSlash(slashCmds, m[1]) : null
+  }, [input, slashCmds])
 
   // Reset cursor when input changes (skip if already 0)
   useEffect(() => {
@@ -334,6 +340,9 @@ const AppInner = () => {
         parts: [{ type: "text", content: label, streaming: false }],
         timestamp: Date.now() / 1000,
       }])
+      // Fetch the slash command registry (built-ins + skills + plugins + MCP).
+      // Returns [] if the gateway is unavailable — popover simply won't open.
+      fetch_commands("http://localhost:8642/v1", process.env.API_SERVER_KEY).then(setSlashCmds)
     })
 
     wire(api)
@@ -390,6 +399,11 @@ const AppInner = () => {
 
   // Handle slash commands
   const slash = useCallback((cmd: SlashCommand) => {
+    // Subcommand entry (synthetic, name contains a space): expand input, don't dispatch.
+    if (cmd.name.includes(" ")) {
+      setInput(`/${cmd.name} `)
+      return
+    }
     setInput("")
     if (cmd.target === "local") {
       switch (cmd.name) {
