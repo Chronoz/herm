@@ -29,6 +29,7 @@ const ICON: Record<string, string> = {
 }
 
 function icon(name: string): string {
+  if (name.startsWith("subagent")) return "🧑‍🚀"
   return ICON[name] || "⚙️"
 }
 

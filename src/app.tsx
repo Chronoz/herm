@@ -1,9 +1,9 @@
-import { useKeyboard, useRenderer } from "@opentui/react"
-import { Profiler, useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useRenderer } from "@opentui/react"
+import { Profiler, useState, useEffect, useRef, useCallback, useMemo, useReducer } from "react"
 import * as perf from "./utils/perf"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
-import { HermesApiClient } from "./utils/hermes-api-client"
-import type { DonePayload } from "./utils/hermes-api-client"
+import { GatewayProvider, useGateway, useGatewayEvent } from "./app/gateway"
+import type { GatewayEvent, SessionInfo } from "./utils/gateway-types"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
@@ -12,376 +12,228 @@ import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
 import { Analytics } from "./tabs/Analytics"
-import type { MessageRow } from "./utils/hermes-home"
 import { Memory } from "./tabs/Memory"
 import { Skills } from "./tabs/Skills"
 import { Config } from "./tabs/Config"
 import { Cron } from "./tabs/Cron"
 import { Toolsets } from "./tabs/Toolsets"
 import { Env } from "./tabs/Env"
-import type { Message, Usage, ToolPart, ThinkingPart } from "./types/message"
-import { mid } from "./types/message"
+import type { Usage } from "./types/message"
 import { copySelection } from "./utils/clipboard"
 import { ThemeProvider, useTheme } from "./theme"
 import { DialogProvider, useDialog } from "./ui/dialog"
-import { ToastProvider } from "./ui/toast"
+import { ToastProvider, useToast } from "./ui/toast"
 import { CommandProvider, useCommand } from "./ui/command"
 import { HelpDialog } from "./dialogs/help"
 import { openThemePicker } from "./dialogs/theme-picker"
+import { openModelPicker } from "./dialogs/model-picker"
+import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
-import { filter as filterSlash, matchSub } from "./commands/slash"
-import { fetch_commands } from "./commands/fetch"
 import { InputArea } from "./components/chat/InputArea"
 import * as preferences from "./utils/preferences"
-import { querySessionMessages } from "./utils/hermes-home"
+import { turnReducer, initialTurn, userMessage, systemMessage } from "./app/turnReducer"
+import { mapEvent } from "./app/gatewayEvents"
+import { useSession } from "./app/useSession"
+import { useSlashCommands } from "./app/useSlashCommands"
+import { useInputHistory } from "./app/useInputHistory"
+import { useSlashPopover } from "./app/useSlashPopover"
+import { useAppKeys } from "./app/useAppKeys"
 
 export const App = ({ initialTheme }: { initialTheme?: string }) => (
   <ThemeProvider initial={initialTheme}>
     <ToastProvider>
       <DialogProvider>
-        <CommandProvider>
-          <AppInner />
-        </CommandProvider>
+        <GatewayProvider>
+          <CommandProvider>
+            <AppInner />
+          </CommandProvider>
+        </GatewayProvider>
       </DialogProvider>
     </ToastProvider>
   </ThemeProvider>
 )
 
-const MAX_HISTORY = 50
-const INTERRUPT_WINDOW = 5000
-
-/** Try to resume the last session — returns initial state or defaults */
-function resumeSession(): { session: string; messages: Message[]; msgCount: number } {
-  const lastSid = preferences.get("lastSessionId")
-  if (!lastSid) return { session: `herm-${Date.now()}`, messages: [], msgCount: 0 }
-
-  try {
-    const rows = querySessionMessages(lastSid)
-    if (!rows.length) return { session: `herm-${Date.now()}`, messages: [], msgCount: 0 }
-
-    const loaded: Message[] = rows
-      .filter(r => r.content && (r.role === "user" || r.role === "assistant"))
-      .map(r => ({
-        id: mid(),
-        role: r.role as "user" | "assistant",
-        parts: [{ type: "text" as const, content: r.content ?? "", streaming: false }],
-        timestamp: r.timestamp,
-      }))
-
-    return { session: lastSid, messages: loaded, msgCount: loaded.length }
-  } catch {
-    return { session: `herm-${Date.now()}`, messages: [], msgCount: 0 }
-  }
-}
-
 const AppInner = () => {
-  const [initial] = useState(resumeSession)
-  const [messages, setMessages] = useState<Message[]>(initial.messages)
-  const [input, setInput] = useState("")
-  const [model] = useState("hermes-agent")
-  const [ready, setReady] = useState(false)
-  const [streaming, setStreaming] = useState(false)
-  const [hasContent, setHasContent] = useState(false)
-  const [toolActive, setToolActive] = useState(false)
-  const [session, setSession] = useState(initial.session)
-  const sessionStartRef = useRef(Date.now())
-  const [tab, setTab] = useState(1)
-  const [usage, setUsage] = useState<Usage | undefined>(undefined)
-  const [cost, setCost] = useState(0)
-  const [msgCount, setMsgCount] = useState(initial.msgCount)
-
-  const [history, setHistory] = useState<string[]>([])
-  const [popCursor, setPopCursor] = useState(0)
-  const [slashCmds, setSlashCmds] = useState<ReadonlyArray<SlashCommand>>([])
-  const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
-  const histIdx = useRef(-1)
-  const stash = useRef("")
-  const lastEsc = useRef(0)
-
-  // Derive avatar state from agent activity signals
-  const agentState: AvatarState = !ready
-    ? "error"
-    : toolActive
-      ? "working"
-      : streaming && hasContent
-        ? "speaking"
-        : streaming
-          ? "thinking"
-          : "idle"
-
-  const renderer = useRenderer()
-  const client = useRef<HermesApiClient | null>(null)
-  const buf = useRef("")
-
+  const gw = useGateway()
   const dialog = useDialog()
   const themeCtx = useTheme()
   const cmd = useCommand()
+  const toast = useToast()
+  const renderer = useRenderer()
+  const session = useSession()
+  const { cmds } = useSlashCommands()
 
-  // Slash popover — derived from input value.
-  // If input looks like "/cmd <sub>" and cmd has subcommands, show subcommand matches;
-  // otherwise do the normal prefix filter on /<prefix>.
-  const popover = useMemo(() => {
-    const subs = matchSub(slashCmds, input)
-    if (subs) return subs
-    const m = input.match(/^\/(\S*)$/)
-    return m ? filterSlash(slashCmds, m[1]) : null
-  }, [input, slashCmds])
+  const [turn, dispatch] = useReducer(turnReducer, initialTurn)
+  const [input, setInput] = useState("")
+  const [ready, setReady] = useState(false)
+  const [sid, setSid] = useState("")
+  const [tab, setTab] = useState(1)
+  const [usage, setUsage] = useState<Usage | undefined>(undefined)
+  const [cost, setCost] = useState(0)
+  const [msgCount, setMsgCount] = useState(0)
+  const [info, setInfo] = useState<SessionInfo | null>(null)
+  const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
+  const sessionStart = useRef(Date.now())
 
-  // Inline ghost-text autocomplete. The top popover entry's name minus
-  // what the user has already typed. Only applies to the /prefix form
-  // (not to subcommand completion, which has spaces). Requires at least
-  // 2 chars typed after `/` to avoid noise on `/` or `/a`.
-  const ghost = useMemo(() => {
-    if (!popover || popover.length === 0) return ""
-    const best = popover[Math.min(popCursor, popover.length - 1)]
-    if (!best || best.name.includes(" ")) return ""
-    const m = input.match(/^\/(\S*)$/)
-    if (!m) return ""
-    const typed = m[1]
-    if (typed.length < 2) return ""
-    if (!best.name.toLowerCase().startsWith(typed.toLowerCase())) return ""
-    return best.name.slice(typed.length)
-  }, [input, popover, popCursor])
+  const history = useInputHistory(input, setInput)
+  const pop = useSlashPopover(input, cmds)
 
-  // Reset cursor when input changes (skip if already 0)
-  useEffect(() => {
-    setPopCursor(c => c === 0 ? c : 0)
-  }, [input])
+  // Derive avatar state
+  const agentState: AvatarState = !ready
+    ? "error"
+    : turn.toolActive ? "working"
+    : turn.streaming && turn.hasContent ? "speaking"
+    : turn.streaming ? "thinking"
+    : "idle"
 
-  const popOpen = popover !== null && popover.length > 0
+  // ── Handle gateway events ─────────────────────────────────────────
+  const handle = useCallback((ev: GatewayEvent) => {
+    const action = mapEvent(ev, {
+      onReady: () => {
+        session.boot().then(({ id, messages }) => {
+          setSid(id)
+          sessionStart.current = Date.now()
+          if (messages.length) dispatch({ kind: "load", messages })
+          setMsgCount(messages.length)
+        })
+      },
+      onSessionInfo: (si) => {
+        setInfo(si)
+        setReady(true)
+        if (si.session_id) setSid(si.session_id)
+      },
+      onUsage: (u) => {
+        setUsage(u)
+        setCost(prev => prev + (u.input * 3 + u.output * 15) / 1_000_000)
+      },
+      onTurnComplete: () => setMsgCount(c => c + 1),
+      onClarify: (req) => dialog.replace(<ClarifyPrompt req={req} />),
+      onApproval: (req) => dialog.replace(<ApprovalPrompt req={req} />),
+      onSudo: (req) => dialog.replace(<SudoPrompt req={req} />),
+      onSecret: (req) => dialog.replace(<SecretPrompt req={req} />),
+      onBackground: (_tid, text) => toast.show({ variant: "info", message: `bg task: ${text.slice(0, 80)}` }),
+      onBtw: (text) => dispatch({ kind: "system", text: `btw: ${text}` }),
+    })
+    if (action) dispatch(action)
+  }, [session, dialog, toast])
 
-  // Register commands
+  useGatewayEvent(handle)
+
+  // ── Command palette ───────────────────────────────────────────────
   useEffect(() => cmd.register([
-    {
-      title: "Help",
-      value: "help",
-      keybind: "f1",
-      description: "Keyboard shortcuts",
-      category: "General",
-      onSelect: () => dialog.replace(<HelpDialog />),
-    },
-    {
-      title: "Switch Theme",
-      value: "theme",
-      description: "Change color theme",
-      category: "General",
-      onSelect: () => openThemePicker(dialog, themeCtx),
-    },
-    {
-      title: "New Session",
-      value: "new-session",
-      description: "Start a new chat session",
-      category: "Session",
-      onSelect: () => {},
-    },
-  ]), [cmd, dialog, themeCtx])
+    { title: "Help", value: "help", keybind: "f1", description: "Keyboard shortcuts", category: "General",
+      onSelect: () => dialog.replace(<HelpDialog />) },
+    { title: "Switch Theme", value: "theme", description: "Change color theme", category: "General",
+      onSelect: () => openThemePicker(dialog, themeCtx) },
+    { title: "Switch Model", value: "model", description: "Pick provider and model", category: "General",
+      onSelect: () => openModelPicker(dialog, gw) },
+    { title: "New Session", value: "new-session", description: "Start a new chat session", category: "Session",
+      onSelect: () => newSession() },
+    { title: "Compress Session", value: "compress", description: "Compress conversation history", category: "Session",
+      onSelect: () => session.compress() },
+    { title: "Undo Last Turn", value: "undo", description: "Remove last user/assistant exchange", category: "Session",
+      onSelect: () => session.undo() },
+    { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
+      onSelect: () => session.branch() },
+  ]), [cmd, dialog, themeCtx, session, gw])
 
-  // Wire API client event handlers — shared between connect() and switchSession()
-  const wire = useCallback((api: HermesApiClient) => {
-    api.on("start", () => {
-      perf.count("stream:start")
-      perf.mem("stream-start")
-      setStreaming(true)
-      setHasContent(false)
-      setToolActive(false)
-      buf.current = ""
-    })
+  // ── Session ops ───────────────────────────────────────────────────
+  const newSession = useCallback(async () => {
+    dispatch({ kind: "reset" })
+    setMsgCount(0)
+    setCost(0)
+    setUsage(undefined)
+    setReady(false)
+    try { setSid(await session.create()); sessionStart.current = Date.now() }
+    catch {}
+  }, [session])
 
-    api.on("content", (chunk: string) => {
-      perf.count("stream:chunk")
-      setHasContent(true)
-      setToolActive(false)
-      buf.current += chunk
-      const text = buf.current
-      setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (last?.role === "assistant" && last.parts.some(p => p.type === "text" && p.streaming)) {
-          const parts = last.parts.map(p =>
-            p.type === "text" && p.streaming ? { ...p, content: text } : p
-          )
-          return [...prev.slice(0, -1), { ...last, parts }]
-        }
-        return [...prev, {
-          id: mid(),
-          role: "assistant",
-          parts: [{ type: "text", content: text, streaming: true }],
-          timestamp: Date.now() / 1000,
-          model,
-        }]
-      })
-    })
-
-    api.on("tool", (tc: { id?: string; name: string; status: string; preview?: string; duration?: number }) => {
-      setToolActive(tc.status === "running")
-      setHasContent(false)
-      setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (last?.role === "assistant") {
-          // For tool.completed from runs API — match by name (last running tool with that name)
-          if (!tc.id && tc.status !== "running") {
-            const idx = last.parts.findIndex(p => p.type === "tool" && p.name === tc.name && p.status === "running")
-            if (idx >= 0) {
-              const tool = last.parts[idx] as ToolPart
-              const parts = [...last.parts]
-              parts[idx] = {
-                ...tool,
-                status: tc.status as ToolPart["status"],
-                duration: tc.duration ?? (tool.startedAt ? Date.now() - tool.startedAt : undefined),
-              }
-              return [...prev.slice(0, -1), { ...last, parts }]
-            }
-          }
-          const existing = tc.id ? last.parts.find(p => p.type === "tool" && p.id === tc.id) : null
-          if (existing) {
-            const parts = last.parts.map(p =>
-              p.type === "tool" && p.id === tc.id ? { ...p, status: tc.status, ...(tc.status === "done" && (p as ToolPart).startedAt ? { duration: Date.now() - (p as ToolPart).startedAt! } : {}) } as ToolPart : p
-            )
-            return [...prev.slice(0, -1), { ...last, parts }]
-          }
-          const toolId = tc.id || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-          const part: ToolPart = { type: "tool", id: toolId, name: tc.name, args: "", status: tc.status as ToolPart["status"], startedAt: Date.now(), preview: tc.preview }
-          return [...prev.slice(0, -1), { ...last, parts: [...last.parts, part] }]
-        }
-        const toolId = tc.id || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-        return [...prev, {
-          id: mid(),
-          role: "assistant",
-          parts: [{ type: "tool", id: toolId, name: tc.name, args: "", status: tc.status as ToolPart["status"], preview: tc.preview }],
-          timestamp: Date.now() / 1000,
-          model,
-        }]
-      })
-    })
-
-    // Thinking/reasoning from runs API
-    api.on("thinking", (text: string) => {
-      setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (last?.role === "assistant") {
-          const thinkingPart = last.parts.find(p => p.type === "thinking")
-          if (thinkingPart) {
-            const parts = last.parts.map(p =>
-              p.type === "thinking" ? { ...p, content: text, streaming: false } as ThinkingPart : p
-            )
-            return [...prev.slice(0, -1), { ...last, parts }]
-          }
-          return [...prev.slice(0, -1), { ...last, parts: [{ type: "thinking" as const, content: text, streaming: false }, ...last.parts] }]
-        }
-        return [...prev, {
-          id: mid(),
-          role: "assistant" as const,
-          parts: [{ type: "thinking" as const, content: text, streaming: false }],
-          timestamp: Date.now() / 1000,
-          model,
-        }]
-      })
-    })
-
-    api.on("done", (data: DonePayload) => {
-      perf.count("stream:done")
-      perf.mem("stream-done")
-      setStreaming(false)
-      setHasContent(false)
-      setToolActive(false)
-      buf.current = ""
-      // Single setMessages call — finalize streaming + truncate in one pass
-      setMessages(prev => {
-        let next = prev
-        const last = next[next.length - 1]
-        if (last?.role === "assistant") {
-          const parts = last.parts.map(p =>
-            p.type === "text" && p.streaming ? { ...p, streaming: false } : p
-          )
-          next = [...next.slice(0, -1), { ...last, parts, duration: data.duration, usage: data.usage }]
-        }
-        return next.length > 200 ? next.slice(-200) : next
-      })
-      setMsgCount(c => c + 1)
-      if (data.usage) {
-        setUsage(data.usage)
-        setCost(prev => prev + (data.usage!.input * 3 + data.usage!.output * 15) / 1_000_000)
-      }
-    })
-
-    api.on("aborted", () => {
-      setStreaming(false)
-      setHasContent(false)
-      setToolActive(false)
-      buf.current = ""
-      setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (last?.role === "assistant") {
-          const parts = last.parts.map(p =>
-            p.type === "text" && p.streaming ? { ...p, streaming: false } : p
-          )
-          return [...prev.slice(0, -1), { ...last, parts, error: "Interrupted" }]
-        }
-        return prev
-      })
-    })
-
-    api.on("error", (err: Error) => {
-      setStreaming(false)
-      setHasContent(false)
-      setToolActive(false)
-      buf.current = ""
-      setMessages(prev => [...prev, {
-        id: mid(),
-        role: "system",
-        parts: [{ type: "text", content: `Error: ${err.message}`, streaming: false }],
-        timestamp: Date.now() / 1000,
-      }])
-    })
-  }, [model])
-
-  // Connect to Hermes
-  const connect = useCallback(async () => {
-    const api = new HermesApiClient({
-      url: "http://localhost:8642/v1",
-      key: process.env.API_SERVER_KEY,
-      session,
-      model,
-    })
-
-    api.on("connected", () => {
-      setReady(true)
-      const resumed = initial.messages.length > 0 && session === initial.session
-      const label = resumed
-        ? `Resumed session: ${session} (${initial.msgCount} messages)`
-        : `Connected to Hermes. Session: ${session}`
-      setMessages(prev => [...prev, {
-        id: mid(),
-        role: "system",
-        parts: [{ type: "text", content: label, streaming: false }],
-        timestamp: Date.now() / 1000,
-      }])
-      fetch_commands("http://localhost:8642/v1", process.env.API_SERVER_KEY).then(setSlashCmds)
-    })
-
-    wire(api)
-
-    client.current = api
+  const switchSession = useCallback(async (target: string) => {
+    dispatch({ kind: "reset" })
+    setMsgCount(0)
+    setCost(0)
+    setUsage(undefined)
+    setReady(false)
     try {
-      await api.connect()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setMessages([{
-        id: mid(),
-        role: "system",
-        parts: [{ type: "text", content: `Failed to connect: ${msg}`, streaming: false }],
-        timestamp: Date.now() / 1000,
-      }])
+      const { id, messages } = await session.resume(target)
+      setSid(id)
+      sessionStart.current = Date.now()
+      if (messages.length) { dispatch({ kind: "load", messages }); setMsgCount(messages.length) }
+    } catch (err) {
+      dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
     }
-  }, [session, model, wire])
+  }, [session])
 
-  useEffect(() => {
-    connect()
-    return () => { client.current?.disconnect() }
-  }, [connect])
+  // ── Send message ──────────────────────────────────────────────────
+  const send = useCallback((val?: string) => {
+    if (pop.open) { slash(pop.popover![pop.cursor]); return }
+    const msg = (val ?? input).trim()
+    if (!msg || !ready || turn.streaming) return
 
-  // Control server bridge (CONTROL=1) — uses refs to avoid stale closures
-  const state = useRef({ tab, ready, streaming, messages, session, input, focusRegion })
-  state.current = { tab, ready, streaming, messages, session, input, focusRegion }
+    history.push(msg)
+    dispatch({ kind: "user", text: msg })
+    preferences.set("lastSessionId", sid)
+    gw.request("prompt.submit", { content: msg }).catch(() => {})
+    setInput("")
+    setTab(1)
+  }, [input, ready, turn.streaming, pop.open, pop.popover, pop.cursor, sid, gw, history])
+
+  // ── Slash dispatch ────────────────────────────────────────────────
+  const slash = useCallback((command: SlashCommand) => {
+    if (command.name.includes(" ")) { setInput(`/${command.name} `); return }
+    setInput("")
+    if (command.target === "local") {
+      switch (command.name) {
+        case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
+        case "new": newSession(); return
+        case "theme": openThemePicker(dialog, themeCtx); return
+        case "help": dialog.replace(<HelpDialog />); return
+      }
+    }
+
+    if (command.target !== "gateway" || !ready || turn.streaming) return
+    dispatch({ kind: "user", text: `/${command.name}` })
+    gw.request<{ output?: string }>("slash.exec", { command: `/${command.name}` })
+      .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
+      .catch(() => { gw.request("prompt.submit", { content: `/${command.name}` }).catch(() => {}) })
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw])
+
+  // ── Copy last assistant ───────────────────────────────────────────
+  const copyLast = useCallback(() => {
+    for (let i = turn.messages.length - 1; i >= 0; i--) {
+      const m = turn.messages[i]
+      if (m.role !== "assistant") continue
+      const content = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
+      if (!content) continue
+      process.stdout.write(`\x1b]52;c;${Buffer.from(content).toString("base64")}\x07`)
+      return true
+    }
+    return false
+  }, [turn.messages])
+
+  // ── Keyboard ──────────────────────────────────────────────────────
+  useAppKeys({
+    tab, setTab, focusRegion, setFocusRegion,
+    streaming: turn.streaming,
+    popOpen: pop.open,
+    onPopNavigate: (d) => pop.setCursor(c => Math.max(0, Math.min((pop.popover?.length ?? 1) - 1, c + d))),
+    onPopAccept: () => {
+      const item = pop.popover?.[pop.cursor]
+      if (!item) return
+      setInput(item.name.includes(" ") ? `/${item.name} ` : `/${item.name}`)
+    },
+    onPopCancel: () => setInput(""),
+    onHistoryUp: history.up,
+    onHistoryDown: history.down,
+    onInterrupt: () => session.interrupt(),
+    onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
+    onCopyLast: () => { copyLast() },
+    input,
+  })
+
+  // ── Control server bridge (headless/automation) ───────────────────
+  const state = useRef({ tab, ready, streaming: turn.streaming, messages: turn.messages, sid, input, focusRegion })
+  state.current = { tab, ready, streaming: turn.streaming, messages: turn.messages, sid, input, focusRegion }
   useEffect(() => {
     if (!controlEnabled) return
     setBridge({
@@ -389,260 +241,23 @@ const AppInner = () => {
       setTab,
       send: (msg: string) => {
         if (!state.current.ready || state.current.streaming) return
-        setMessages(prev => [...prev, {
-          id: mid(),
-          role: "user",
-          parts: [{ type: "text", content: msg, streaming: false }],
-          timestamp: Date.now() / 1000,
-        }])
-        client.current?.send(msg)
+        dispatch({ kind: "user", text: msg })
+        gw.request("prompt.submit", { content: msg }).catch(() => {})
         setTab(1)
       },
       ready: () => state.current.ready,
       streaming: () => state.current.streaming,
       messages: () => state.current.messages.length,
-      session: () => state.current.session,
+      session: () => state.current.sid,
       input: () => state.current.input,
-      setInput: (v: string) => setInput(v),
+      setInput,
       focusRegion: () => state.current.focusRegion,
-      setFocusRegion: (r: "input" | "content") => setFocusRegion(r),
+      setFocusRegion,
       renderer: () => renderer,
     })
-  }, [])
+  }, [gw, renderer])
 
-  // Handle slash commands
-  const slash = useCallback((cmd: SlashCommand) => {
-    // Subcommand entry (synthetic, name contains a space): expand input, don't dispatch.
-    if (cmd.name.includes(" ")) {
-      setInput(`/${cmd.name} `)
-      return
-    }
-    setInput("")
-    if (cmd.target === "local") {
-      switch (cmd.name) {
-        case "clear":
-          setMessages([])
-          setMsgCount(0)
-          return
-        case "new": {
-          const sid = `herm-${Date.now()}`
-          client.current?.disconnect()
-          setMessages([])
-          setSession(sid)
-          sessionStartRef.current = Date.now()
-          setCost(0)
-          setUsage(undefined)
-          setMsgCount(0)
-          connect()
-          return
-        }
-        case "theme":
-          openThemePicker(dialog, themeCtx)
-          return
-        case "help":
-          dialog.replace(<HelpDialog />)
-          return
-      }
-    }
-
-    // Gateway commands — send as /{name}
-    if (cmd.target === "gateway" && client.current && ready && !streaming) {
-      setMessages(prev => [...prev, {
-        id: mid(),
-        role: "user",
-        parts: [{ type: "text", content: `/${cmd.name}`, streaming: false }],
-        timestamp: Date.now() / 1000,
-      }])
-      client.current.send(`/${cmd.name}`)
-    }
-  }, [ready, streaming, connect, dialog, themeCtx])
-
-  // Send message (or select popover item on Enter)
-  const send = useCallback((val?: string) => {
-    // If popover is open, Enter selects the active command
-    if (popOpen) {
-      slash(popover[popCursor])
-      return
-    }
-    const msg = (val ?? input).trim()
-    if (!msg || !ready || streaming) return
-
-    setHistory(prev => {
-      const next = [msg, ...prev.filter(h => h !== msg)]
-      return next.slice(0, MAX_HISTORY)
-    })
-    histIdx.current = -1
-    stash.current = ""
-
-    setMessages(prev => [...prev, {
-      id: mid(),
-      role: "user",
-      parts: [{ type: "text", content: msg, streaming: false }],
-      timestamp: Date.now() / 1000,
-    }])
-
-    preferences.set("lastSessionId", session)
-    client.current?.send(msg)
-    setInput("")
-    setTab(1)
-  }, [input, ready, streaming, popOpen, popover, popCursor, slash, session])
-
-  // Copy last assistant message
-  const copyLast = useCallback(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (m.role === "assistant") {
-        const content = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
-        if (content) {
-          process.stdout.write(`\x1b]52;c;${Buffer.from(content).toString("base64")}\x07`)
-          return true
-        }
-      }
-    }
-    return false
-  }, [messages])
-
-  // Switch to an existing session
-  const switchSession = useCallback((sid: string, rows: MessageRow[]) => {
-    const loaded: Message[] = rows
-      .filter(r => r.content && (r.role === "user" || r.role === "assistant"))
-      .map(r => ({
-        id: mid(),
-        role: r.role as "user" | "assistant",
-        parts: [{ type: "text" as const, content: r.content ?? "", streaming: false }],
-        timestamp: r.timestamp,
-      }))
-
-    setMessages(loaded)
-    setSession(sid)
-    setTab(1)
-    setMsgCount(loaded.length)
-    setCost(0)
-    setUsage(undefined)
-    preferences.set("lastSessionId", sid)
-
-    client.current?.disconnect()
-
-    const api = new HermesApiClient({
-      url: "http://localhost:8642/v1",
-      key: process.env.API_SERVER_KEY,
-      session: sid,
-      model,
-    })
-    wire(api)
-    client.current = api
-    setReady(true)
-  }, [model, wire])
-
-  // Input is focused when: region is "input", not streaming, no dialog/command open
-  const inputFocused = focusRegion === "input" && !streaming
-
-  // Keyboard handler
-  useKeyboard((key) => {
-    if (key.ctrl && key.name === "c") {
-      if (copySelection(renderer)) return
-      renderer.destroy()
-      return
-    }
-
-    if (key.ctrl && key.name === "left") { setTab(t => Math.max(0, t - 1)); setFocusRegion("input"); return }
-    if (key.ctrl && key.name === "right") { setTab(t => Math.min(10, t + 1)); setFocusRegion("input"); return }
-
-    // --- Popover open: route navigation keys to popover ---
-    if (popOpen) {
-      if (key.name === "escape") {
-        setInput("")
-        return
-      }
-      if (key.name === "up") {
-        setPopCursor(c => Math.max(0, c - 1))
-        return
-      }
-      if (key.name === "down") {
-        setPopCursor(c => Math.min((popover?.length ?? 1) - 1, c + 1))
-        return
-      }
-      if (key.name === "tab") {
-        const item = popover?.[popCursor]
-        if (!item) return
-        // Subcommand entry (synthetic, has a space) — expand input with trailing space.
-        if (item.name.includes(" ")) {
-          setInput(`/${item.name} `)
-          return
-        }
-        // Normal autocomplete — complete to /{name}. User hits Enter to dispatch,
-        // or types a space if the command takes args/subcommands.
-        setInput(`/${item.name}`)
-        return
-      }
-      // Enter is handled by <input> onSubmit — which calls send(),
-      // but we intercept in send() when popover is open.
-      return
-    }
-
-    // --- Tab: toggle focus between input and content ---
-    if (key.name === "tab" && !streaming) {
-      setFocusRegion(r => r === "input" ? "content" : "input")
-      return
-    }
-
-    // --- Escape handling ---
-    if (key.name === "escape") {
-      if (streaming) {
-        const now = Date.now()
-        if (now - lastEsc.current < INTERRUPT_WINDOW) {
-          client.current?.interrupt()
-          lastEsc.current = 0
-        } else {
-          lastEsc.current = now
-          setMessages(prev => {
-            const last = prev[prev.length - 1]
-            if (last?.role === "system" && last.parts[0]?.type === "text" && last.parts[0].content.includes("Press Escape again")) return prev
-            return [...prev, {
-              id: mid(),
-              role: "system",
-              parts: [{ type: "text", content: "Press Escape again to interrupt", streaming: false }],
-              timestamp: Date.now() / 1000,
-            }]
-          })
-        }
-      } else if (focusRegion === "content") {
-        // Escape from content → back to input
-        setFocusRegion("input")
-      }
-      return
-    }
-
-    if (key.ctrl && key.name === "y") { copyLast(); return }
-
-    // --- Input-focused keys ---
-    if (focusRegion === "input" && !streaming) {
-      if (key.name === "up") {
-        if (history.length === 0) return
-        if (histIdx.current === -1) stash.current = input
-        const next = Math.min(histIdx.current + 1, history.length - 1)
-        histIdx.current = next
-        setInput(history[next])
-        return
-      }
-
-      if (key.name === "down") {
-        if (histIdx.current === -1) return
-        const next = histIdx.current - 1
-        histIdx.current = next
-        setInput(next === -1 ? stash.current : history[next])
-        return
-      }
-    }
-
-    // --- Content-focused: typing a printable char refocuses input ---
-    if (focusRegion === "content" && !streaming && !key.ctrl && !key.meta) {
-      if (key.name.length === 1 && key.name !== " ") {
-        setFocusRegion("input")
-        // Don't return — let the key propagate to the now-focused input
-      }
-    }
-  })
+  const model = info?.model ?? "hermes-agent"
 
   const tabs = useMemo(() => [
     { name: "Overview", description: "Dashboard" },
@@ -662,20 +277,9 @@ const AppInner = () => {
     const inner = (() => {
       switch (tab) {
         case 0: return <Overview visible={tab === 0} />
-        case 1:
-          return (
-            <Chat messages={messages} streaming={streaming} />
-          )
-        case 2:
-          return (
-            <Context
-              description={tabs[tab].description}
-              client={client.current}
-              messages={messages}
-              sessionStart={sessionStartRef.current}
-              visible={tab === 2}
-            />
-          )
+        case 1: return <Chat messages={turn.messages} streaming={turn.streaming} />
+        case 2: return <Context description={tabs[tab].description} messages={turn.messages}
+                               sessionStart={sessionStart.current} visible={tab === 2} />
         case 3: return <Sessions onSwitch={switchSession} />
         case 4: return <Analytics visible={tab === 4} />
         case 5: return <Skills />
@@ -693,37 +297,24 @@ const AppInner = () => {
 
   const { theme } = useTheme()
   const onMouseUp = useCallback(() => copySelection(renderer), [renderer])
+  const inputFocused = focusRegion === "input" && !turn.streaming
 
   return (
     <Profiler id="shell" onRender={perf.onRender}>
-      <box
-        width="100%"
-        height="100%"
-        flexDirection="column"
-        backgroundColor={theme.background}
-        onMouseUp={onMouseUp}
-      >
+      <box width="100%" height="100%" flexDirection="column"
+           backgroundColor={theme.background} onMouseUp={onMouseUp}>
         <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
         <box flexGrow={1} flexDirection="row">
           <box flexGrow={1} flexDirection="column">
             {content()}
             <box flexShrink={0}>
               <InputArea
-                value={input}
-                onChange={setInput}
-                onSubmit={send}
-                focused={inputFocused}
-                ready={ready}
-                streaming={streaming}
-                model={model}
-                usage={usage}
-                cost={cost}
-                turns={msgCount}
-                popover={popover}
-                popCursor={popCursor}
-                onPopCursor={setPopCursor}
-                onPopSelect={slash}
-                ghost={ghost}
+                value={input} onChange={setInput} onSubmit={send}
+                focused={inputFocused} ready={ready} streaming={turn.streaming}
+                model={model} usage={usage} cost={cost} turns={msgCount}
+                popover={pop.popover} popCursor={pop.cursor}
+                onPopCursor={pop.setCursor} onPopSelect={slash}
+                ghost={pop.ghost}
               />
             </box>
           </box>

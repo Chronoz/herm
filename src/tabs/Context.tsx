@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react"
-import type { HermesApiClient } from "../utils/hermes-api-client"
+
 import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
 import {
@@ -36,7 +36,6 @@ import type { RGBA } from "@opentui/core"
 
 type Props = {
   description?: string
-  client?: HermesApiClient | null
   messages?: Message[]
   sessionStart?: number
   visible?: boolean
@@ -285,7 +284,7 @@ const FreePanel = memo(({ seg, theme, ctxLen, home }: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = memo(({ client, messages = [], visible = true }: Props) => {
+export const Context = memo(({ messages = [], visible = true }: Props) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
   const wireRef = useRef(wire)
@@ -306,22 +305,21 @@ export const Context = memo(({ client, messages = [], visible = true }: Props) =
     return () => clearInterval(iv)
   }, [refresh, visible])
 
+  // Track wire usage from messages
   useEffect(() => {
-    if (!client) return
-    const onDone = (data: { reason: string; usage?: TokenUsage }) => {
-      if (!data.usage) return
-      const next: Wire = {
-        input: wireRef.current.input + data.usage.prompt_tokens,
-        output: wireRef.current.output + data.usage.completion_tokens,
-        total: wireRef.current.total + data.usage.total_tokens,
-        calls: wireRef.current.calls + 1,
+    let input = 0, output = 0, total = 0, calls = 0
+    for (const m of messages) {
+      if (m.usage) {
+        input += m.usage.input
+        output += m.usage.output
+        total += m.usage.total
+        calls++
       }
-      wireRef.current = next
-      setWire(next)
     }
-    client.on("done", onDone)
-    return () => { client.removeListener("done", onDone) }
-  }, [client])
+    const next: Wire = { input, output, total, calls }
+    wireRef.current = next
+    setWire(next)
+  }, [messages])
 
   // Derived
   const sessions = home?.recentSessions ?? []

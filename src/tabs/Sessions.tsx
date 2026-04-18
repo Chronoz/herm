@@ -2,11 +2,9 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import {
   queryRecentSessions,
-  querySessionMessages,
   searchSessions,
   deleteSession,
   type SessionRow,
-  type MessageRow,
   type SearchResult,
 } from "../utils/hermes-home";
 import { useTheme } from "../theme";
@@ -401,7 +399,7 @@ const SearchItem = memo((props: {
 // ─── Main Component ──────────────────────────────────────────────────
 
 type SessionsProps = {
-  onSwitch?: (sid: string, rows: MessageRow[]) => void;
+  onSwitch?: (sid: string) => void;
 };
 
 export const Sessions = memo((props: SessionsProps) => {
@@ -442,14 +440,12 @@ export const Sessions = memo((props: SessionsProps) => {
     if (searching) {
       const r = results[selected];
       if (!r || !props.onSwitch) return;
-      const rows = querySessionMessages(r.session_id);
-      props.onSwitch(r.session_id, rows);
+      props.onSwitch(r.session_id);
       return;
     }
     const s = sessions[selected];
     if (!s || !props.onSwitch) return;
-    const rows = querySessionMessages(s.id);
-    props.onSwitch(s.id, rows);
+    props.onSwitch(s.id);
   }, [sessions, results, selected, props.onSwitch, searching]);
 
   const confirmDelete = useCallback(
