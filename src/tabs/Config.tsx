@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
-import { hermesPath, writeConfig } from "../utils/hermes-home";
+import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useToast } from "../ui/toast";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
@@ -149,6 +149,7 @@ const FieldRow = memo((props: {
 
 export const Config = memo(() => {
   const theme = useTheme().theme;
+  const gw = useGateway();
   const toast = useToast();
   const [raw, setRaw] = useState<Record<string, unknown>>({});
   const [original, setOriginal] = useState<Record<string, unknown>>({});
@@ -162,21 +163,20 @@ export const Config = memo(() => {
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<"categories" | "fields">("categories");
 
-  const load = useCallback(async () => {
-    const file = Bun.file(hermesPath("config.yaml"));
-    const exists = await file.exists();
-    if (!exists) {
-      setRaw({});
-      setOriginal({});
-      setYaml("");
-      return;
-    }
-    const text = await file.text();
-    const parsed = yamlParse(text) ?? {};
-    setRaw(structuredClone(parsed));
-    setOriginal(structuredClone(parsed));
-    setYaml(text);
-  }, []);
+  const load = useCallback(() => {
+    gw.request<{ config?: Record<string, unknown> }>("config.get", { key: "full" })
+      .then(res => {
+        const parsed = res.config ?? {};
+        setRaw(structuredClone(parsed));
+        setOriginal(structuredClone(parsed));
+        setYaml(yamlStringify(parsed));
+      })
+      .catch(() => {
+        setRaw({});
+        setOriginal({});
+        setYaml("");
+      });
+  }, [gw]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -217,16 +217,20 @@ export const Config = memo(() => {
   };
 
   const save = async () => {
-    if (mode === "yaml") {
-      const parsed = yamlParse(yaml) ?? {};
-      await writeConfig(parsed);
-      setRaw(structuredClone(parsed));
-      setOriginal(structuredClone(parsed));
-    } else {
-      await writeConfig(raw);
-      setOriginal(structuredClone(raw));
-    }
-    toast.show({ variant: "success", message: "Config saved" });
+    const target = mode === "yaml" ? (yamlParse(yaml) ?? {}) : raw;
+    const flat = flatten(target as Record<string, unknown>);
+    const results = await Promise.allSettled(
+      flat
+        .filter(([key]) => JSON.stringify(getNested(target as Record<string, unknown>, key)) !== JSON.stringify(getNested(original, key)))
+        .map(([key, val]) => gw.request("config.set", { key, value: val }))
+    );
+    const ok = results.filter(r => r.status === "fulfilled").length;
+    const fail = results.length - ok;
+    setRaw(structuredClone(target));
+    setOriginal(structuredClone(target));
+    if (mode === "form") setYaml(yamlStringify(target));
+    if (fail > 0) toast.show({ variant: "error", message: `Saved ${ok}, ${fail} failed` });
+    else toast.show({ variant: "success", message: results.length === 0 ? "No changes" : "Config saved" });
   };
 
   useKeyboard((key) => {

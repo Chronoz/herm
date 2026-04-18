@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
-import { readToolsets, type ToolsetInfo } from "../utils/hermes-home";
+import type { ToolsetInfo } from "../utils/hermes-home";
+import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 
 // ─── Toolset Row ──────────────────────────────────────────────────────
@@ -142,15 +143,31 @@ const EmptyState = memo((props: { searching: boolean }) => {
 
 export const Toolsets = memo(() => {
   const theme = useTheme().theme;
+  const gw = useGateway();
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
 
-  const load = useCallback(async () => {
-    setToolsets(await readToolsets());
-  }, []);
+  const load = useCallback(() => {
+    Promise.all([
+      gw.request<{ toolsets: Array<{ name: string; enabled: boolean }> }>("toolsets.list", {}),
+      gw.request<{ sections: Array<{ name: string; tools: Array<{ name: string }> }> }>("tools.show", {}),
+    ])
+      .then(([tsRes, tlRes]) => {
+        const tools = new Map<string, string[]>();
+        for (const sec of tlRes.sections ?? []) {
+          tools.set(sec.name, (sec.tools ?? []).map(t => t.name));
+        }
+        const rows: ToolsetInfo[] = (tsRes.toolsets ?? []).map(t => {
+          const list = tools.get(t.name) ?? [];
+          return { name: t.name, tools: list, enabled: t.enabled, active: list };
+        });
+        setToolsets(rows);
+      })
+      .catch(() => {});
+  }, [gw]);
 
   useEffect(() => {
     load();

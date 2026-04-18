@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
-import { listSkills, type SkillInfo } from "../utils/hermes-home";
+import { makeSource, type SkillInfo } from "../utils/hermes-home";
+import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -123,15 +124,30 @@ const EmptyState = memo((props: { searching: boolean }) => {
 
 export const Skills = memo(() => {
   const theme = useTheme().theme;
+  const gw = useGateway();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
 
-  const load = useCallback(async () => {
-    const rows = await listSkills();
-    setSkills(rows);
-  }, []);
+  const load = useCallback(() => {
+    gw.request<{ skills: Record<string, string[]> }>("skills.manage", { action: "list" })
+      .then(res => {
+        const raw = res.skills ?? {};
+        const rows: SkillInfo[] = Object.entries(raw).flatMap(([cat, names]) =>
+          names.map(n => ({
+            source: makeSource(`skills/${cat}/${n}/SKILL.md`, `${n}/SKILL.md`),
+            category: cat,
+            name: n,
+            description: "",
+            tags: [],
+          }))
+        );
+        rows.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
+        setSkills(rows);
+      })
+      .catch(() => {});
+  }, [gw]);
 
   useEffect(() => {
     load();

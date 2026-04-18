@@ -1,10 +1,52 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
-import * as api from "../utils/cron-api";
-import type { CronJob } from "../utils/cron-api";
+import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+type CronJob = {
+  id: string
+  name: string
+  prompt: string
+  schedule: { kind: string; expr: string; display: string }
+  enabled: boolean
+  state: string
+  deliver: string
+  last_run?: string
+  next_run?: string
+  last_error?: string
+}
+
+type RawJob = {
+  job_id?: string
+  id?: string
+  name?: string
+  prompt_preview?: string
+  prompt?: string
+  schedule?: string
+  enabled?: boolean
+  state?: string
+  deliver?: string
+  last_run_at?: string
+  next_run_at?: string
+  last_delivery_error?: string
+}
+
+const normalize = (j: RawJob): CronJob => ({
+  id: j.job_id ?? j.id ?? "",
+  name: j.name ?? "",
+  prompt: j.prompt ?? j.prompt_preview ?? "",
+  schedule: { kind: "", expr: j.schedule ?? "", display: j.schedule ?? "" },
+  enabled: j.enabled ?? true,
+  state: j.state ?? "scheduled",
+  deliver: j.deliver ?? "local",
+  last_run: j.last_run_at,
+  next_run: j.next_run_at,
+  last_error: j.last_delivery_error,
+})
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -172,20 +214,18 @@ const CreateDialog = (props: {
 
 export const Cron = memo(() => {
   const theme = useTheme().theme;
+  const gw = useGateway();
   const dialog = useDialog();
   const toast = useToast();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [selected, setSelected] = useState(0);
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setJobs(await api.list());
-      setErr(null);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+  const load = useCallback(() => {
+    gw.request<{ jobs?: RawJob[] }>("cron.manage", { action: "list" })
+      .then(res => { setJobs((res.jobs ?? []).map(normalize)); setErr(null); })
+      .catch(e => setErr(e instanceof Error ? e.message : String(e)));
+  }, [gw]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -199,13 +239,11 @@ export const Cron = memo(() => {
     if (key.raw === "n") {
       dialog.replace(
         <CreateDialog
-          onCreate={async (name, prompt, schedule, deliver) => {
+          onCreate={(name, prompt, schedule, deliver) => {
             dialog.clear();
-            try {
-              await api.create({ name, prompt, schedule, deliver });
-              toast.show({ variant: "success", message: "Job created" });
-              load();
-            } catch { toast.show({ variant: "error", message: "Failed to create job" }); }
+            gw.request("cron.manage", { action: "add", name, prompt, schedule, deliver })
+              .then(() => { toast.show({ variant: "success", message: "Job created" }); load(); })
+              .catch(() => toast.show({ variant: "error", message: "Failed to create job" }));
           }}
           onCancel={() => dialog.clear()}
         />,
@@ -214,8 +252,8 @@ export const Cron = memo(() => {
     }
 
     if (key.raw === "p" && current) {
-      const fn = current.enabled ? api.pause : api.resume;
-      fn(current.id)
+      const act = current.enabled ? "pause" : "resume";
+      gw.request("cron.manage", { action: act, name: current.id })
         .then(() => { toast.show({ variant: "success", message: current.enabled ? "Paused" : "Resumed" }); load(); })
         .catch(() => toast.show({ variant: "error", message: "Failed" }));
       return;
@@ -228,7 +266,7 @@ export const Cron = memo(() => {
           message={`Run "${current.name || current.id}" now?`}
           onConfirm={() => {
             dialog.clear();
-            api.trigger(current.id)
+            gw.request("cron.manage", { action: "run", name: current.id })
               .then(() => { toast.show({ variant: "success", message: "Triggered" }); load(); })
               .catch(() => toast.show({ variant: "error", message: "Failed to trigger" }));
           }}
@@ -245,7 +283,7 @@ export const Cron = memo(() => {
           message={`Delete "${current.name || current.id}"?`}
           onConfirm={() => {
             dialog.clear();
-            api.remove(current.id)
+            gw.request("cron.manage", { action: "remove", name: current.id })
               .then(() => {
                 toast.show({ variant: "success", message: "Deleted" });
                 setSelected(s => Math.min(s, jobs.length - 2));
