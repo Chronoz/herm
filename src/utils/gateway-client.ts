@@ -199,6 +199,13 @@ export class GatewayClient extends EventEmitter {
     return this.logs.slice(-Math.max(1, n)).join("\n")
   }
 
+  private sid = ""
+
+  /** Set the active session id; auto-injected into subsequent requests. */
+  setSession(sid: string) {
+    this.sid = sid
+  }
+
   request<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     if (!this.proc || this.proc.exitCode !== null) this.start()
 
@@ -207,6 +214,9 @@ export class GatewayClient extends EventEmitter {
 
     const rid = `r${++this.id}`
     const writer = stdin as { write(data: string | Uint8Array): number }
+    const merged = this.sid && params.session_id === undefined
+      ? { session_id: this.sid, ...params }
+      : params
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -219,7 +229,7 @@ export class GatewayClient extends EventEmitter {
       })
 
       try {
-        writer.write(JSON.stringify({ jsonrpc: "2.0", id: rid, method, params }) + "\n")
+        writer.write(JSON.stringify({ jsonrpc: "2.0", id: rid, method, params: merged }) + "\n")
       } catch (e) {
         clearTimeout(timeout)
         this.pending.delete(rid)

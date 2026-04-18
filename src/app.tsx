@@ -173,7 +173,7 @@ const AppInner = () => {
     history.push(msg)
     dispatch({ kind: "user", text: msg })
     preferences.set("lastSessionId", sid)
-    gw.request("prompt.submit", { content: msg }).catch(() => {})
+    gw.request("prompt.submit", { text: msg }).catch(() => {})
     setInput("")
     setTab(1)
   }, [input, ready, turn.streaming, pop.open, pop.popover, pop.cursor, sid, gw, history])
@@ -195,7 +195,7 @@ const AppInner = () => {
     dispatch({ kind: "user", text: `/${command.name}` })
     gw.request<{ output?: string }>("slash.exec", { command: `/${command.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
-      .catch(() => { gw.request("prompt.submit", { content: `/${command.name}` }).catch(() => {}) })
+      .catch(() => { gw.request("prompt.submit", { text: `/${command.name}` }).catch(() => {}) })
   }, [ready, turn.streaming, dialog, themeCtx, newSession, gw])
 
   // ── Copy last assistant ───────────────────────────────────────────
@@ -242,7 +242,7 @@ const AppInner = () => {
       send: (msg: string) => {
         if (!state.current.ready || state.current.streaming) return
         dispatch({ kind: "user", text: msg })
-        gw.request("prompt.submit", { content: msg }).catch(() => {})
+        gw.request("prompt.submit", { text: msg }).catch(() => {})
         setTab(1)
       },
       ready: () => state.current.ready,
