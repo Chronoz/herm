@@ -73,6 +73,7 @@ const AppInner = () => {
   const [msgCount, setMsgCount] = useState(0)
   const [info, setInfo] = useState<SessionInfo | null>(null)
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
+  const [status, setStatus] = useState("")
   const sessionStart = useRef(Date.now())
 
   const history = useInputHistory(input, setInput)
@@ -113,6 +114,7 @@ const AppInner = () => {
       onSecret: (req) => dialog.replace(<SecretPrompt req={req} />),
       onBackground: (_tid, text) => toast.show({ variant: "info", message: `bg task: ${text.slice(0, 80)}` }),
       onBtw: (text) => dispatch({ kind: "system", text: `btw: ${text}` }),
+      onStatus: (text) => setStatus(text),
     })
     if (action) dispatch(action)
   }, [session, dialog, toast])

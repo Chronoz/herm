@@ -16,6 +16,7 @@ export type Side = {
   onSecret?: (req: { request_id: string; prompt: string; env_var: string }) => void
   onBackground?: (task_id: string, text: string) => void
   onBtw?: (text: string) => void
+  onStatus?: (text: string) => void
 }
 
 export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
@@ -78,6 +79,11 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
       }
 
     case "thinking.delta":
+      // Cosmetic spinner text from the agent's status line, not model
+      // reasoning. Surface as transient status only.
+      side.onStatus?.(ev.payload?.text ?? "")
+      return null
+
     case "reasoning.delta":
     case "reasoning.available": {
       const text = ev.payload?.text
@@ -126,8 +132,11 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
     case "gateway.stderr":
     case "gateway.start_timeout":
     case "gateway.protocol_error":
-    case "status.update":
     case "skin.changed":
+      return null
+
+    case "status.update":
+      side.onStatus?.(ev.payload?.text ?? "")
       return null
   }
   return null
