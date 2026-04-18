@@ -345,7 +345,6 @@ const AppInner = () => {
 
     api.on("connected", () => {
       setReady(true)
-      preferences.set("lastSessionId", session)
       const resumed = initial.messages.length > 0 && session === initial.session
       const label = resumed
         ? `Resumed session: ${session} (${initial.msgCount} messages)`
@@ -356,8 +355,6 @@ const AppInner = () => {
         parts: [{ type: "text", content: label, streaming: false }],
         timestamp: Date.now() / 1000,
       }])
-      // Fetch the slash command registry (built-ins + skills + plugins + MCP).
-      // Returns [] if the gateway is unavailable — popover simply won't open.
       fetch_commands("http://localhost:8642/v1", process.env.API_SERVER_KEY).then(setSlashCmds)
     })
 
@@ -484,10 +481,11 @@ const AppInner = () => {
       timestamp: Date.now() / 1000,
     }])
 
+    preferences.set("lastSessionId", session)
     client.current?.send(msg)
     setInput("")
     setTab(1)
-  }, [input, ready, streaming, popOpen, popover, popCursor, slash])
+  }, [input, ready, streaming, popOpen, popover, popCursor, slash, session])
 
   // Copy last assistant message
   const copyLast = useCallback(() => {
@@ -521,6 +519,7 @@ const AppInner = () => {
     setMsgCount(loaded.length)
     setCost(0)
     setUsage(undefined)
+    preferences.set("lastSessionId", sid)
 
     client.current?.disconnect()
 
