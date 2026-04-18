@@ -98,7 +98,7 @@ export const monitor = enabled
       const gc = Bun.gc(false)
       log(
         `\x1b[90m[mem] RSS=${mb(m.rss)}MB heap=${mb(m.heapUsed)}/${mb(m.heapTotal)}MB`
-        + ` ext=${mb(m.external)}MB gcRuns=${(gc as Record<string, unknown>).eden_collections ?? "?"}/${(gc as Record<string, unknown>).full_collections ?? "?"}\x1b[0m`
+        + ` ext=${mb(m.external)}MB gcRuns=${(gc as unknown as Record<string, unknown>)?.eden_collections ?? "?"}/${(gc as unknown as Record<string, unknown>)?.full_collections ?? "?"}\x1b[0m`
       )
     }, ms)
     return () => clearInterval(id)
