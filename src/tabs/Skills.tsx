@@ -1,11 +1,15 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { makeSource, type SkillInfo } from "../utils/hermes-home";
 import { useGateway } from "../app/gateway";
+import { useDialog } from "../ui/dialog";
+import { useToast } from "../ui/toast";
 import { useTheme } from "../theme";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { trunc } from "../ui/fmt";
+
+type Hit = { name: string; description?: string }
 
 // ─── Skill Row ───────────────────────────────────────────────────────
 
@@ -39,6 +43,23 @@ const SkillRow = memo((props: {
         <span fg={theme.textMuted}>
           {trunc(s.description || "—", 60)}
         </span>
+      </text>
+    </box>
+  );
+});
+
+// ─── Hub Result Row ──────────────────────────────────────────────────
+
+const HitRow = memo((props: { hit: Hit; selected: boolean; onHover: () => void }) => {
+  const theme = useTheme().theme;
+  const on = props.selected;
+  return (
+    <box height={1} backgroundColor={on ? theme.backgroundElement : undefined}
+         onMouseOver={props.onHover}>
+      <text>
+        <span fg={on ? theme.primary : theme.textMuted}>{on ? "▸ " : "  "}</span>
+        <span fg={on ? theme.accent : theme.text}>{props.hit.name.padEnd(28)}</span>
+        <span fg={theme.textMuted}>{trunc(props.hit.description || "—", 70)}</span>
       </text>
     </box>
   );
@@ -78,6 +99,25 @@ const DetailPanel = memo((props: { skill: SkillInfo }) => {
   );
 });
 
+// ─── Confirm Install ─────────────────────────────────────────────────
+
+const Confirm = (props: { name: string; onYes: () => void; onNo: () => void }) => {
+  const theme = useTheme().theme;
+  useKeyboard((key) => {
+    if (key.name === "y" || key.name === "return") return props.onYes();
+    if (key.name === "n" || key.name === "escape") return props.onNo();
+  });
+  return (
+    <box flexDirection="column" width={50}>
+      <box height={1}><text fg={theme.primary}><strong>Install skill?</strong></text></box>
+      <box height={1} />
+      <box height={1}><text fg={theme.accent}>{trunc(props.name, 46)}</text></box>
+      <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>[y] install  ·  [n] cancel</text></box>
+    </box>
+  );
+};
+
 // ─── Empty State ─────────────────────────────────────────────────────
 
 const EmptyState = memo((props: { searching: boolean }) => {
@@ -87,7 +127,7 @@ const EmptyState = memo((props: { searching: boolean }) => {
       <text>
         <span fg={theme.textMuted}>
           {props.searching
-            ? "No matching skills"
+            ? "No matching skills on hub"
             : "No skills found in ~/.hermes/skills/"}
         </span>
       </text>
@@ -100,10 +140,14 @@ const EmptyState = memo((props: { searching: boolean }) => {
 export const Skills = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const gw = useGateway();
+  const dialog = useDialog();
+  const toast = useToast();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<Hit[]>([]);
+  const seq = useRef(0);
 
   const load = useCallback(() => {
     gw.request<{ skills: Record<string, string[]> }>("skills.manage", { action: "list" })
@@ -128,19 +172,21 @@ export const Skills = memo((props: { focused?: boolean }) => {
     load();
   }, [load]);
 
-  // Filter skills by search query
-  const filtered = searching && query.trim()
-    ? skills.filter(s => {
-        const q = query.toLowerCase();
-        return s.name.toLowerCase().includes(q)
-          || s.description.toLowerCase().includes(q)
-          || s.category.toLowerCase().includes(q)
-          || s.tags.some(t => t.toLowerCase().includes(q));
+  // Hub search — fire per keystroke, drop stale responses via seq ref.
+  useEffect(() => {
+    const id = ++seq.current;
+    if (!searching || !query.trim()) { setHits([]); return }
+    gw.request<{ results: Hit[] }>("skills.manage", { action: "search", query })
+      .then(r => {
+        if (seq.current !== id) return;
+        setHits(r.results ?? []);
+        setSelected(0);
       })
-    : skills;
+      .catch(() => { if (seq.current === id) setHits([]) });
+  }, [gw, query, searching]);
 
-  // Group by category for display
-  const groups = Map.groupBy(filtered, s => s.category || "uncategorized");
+  // Group installed skills by category for display
+  const groups = Map.groupBy(skills, s => s.category || "uncategorized");
 
   // Flat list for keyboard navigation
   const flat = [...groups].flatMap(([cat, items]) => [
@@ -148,64 +194,78 @@ export const Skills = memo((props: { focused?: boolean }) => {
     ...items.map(s => ({ type: "skill" as const, skill: s })),
   ]);
 
-  // Count only skill rows for navigation
   const skillRows = flat.filter(r => r.type === "skill");
-  const count = skillRows.length;
+  const count = searching ? hits.length : skillRows.length;
+  const current = !searching && skillRows[selected]?.type === "skill"
+    ? skillRows[selected].skill : null;
 
-  // Map selected index to the skill
-  const current = skillRows[selected]?.type === "skill" ? skillRows[selected].skill : null;
+  const exit = useCallback(() => {
+    setSearching(false); setQuery(""); setHits([]); setSelected(0);
+  }, []);
+
+  const install = useCallback((name: string) => {
+    dialog.replace(
+      <Confirm name={name}
+        onYes={() => {
+          dialog.clear();
+          gw.request("skills.manage", { action: "install", query: name })
+            .then(() => {
+              toast.show({ variant: "success", message: `Installed ${name}` });
+              exit();
+              load();
+            })
+            .catch((e: Error) =>
+              toast.show({ variant: "error", message: `Install failed: ${e.message}` }));
+        }}
+        onNo={() => dialog.clear()}
+      />,
+    );
+  }, [dialog, gw, toast, exit, load]);
+
+  const inspect = useCallback((name: string) => {
+    gw.request<{ info: unknown }>("skills.manage", { action: "inspect", query: name })
+      .then(r => dialog.replace(
+        <box flexDirection="column" width={90} height={24}>
+          <box height={1}><text fg={theme.primary}><strong>{`Skill · ${name}`}</strong></text></box>
+          <box height={1} />
+          <scrollbox scrollY flexGrow={1}>
+            <box flexDirection="column" width="100%">
+              <text wrapMode="word">{JSON.stringify(r.info ?? r, null, 2)}</text>
+            </box>
+          </scrollbox>
+        </box>,
+      ))
+      .catch((e: Error) => toast.error(e));
+  }, [gw, dialog, toast, theme.primary]);
 
   useKeyboard((key) => {
     if (!props.focused) return;
-    // Toggle search
     if (!searching && key.raw === "/") {
-      setSearching(true);
-      setQuery("");
-      setSelected(0);
+      setSearching(true); setQuery(""); setHits([]); setSelected(0);
       return;
     }
 
     if (searching) {
-      if (key.name === "escape") {
-        setSearching(false);
-        setQuery("");
-        setSelected(0);
-        return;
-      }
-      if (key.name === "backspace") {
-        setQuery(prev => prev.slice(0, -1));
-        setSelected(0);
-        return;
-      }
-      if (key.name === "up") {
-        setSelected(prev => Math.max(0, prev - 1));
-        return;
-      }
-      if (key.name === "down") {
-        setSelected(prev => Math.min(count - 1, prev + 1));
+      if (key.name === "escape") { exit(); return }
+      if (key.name === "backspace") { setQuery(p => p.slice(0, -1)); setSelected(0); return }
+      if (key.name === "up") return setSelected(p => Math.max(0, p - 1));
+      if (key.name === "down") return setSelected(p => Math.min(count - 1, p + 1));
+      if (key.name === "return") {
+        const hit = hits[selected];
+        if (hit) install(hit.name);
         return;
       }
       if (key.raw && key.raw.length === 1 && key.raw >= " ") {
-        setQuery(prev => prev + key.raw);
-        setSelected(0);
-        return;
+        setQuery(p => p + key.raw); setSelected(0);
       }
       return;
     }
 
     // Normal mode
-    if (key.name === "up") {
-      setSelected(prev => Math.max(0, prev - 1));
-      return;
-    }
-    if (key.name === "down") {
-      setSelected(prev => Math.min(count - 1, prev + 1));
-      return;
-    }
-    if (key.name === "r") {
-      load();
-      return;
-    }
+    if (key.name === "up") return setSelected(p => Math.max(0, p - 1));
+    if (key.name === "down") return setSelected(p => Math.min(count - 1, p + 1));
+    if (key.name === "r") return load();
+    if (key.name === "i" && current) return inspect(current.name);
   });
 
   // Track which skill index we're on as we iterate through the grouped list
@@ -214,8 +274,10 @@ export const Skills = memo((props: { focused?: boolean }) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell
-        title={searching ? `Skills (${count} matching)` : `Skills (${skills.length})`}
-        hint={searching ? "↑↓ navigate  Esc cancel" : "↑↓ navigate  / search  r refresh"}
+        title={searching ? `Hub Search (${hits.length})` : `Skills (${skills.length})`}
+        hint={searching
+          ? "↑↓ navigate  Enter install  Esc cancel"
+          : "↑↓ navigate  / search hub  i inspect  r refresh"}
       >
         {/* Search bar */}
         {searching ? (
@@ -228,21 +290,34 @@ export const Skills = memo((props: { focused?: boolean }) => {
           </box>
         ) : null}
 
-        {/* Column headers */}
-        <box height={1}>
-          <text fg={theme.textMuted}>
-            {"  "}{"Name".padEnd(24)}{"Category".padEnd(16)}{"Description"}
-          </text>
-        </box>
-        <box height={1}>
-          <text fg={theme.borderSubtle}>
-            {"  "}{"─".repeat(22)}{"  "}{"─".repeat(14)}{"  "}{"─".repeat(40)}
-          </text>
-        </box>
+        {/* Column headers (installed mode only) */}
+        {searching ? null : (
+          <box height={1}>
+            <text fg={theme.textMuted}>
+              {"  "}{"Name".padEnd(24)}{"Category".padEnd(16)}{"Description"}
+            </text>
+          </box>
+        )}
+        {searching ? null : (
+          <box height={1}>
+            <text fg={theme.borderSubtle}>
+              {"  "}{"─".repeat(22)}{"  "}{"─".repeat(14)}{"  "}{"─".repeat(40)}
+            </text>
+          </box>
+        )}
 
         {/* List */}
         {count === 0 ? (
           <EmptyState searching={searching} />
+        ) : searching ? (
+          <scrollbox scrollY flexGrow={1}>
+            <box flexDirection="column" width="100%">
+              {hits.map((h, i) => (
+                <HitRow key={h.name} hit={h} selected={i === selected}
+                  onHover={() => setSelected(i)} />
+              ))}
+            </box>
+          </scrollbox>
         ) : (
           <scrollbox scrollY flexGrow={1}>
             {flat.map((row, i) => {
