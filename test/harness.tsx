@@ -47,6 +47,7 @@ export class MockGateway extends EventEmitter implements Gateway {
     this.on$("session.title", p => ({ title: p.title ?? "" }))
     this.on$("session.usage", () => ({}))
     this.on$("commands.catalog", () => ({ pairs: [] }))
+    this.on$("cron.manage", () => ({ jobs: [] }))
     for (const [m, h] of Object.entries(handlers)) this.on$(m, h)
   }
 
