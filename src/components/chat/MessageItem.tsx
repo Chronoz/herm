@@ -1,9 +1,8 @@
-import { useState, memo } from "react"
-import type { Message, TextPart, ThinkingPart } from "../../types/message"
+import { memo, useState } from "react"
+import type { Message, Part, TextPart, ThinkingPart } from "../../types/message"
 import { ToolCallItem } from "./ToolCallItem"
 import { useTheme } from "../../theme"
 
-// Re-export for backward compat
 export type { Message }
 
 function duration(ms: number): string {
@@ -20,8 +19,7 @@ function tokens(n: number): string {
 }
 
 function stamp(ts: number): string {
-  const d = new Date(ts * 1000)
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
 function extract(msg: Message): string {
@@ -39,13 +37,11 @@ export const MessageItem = memo(({ message, streaming }: { message: Message; str
 
 const SystemMessage = memo(({ message }: { message: Message }) => {
   const theme = useTheme().theme
-  const content = extract(message)
-
   return (
-    <box paddingLeft={1} paddingY={0} marginBottom={0} height={1}>
+    <box paddingLeft={1} height={1}>
       <text>
-        <span fg={theme.borderSubtle}>{'─'.repeat(2)} </span>
-        <span fg={theme.textMuted}>{content}</span>
+        <span fg={theme.borderSubtle}>── </span>
+        <span fg={theme.textMuted}>{extract(message)}</span>
       </text>
     </box>
   )
@@ -54,8 +50,6 @@ const SystemMessage = memo(({ message }: { message: Message }) => {
 const UserMessage = memo(({ message }: { message: Message }) => {
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)
-  const content = extract(message)
-
   return (
     <box
       flexDirection="column"
@@ -64,17 +58,27 @@ const UserMessage = memo(({ message }: { message: Message }) => {
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
     >
-      {/* Header */}
       <box height={1} flexDirection="row" paddingLeft={1}>
         <text>
           <span fg={theme.primary}>▌ You</span>
           {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
         </text>
       </box>
-      {/* Content */}
       <box paddingLeft={3}>
-        <text fg={theme.text}>{content}</text>
+        <text fg={theme.text}>{extract(message)}</text>
       </box>
+    </box>
+  )
+})
+
+const Thinking = memo(({ part }: { part: ThinkingPart }) => {
+  const theme = useTheme().theme
+  const [open, setOpen] = useState(false)
+  const body = open ? part.content : part.content.slice(0, 80).replace(/\n/g, " ")
+  return (
+    <box paddingLeft={2} marginTop={1} border={["left"]} borderColor={theme.borderSubtle}
+         onMouseDown={() => setOpen(o => !o)}>
+      <text fg={theme.textMuted}>💭 {body}{!open && part.content.length > 80 ? "…" : ""}</text>
     </box>
   )
 })
@@ -82,52 +86,34 @@ const UserMessage = memo(({ message }: { message: Message }) => {
 const AssistantMessage = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
   const ctx = useTheme()
   const theme = ctx.theme
-  const syntaxStyle = ctx.syntaxStyle
-  const parts = message.parts
-  const content = extract(message)
-  const toolParts = parts.filter(p => p.type === "tool")
-  const thinkingParts = parts.filter((p): p is ThinkingPart => p.type === "thinking")
-  const isStreaming = streaming && parts.some(p => p.type === "text" && p.streaming)
   const hasError = !!message.error
-  const borderColor = hasError ? theme.error : theme.secondary
+  const border = hasError ? theme.error : theme.secondary
+
+  const part = (p: Part, i: number) => {
+    if (p.type === "thinking") return <Thinking key={`t-${i}`} part={p} />
+    if (p.type === "tool") return <ToolCallItem key={p.id || `tool-${i}`} tool={p} />
+    if (!p.content) return null
+    return (
+      <box key={`x-${i}`} paddingLeft={3}>
+        <markdown content={p.content} syntaxStyle={ctx.syntaxStyle} streaming={streaming && p.streaming} />
+      </box>
+    )
+  }
 
   return (
     <box flexDirection="column" marginBottom={1}>
-      {/* Header */}
       <box height={1} flexDirection="row" paddingLeft={1}>
         <text>
-          <span fg={borderColor}>▌ Hermes</span>
+          <span fg={border}>▌ Hermes</span>
           {message.model ? <span fg={theme.textMuted}> · {message.model}</span> : null}
           {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
         </text>
       </box>
 
-      {/* Thinking/reasoning — rendered first, OpenCode style */}
-      {thinkingParts.map((p, i) => (
-        <box key={`thinking-${i}`} paddingLeft={2} marginTop={1} border={["left"]} borderColor={theme.borderSubtle}>
-          <text fg={theme.textMuted}>{"💭 Thinking: "}{p.content}</text>
-        </box>
-      ))}
+      {message.parts.map(part)}
 
-      {/* Tool calls — rendered before text like OpenCode */}
-      {toolParts.map((p, i) =>
-        p.type === "tool" ? <ToolCallItem key={p.id || i} tool={p} /> : null
-      )}
-
-      {/* Text content — markdown rendered */}
-      {content ? (
-        <box paddingLeft={3}>
-          <markdown
-            content={content}
-            syntaxStyle={syntaxStyle}
-            streaming={isStreaming}
-          />
-        </box>
-      ) : null}
-
-      {/* Footer — metadata after completion */}
-      {!isStreaming && (message.duration || message.usage || hasError) ? (
-        <box height={1} paddingLeft={3} marginTop={0}>
+      {!streaming && (message.duration || message.usage || hasError) ? (
+        <box height={1} paddingLeft={3}>
           <text>
             {hasError ? (
               <span fg={theme.error}>✗ {message.error}</span>

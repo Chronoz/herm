@@ -1,7 +1,8 @@
-// Chat turn state — messages, streaming flags, and the streaming text buffer.
-// Every gateway event that mutates the message list goes through one action.
+// Chat turn state — messages, streaming flags. Parts are appended in the
+// order the gateway emits them (text → tool → text → …), so rendering can
+// iterate `parts` chronologically without regrouping.
 
-import type { Message, ToolPart, ThinkingPart, Usage } from "../types/message"
+import type { Message, Part, TextPart, ToolPart, Usage } from "../types/message"
 import { mid } from "../types/message"
 import type { SubagentPayload, TranscriptMessage } from "../utils/gateway-types"
 
@@ -10,7 +11,6 @@ export type TurnState = {
   streaming: boolean
   hasContent: boolean
   toolActive: boolean
-  buf: string      // streaming assistant text buffer
 }
 
 export const initialTurn: TurnState = {
@@ -18,7 +18,6 @@ export const initialTurn: TurnState = {
   streaming: false,
   hasContent: false,
   toolActive: false,
-  buf: "",
 }
 
 export type Action =
@@ -57,23 +56,24 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
       return { ...state, messages: [...state.messages, systemMessage(a.text)] }
 
     case "message.start":
-      return { ...state, streaming: true, hasContent: false, toolActive: false, buf: "" }
+      return { ...state, streaming: true, hasContent: false, toolActive: false }
 
-    case "message.delta": {
-      const buf = state.buf + a.chunk
+    case "message.delta":
       return {
         ...state,
         hasContent: true,
         toolActive: false,
-        buf,
-        messages: upsertStreamingText(state.messages, buf),
+        messages: appendText(state.messages, a.chunk),
       }
-    }
 
-    case "message.complete": {
-      const messages = finalizeAssistantText(state.messages, a.text, a.usage)
-      return { ...state, streaming: false, hasContent: false, toolActive: false, buf: "", messages }
-    }
+    case "message.complete":
+      return {
+        ...state,
+        streaming: false,
+        hasContent: false,
+        toolActive: false,
+        messages: finalize(state.messages, a.text, a.usage),
+      }
 
     case "tool.start": {
       const part: ToolPart = {
@@ -85,14 +85,14 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
         ...state,
         toolActive: true,
         hasContent: false,
-        messages: appendToAssistantOrNew(state.messages, part),
+        messages: appendPart(state.messages, part, true),
       }
     }
 
     case "tool.progress":
       return {
         ...state,
-        messages: updateLastRunningTool(state.messages, a.name, p => ({
+        messages: updateRunningTool(state.messages, a.name, p => ({
           ...p, preview: a.preview || p.preview,
         })),
       }
@@ -100,20 +100,22 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
     case "tool.generating":
       return {
         ...state,
-        messages: updateLastRunningTool(state.messages, a.name, p => ({
+        messages: updateRunningTool(state.messages, a.name, p => ({
           ...p, preview: p.preview ?? "generating…",
         })),
       }
 
-    case "tool.complete": {
-      const messages = updateToolById(state.messages, a.id, p => ({
-        ...p,
-        status: (a.error ? "error" : "done") as ToolPart["status"],
-        duration: p.startedAt ? Date.now() - p.startedAt : undefined,
-        preview: a.summary || a.inline_diff || p.preview,
-      }))
-      return { ...state, toolActive: false, messages }
-    }
+    case "tool.complete":
+      return {
+        ...state,
+        toolActive: false,
+        messages: updateToolById(state.messages, a.id, p => ({
+          ...p,
+          status: (a.error ? "error" : "done") as ToolPart["status"],
+          duration: p.startedAt ? Date.now() - p.startedAt : undefined,
+          preview: a.summary || a.inline_diff || p.preview,
+        })),
+      }
 
     case "thinking":
       return { ...state, messages: upsertThinking(state.messages, a.text, a.final) }
@@ -127,7 +129,6 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
         streaming: false,
         hasContent: false,
         toolActive: false,
-        buf: "",
         messages: [...state.messages, systemMessage(`Error: ${a.text}`)],
       }
 
@@ -142,7 +143,7 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
+// ── Constructors ────────────────────────────────────────────────────
 
 export function userMessage(text: string): Message {
   return {
@@ -171,65 +172,90 @@ export function transcriptToMessages(rows: TranscriptMessage[]): Message[] {
     }))
 }
 
-function upsertStreamingText(messages: Message[], text: string): Message[] {
-  const last = messages[messages.length - 1]
-  if (last?.role === "assistant" && last.parts.some(p => p.type === "text" && p.streaming)) {
-    const parts = last.parts.map(p => p.type === "text" && p.streaming ? { ...p, content: text } : p)
-    return [...messages.slice(0, -1), { ...last, parts }]
-  }
-  return [...messages, {
-    id: mid(), role: "assistant",
-    parts: [{ type: "text", content: text, streaming: true }],
-    timestamp: Date.now() / 1000,
-  }]
+// ── Internals ───────────────────────────────────────────────────────
+
+function assistant(parts: Part[]): Message {
+  return { id: mid(), role: "assistant", parts, timestamp: Date.now() / 1000 }
 }
 
-function finalizeAssistantText(messages: Message[], final?: string, usage?: Usage): Message[] {
+function withLastAssistant(
+  messages: Message[],
+  fn: (m: Message) => Message,
+  otherwise: () => Message,
+): Message[] {
+  const last = messages[messages.length - 1]
+  if (last?.role === "assistant") return [...messages.slice(0, -1), fn(last)]
+  return [...messages, otherwise()]
+}
+
+/** Seal the trailing streaming text part so the next chunk starts fresh. */
+function seal(parts: Part[]): Part[] {
+  const last = parts[parts.length - 1]
+  if (last?.type === "text" && last.streaming)
+    return [...parts.slice(0, -1), { ...last, streaming: false }]
+  return parts
+}
+
+/** Append a chunk to the trailing streaming text part, or open a new one. */
+function appendText(messages: Message[], chunk: string): Message[] {
+  return withLastAssistant(
+    messages,
+    m => {
+      const last = m.parts[m.parts.length - 1]
+      if (last?.type === "text" && last.streaming) {
+        const part: TextPart = { ...last, content: last.content + chunk }
+        return { ...m, parts: [...m.parts.slice(0, -1), part] }
+      }
+      return { ...m, parts: [...m.parts, { type: "text", content: chunk, streaming: true }] }
+    },
+    () => assistant([{ type: "text", content: chunk, streaming: true }]),
+  )
+}
+
+/** Append a non-text part, optionally sealing any open text stream first. */
+function appendPart(messages: Message[], part: Part, close: boolean): Message[] {
+  return withLastAssistant(
+    messages,
+    m => ({ ...m, parts: [...(close ? seal(m.parts) : m.parts), part] }),
+    () => assistant([part]),
+  )
+}
+
+function finalize(messages: Message[], final?: string, usage?: Usage): Message[] {
   const last = messages[messages.length - 1]
   if (last?.role === "assistant") {
-    const parts = last.parts.map(p => {
-      if (p.type === "text" && p.streaming) return { ...p, content: final || p.content, streaming: false }
-      return p
-    })
+    const tail = last.parts[last.parts.length - 1]
+    const parts = tail?.type === "text" && tail.streaming
+      ? [...last.parts.slice(0, -1), { ...tail, content: final || tail.content, streaming: false }]
+      : final && final !== joinText(last.parts)
+        ? [...last.parts, { type: "text" as const, content: final, streaming: false }]
+        : seal(last.parts)
     return [...messages.slice(0, -1), { ...last, parts, usage }]
   }
-  if (final) {
-    return [...messages, {
-      id: mid(), role: "assistant" as const,
-      parts: [{ type: "text" as const, content: final, streaming: false }],
-      timestamp: Date.now() / 1000, usage,
-    }]
-  }
-  return messages
+  if (!final) return messages
+  return [...messages, { ...assistant([{ type: "text", content: final, streaming: false }]), usage }]
 }
 
-function appendToAssistantOrNew(messages: Message[], part: ToolPart): Message[] {
-  const last = messages[messages.length - 1]
-  if (last?.role === "assistant")
-    return [...messages.slice(0, -1), { ...last, parts: [...last.parts, part] }]
-  return [...messages, {
-    id: mid(), role: "assistant",
-    parts: [part], timestamp: Date.now() / 1000,
-  }]
+function joinText(parts: Part[]): string {
+  return parts.filter(p => p.type === "text").map(p => p.content).join("")
 }
 
-function updateLastRunningTool(
+function updateRunningTool(
   messages: Message[],
   name: string | undefined,
   fn: (p: ToolPart) => ToolPart,
 ): Message[] {
   const last = messages[messages.length - 1]
   if (!last || last.role !== "assistant") return messages
-  let updated = false
-  const parts = last.parts.map(p => {
-    if (updated) return p
-    if (p.type !== "tool" || p.status !== "running") return p
-    if (name && p.name !== name) return p
-    updated = true
-    return fn(p)
-  })
-  if (!updated) return messages
-  return [...messages.slice(0, -1), { ...last, parts }]
+  for (let i = last.parts.length - 1; i >= 0; i--) {
+    const p = last.parts[i]
+    if (p.type !== "tool" || p.status !== "running") continue
+    if (name && p.name !== name) continue
+    const parts = [...last.parts]
+    parts[i] = fn(p)
+    return [...messages.slice(0, -1), { ...last, parts }]
+  }
+  return messages
 }
 
 function updateToolById(messages: Message[], id: string, fn: (p: ToolPart) => ToolPart): Message[] {
@@ -240,26 +266,21 @@ function updateToolById(messages: Message[], id: string, fn: (p: ToolPart) => To
 }
 
 function upsertThinking(messages: Message[], text: string, final: boolean): Message[] {
-  const last = messages[messages.length - 1]
-  if (last?.role === "assistant") {
-    const existing = last.parts.find(p => p.type === "thinking") as ThinkingPart | undefined
-    if (existing) {
-      const content = final ? text : existing.content + text
-      const parts = last.parts.map(p =>
-        p.type === "thinking" ? { ...p, content, streaming: !final } as ThinkingPart : p
-      )
-      return [...messages.slice(0, -1), { ...last, parts }]
-    }
-    return [...messages.slice(0, -1), {
-      ...last,
-      parts: [{ type: "thinking" as const, content: text, streaming: !final }, ...last.parts],
-    }]
-  }
-  return [...messages, {
-    id: mid(), role: "assistant" as const,
-    parts: [{ type: "thinking" as const, content: text, streaming: !final }],
-    timestamp: Date.now() / 1000,
-  }]
+  return withLastAssistant(
+    messages,
+    m => {
+      const idx = m.parts.findIndex(p => p.type === "thinking")
+      if (idx >= 0) {
+        const prev = m.parts[idx] as Part & { content: string }
+        const content = final ? text : prev.content + text
+        const parts = [...m.parts]
+        parts[idx] = { type: "thinking", content, streaming: !final }
+        return { ...m, parts }
+      }
+      return { ...m, parts: [{ type: "thinking" as const, content: text, streaming: !final }, ...m.parts] }
+    },
+    () => assistant([{ type: "thinking", content: text, streaming: !final }]),
+  )
 }
 
 function renderSubagent(
@@ -267,7 +288,6 @@ function renderSubagent(
   event: "start" | "thinking" | "tool" | "progress" | "complete",
   p: SubagentPayload,
 ): Message[] {
-  // Render subagent updates as tool parts tagged with `subagent:` prefix.
   const id = `sub-${p.task_index}`
   const name = `subagent[${p.task_index}]`
   const preview = p.tool_name
@@ -280,7 +300,7 @@ function renderSubagent(
       status: "running", startedAt: Date.now(),
       preview: p.goal,
     }
-    return appendToAssistantOrNew(messages, part)
+    return appendPart(messages, part, true)
   }
 
   if (event === "complete") {
@@ -292,6 +312,5 @@ function renderSubagent(
     }))
   }
 
-  // thinking / tool / progress → update preview only
   return updateToolById(messages, id, t => ({ ...t, preview: preview || t.preview }))
 }
