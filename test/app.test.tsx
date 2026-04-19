@@ -65,8 +65,8 @@ describe("app", () => {
     await until(t, () => t.frame().includes("stream chunk one"), 3000)
 
     const f = t.frame()
-    expect(f).toContain("Hermes")   // assistant header
-    expect(f).toContain("3→5")      // usage footer
+    expect(f).toContain("│")        // assistant gutter bar
+    expect(f).toContain("3→5 tok")  // usage in header
 
     t.destroy()
   })
@@ -84,7 +84,7 @@ describe("app", () => {
 
     const call = t.gw.last("prompt.submit")
     expect(call?.params.text).toBe("hello gateway")
-    expect(t.frame()).toContain("You")
+    expect(t.frame()).toContain("▸ you")
     expect(t.frame()).toContain("hello gateway")
 
     t.destroy()
