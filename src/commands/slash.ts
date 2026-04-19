@@ -11,7 +11,6 @@
  */
 
 export type SlashSource = "command" | "skill" | "plugin" | "mcp" | "local"
-export type SlashTarget = "local" | "gateway" | "shell"
 
 export type SlashCommand = {
   readonly name: string
@@ -21,10 +20,8 @@ export type SlashCommand = {
   readonly argsHint: string
   readonly subcommands: ReadonlyArray<string>
   readonly source: SlashSource
-  readonly target: SlashTarget
+  readonly target: "local" | "gateway"
   readonly keybind?: string
-  /** Shell command template for target="shell" (quick_commands). */
-  readonly shell?: string
 }
 
 /**

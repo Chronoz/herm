@@ -155,23 +155,8 @@ const AppInner = () => {
       .then(v => { if (v) applyTitle(v) })
   }, [dialog, title, applyTitle])
 
-  // ── Shell quick-commands ──────────────────────────────────────────
-  const runShell = useCallback((c: SlashCommand) => {
-    if (!c.shell) return
-    dispatch({ kind: "system", text: `$ ${c.shell}` })
-    gw.request<{ stdout: string; stderr: string; code: number }>("shell.exec", { command: c.shell })
-      .then(r => {
-        const out = (r.stdout || "").trimEnd()
-        const err = (r.stderr || "").trimEnd()
-        const body = [out, err && `stderr:\n${err}`].filter(Boolean).join("\n") || "(no output)"
-        dispatch({ kind: "system", text: r.code === 0 ? body : `exit ${r.code}\n${body}` })
-      })
-      .catch((e: Error) => dispatch({ kind: "system", text: `shell.exec failed: ${e.message}` }))
-  }, [gw])
-
   // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
-    if (c.target === "shell") return runShell(c)
     if (c.target === "local") {
       switch (c.name) {
         case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
@@ -191,7 +176,7 @@ const AppInner = () => {
     gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
       .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, toast, pickEikon, editTitle, runShell])
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, toast])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback((text: string) => {
@@ -352,7 +337,7 @@ const AppInner = () => {
         <box flexGrow={1} flexDirection="row">
           <box flexGrow={1} flexDirection="column">
             {content()}
-            <box flexShrink={0}>
+            <box flexShrink={0} zIndex={1}>
               <Composer
                 ref={composer}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}

@@ -115,7 +115,7 @@ describe("app", () => {
 
   test("slash popover opens on '/' and Enter dispatches local command", async () => {
     const gw = new MockGateway({
-      "commands.catalog": () => ({ pairs: [["model", "Switch model"]] }),
+      "commands.catalog": () => ({ pairs: [["/model", "Switch model"]] }),
     })
     const t = await mount({ gw })
     await until(t, () => t.frame().includes("Ready"))
@@ -150,26 +150,49 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("quick_commands appear in popover and dispatch via shell.exec", async () => {
+  test("gateway catalog commands appear in popover; filter matches bare name", async () => {
+    // Regression: gateway sends slash-prefixed names + {name,pairs} categories;
+    // old parser stored "/model" verbatim → filter("mo") never matched and
+    // category enrichment was a no-op (wrong key shape).
     const gw = new MockGateway({
-      "commands.catalog": () => ({ pairs: [] }),
-      "config.get": p => p.key === "full"
-        ? { config: { quick_commands: { gs: "git status -sb" } } }
-        : {},
-      "shell.exec": () => ({ stdout: "on branch main\nnothing to commit", stderr: "", code: 0 }),
+      "commands.catalog": () => ({
+        pairs: [["/model", "Switch model"], ["/retry", "Retry last"]],
+        categories: [{ name: "Configuration", pairs: [["/model", "Switch model"]] }],
+        canon: { "/m": "/model" },
+        sub: { "/model": ["list"] },
+      }),
     })
     const t = await mount({ gw })
     await until(t, () => t.frame().includes("Ready"))
 
-    await act(async () => { await t.keys.typeText("/gs") })
-    // popover row shows the command description = `$ <shell>`
-    await until(t, () => t.frame().includes("/gs") && t.frame().includes("$ git status -sb"))
-    act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes("nothing to commit"))
+    await act(async () => { await t.keys.typeText("/") })
+    await until(t, () => t.frame().includes("/model"))
+    expect(t.frame()).toContain("/retry")
+    expect(t.frame()).toContain("Configuration") // category header from pairs shape
 
-    expect(t.gw.last("shell.exec")?.params.command).toBe("git status -sb")
-    expect(t.gw.last("slash.exec")).toBeUndefined()
-    expect(t.gw.last("prompt.submit")).toBeUndefined()
+    // filter by prefix — would fail if names still carried leading "/"
+    await act(async () => { await t.keys.typeText("mo") })
+    await until(t, () => !t.frame().includes("/retry"))
+    expect(t.frame()).toContain("/model")
+    t.destroy()
+  })
+
+  test("popover survives tab round-trip (z-order regression)", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/") })
+    await until(t, () => t.frame().includes("/clear"))
+
+    act(() => t.keys.pressArrow("right", { ctrl: true }))
+    await t.settle()
+    act(() => t.keys.pressArrow("left", { ctrl: true }))
+    await t.settle(); await t.settle()
+
+    // Content tab remounted after Composer in the parent's paint order;
+    // without zIndex on the composer container it overdraws the absolute
+    // popover. Popover must still be visible.
+    expect(t.frame()).toContain("/clear")
     t.destroy()
   })
 
@@ -200,7 +223,7 @@ describe("app", () => {
 
   test("gateway slash matching a tab name jumps to that tab", async () => {
     const gw = new MockGateway({
-      "commands.catalog": () => ({ pairs: [["skills", "Manage skills"], ["model", "Switch model"]] }),
+      "commands.catalog": () => ({ pairs: [["/skills", "Manage skills"], ["/model", "Switch model"]] }),
     })
     const t = await mount({ gw })
     await until(t, () => t.frame().includes("Ready"))

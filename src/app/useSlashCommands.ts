@@ -1,5 +1,12 @@
 // Slash command catalog + live completion over RPC. Falls back to
 // LOCAL_COMMANDS when the gateway catalog is unavailable.
+//
+// Wire shape (tui_gateway/server.py @method("commands.catalog")):
+//   pairs:      [["/new", "desc"], ...]            — flat, includes skills + quick_commands
+//   categories: [{name, pairs: [["/new","…"],…]}]  — registry cmds only, grouped
+//   sub:        {"/reasoning": ["low","medium",…]} — subcommand completions
+//   canon:      {"/reset": "/new", …}              — alias → canonical (both slashed)
+// All names carry a leading "/"; herm stores them bare.
 
 import { useCallback, useEffect, useState } from "react"
 import { useGateway, useGatewayReady } from "./gateway"
@@ -11,73 +18,53 @@ import {
 } from "../commands/slash"
 import type { CommandsCatalogResponse } from "../utils/gateway-types"
 
+const bare = (s: string) => (s[0] === "/" ? s.slice(1) : s)
+
 export function useSlashCommands() {
   const gw = useGateway()
   const ready = useGatewayReady()
   const [cmds, setCmds] = useState<ReadonlyArray<SlashCommand>>(LOCAL_COMMANDS)
 
-  const fetchCatalog = useCallback(async () => {
-    try {
-      const res = await gw.request<CommandsCatalogResponse>("commands.catalog")
-      const remote: SlashCommand[] = (res.pairs ?? []).map(([name, desc]) => ({
+  const fetch = useCallback(async () => {
+    const res = await gw.request<CommandsCatalogResponse>("commands.catalog")
+      .catch(() => null)
+    if (!res) { setCmds(LOCAL_COMMANDS); return }
+
+    // name → category (from categories[].pairs, slashed)
+    const cat = new Map<string, string>()
+    for (const g of res.categories ?? [])
+      for (const [n] of g.pairs ?? []) cat.set(bare(n), g.name)
+
+    // canonical → aliases[] (invert canon)
+    const alias = new Map<string, string[]>()
+    for (const [a, c] of Object.entries(res.canon ?? {})) {
+      const k = bare(c), v = bare(a)
+      if (k === v) continue
+      ;(alias.get(k) ?? alias.set(k, []).get(k)!).push(v)
+    }
+
+    const sub = new Map(Object.entries(res.sub ?? {}).map(([k, v]) => [bare(k), v]))
+
+    const remote: SlashCommand[] = (res.pairs ?? []).map(([raw, desc]) => {
+      const name = bare(raw)
+      return {
         name,
         description: desc,
-        category: "Command",
-        aliases: [] as string[],
+        category: cat.get(name) ?? (name.includes(":") ? "Skills" : "Command"),
+        aliases: alias.get(name) ?? [],
         argsHint: "",
-        subcommands: [] as string[],
+        subcommands: sub.get(name) ?? [],
         source: "command" as const,
-        target: "gateway" as const,
-      }))
-
-      if (res.categories) {
-        const byName = new Map(remote.map(r => [r.name, r]))
-        for (const cat of res.categories) {
-          for (const c of cat.commands) {
-            const entry = byName.get(c.name)
-            if (!entry) continue
-            const idx = remote.indexOf(entry)
-            if (idx >= 0) {
-              remote[idx] = {
-                ...entry,
-                category: cat.name,
-                aliases: c.aliases ?? [],
-                argsHint: c.args_hint ?? "",
-                subcommands: res.sub?.[c.name] ?? [],
-              }
-            }
-          }
-        }
+        target: LOCAL_NAMES.has(name) ? ("local" as const) : ("gateway" as const),
       }
+    })
 
-      const names = new Set(remote.map(c => c.name))
-      const locals = LOCAL_COMMANDS.filter(c => !names.has(c.name))
-
-      // quick_commands: user-defined shell shortcuts from config.yaml.
-      // Rendered in the popover but dispatched via shell.exec, not the
-      // slash worker — they're raw shell, not hermes commands.
-      let quick: SlashCommand[] = []
-      try {
-        const full = await gw.request<{ config: Record<string, unknown> }>("config.get", { key: "full" })
-        const qc = (full.config?.quick_commands ?? {}) as Record<string, string>
-        quick = Object.entries(qc)
-          .filter(([n]) => !names.has(n) && !LOCAL_NAMES.has(n))
-          .map(([n, sh]) => ({
-            name: n, description: `$ ${sh}`, category: "Quick", aliases: [],
-            argsHint: "", subcommands: [], source: "local" as const,
-            target: "shell" as const, shell: sh,
-          }))
-      } catch { /* config.get optional */ }
-
-      setCmds(sort([...locals, ...quick, ...remote]))
-    } catch {
-      setCmds(LOCAL_COMMANDS)
-    }
+    const seen = new Set(remote.map(c => c.name))
+    const locals = LOCAL_COMMANDS.filter(c => !seen.has(c.name))
+    setCmds(sort([...locals, ...remote]))
   }, [gw])
 
-  useEffect(() => {
-    if (ready) fetchCatalog()
-  }, [ready, fetchCatalog])
+  useEffect(() => { if (ready) void fetch() }, [ready, fetch])
 
-  return { cmds, refresh: fetchCatalog }
+  return { cmds, refresh: fetch }
 }

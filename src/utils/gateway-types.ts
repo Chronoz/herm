@@ -159,17 +159,12 @@ export type TranscriptMessage = {
 }
 
 export type CommandsCatalogResponse = {
-  categories?: SlashCategory[]
+  categories?: Array<{ name: string; pairs?: [string, string][] }>
   pairs?: [string, string][]
   canon?: Record<string, string>
   sub?: Record<string, string[]>
   skill_count?: number
   warning?: string
-}
-
-export type SlashCategory = {
-  name: string
-  commands: { name: string; description: string; aliases?: string[]; args_hint?: string }[]
 }
 
 export type CompletionResponse = {
