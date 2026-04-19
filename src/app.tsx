@@ -1,4 +1,4 @@
-import { useRenderer } from "@opentui/react"
+import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "react"
 import * as perf from "./utils/perf"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
@@ -59,6 +59,7 @@ const AppInner = () => {
   const toast = useToast()
   const renderer = useRenderer()
   const session = useSession()
+  const dims = useTerminalDimensions()
 
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
   const [ready, setReady] = useState(false)
@@ -286,9 +287,11 @@ const AppInner = () => {
               />
             </box>
           </box>
-          <Profiler id="sidebar" onRender={perf.onRender}>
-            <Sidebar agentState={agentState} info={info} />
-          </Profiler>
+          {dims.width >= 120 ? (
+            <Profiler id="sidebar" onRender={perf.onRender}>
+              <Sidebar agentState={agentState} info={info} />
+            </Profiler>
+          ) : null}
         </box>
       </box>
     </Profiler>

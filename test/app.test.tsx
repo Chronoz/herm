@@ -36,6 +36,21 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("sidebar hides below 120 cols", async () => {
+    const t = await mount({ width: 160, height: 48 })
+    await until(t, () => t.frame().includes("Ready"))
+    expect(t.frame()).toContain("Identity")
+
+    t.resize(100, 48)
+    await t.settle(); await t.settle()
+    expect(t.frame()).not.toContain("Identity")
+
+    t.resize(160, 48)
+    await t.settle(); await t.settle()
+    expect(t.frame()).toContain("Identity")
+    t.destroy()
+  })
+
   test("gateway stream renders into transcript", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))

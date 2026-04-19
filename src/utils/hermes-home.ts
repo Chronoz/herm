@@ -135,6 +135,7 @@ export interface SessionRow {
   estimated_cost_usd: number | null;
   title: string | null;
   lastMessage: string | null;
+  last_active: number | null;
   parent_session_id: string | null;
 }
 
@@ -342,7 +343,8 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
                 s.cache_read_tokens, s.cache_write_tokens, s.reasoning_tokens,
                 s.estimated_cost_usd, s.parent_session_id,
                 COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title,
-                SUBSTR(ml.content, 1, 120) AS lastMessage
+                SUBSTR(ml.content, 1, 120) AS lastMessage,
+                (SELECT MAX(mx.timestamp) FROM messages mx WHERE mx.session_id = s.id) AS last_active
          FROM sessions s
          LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
            AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
@@ -368,6 +370,7 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       estimated_cost_usd: number | null;
       title: string | null;
       lastMessage: string | null;
+      last_active: number | null;
       parent_session_id: string | null;
     }>;
     db.close();
@@ -389,6 +392,7 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       estimated_cost_usd: row.estimated_cost_usd,
       title: row.title,
       lastMessage: row.lastMessage,
+      last_active: row.last_active,
       parent_session_id: row.parent_session_id,
     }));
     end()

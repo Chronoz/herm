@@ -194,7 +194,9 @@ describe("Sessions tab", () => {
     }
 
     const wide = t.frame()
-    expect(row(wide)).toContain("7 msgs")
+    // Header row present, value under Msgs column
+    expect(wide).toMatch(/Title\s+Source\s+Start\s+Msgs/)
+    expect(row(wide)).toMatch(/TUI\s+\d{2}:\d{2}\s+7/)
     // Full title visible at 200 cols
     expect(row(wide)).toContain("exceeds thirty characters")
 
@@ -203,8 +205,8 @@ describe("Sessions tab", () => {
     await t.settle()
     const narrow = t.frame()
 
-    // meta column still present and aligned; title column shrank
-    expect(row(narrow)).toContain("7 msgs")
+    // Detail panel hidden <140; meta column still present; title column shrank
+    expect(narrow).not.toContain("Session Detail")
     expect(row(narrow)).toContain("TUI")
     expect(titleLen(narrow)).toBeLessThan(titleLen(wide))
     // Truncated, not wrapped to a second line
@@ -212,6 +214,29 @@ describe("Sessions tab", () => {
     // Header doesn't wrap at narrow width either
     const headerY = narrow.split("\n").findIndex(l => l.includes("Sessions (1)"))
     expect(narrow.split("\n")[headerY + 1]).not.toContain("refresh")
+    t.destroy()
+  })
+
+  test("column headers align; table h-scrolls below TABLE_MIN", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    const t = await mountNode(<Sessions focused />, { gw, width: 200, height: 20 })
+    await until(t, () => t.frame().includes("Sessions (2)"))
+
+    // Header labels sit at the same x as data values.
+    const lines = t.frame().split("\n")
+    const hdr = lines.find(l => /Title\s+Source\s+Start\s+Msgs/.test(l))!
+    const row = lines.find(l => l.includes("▸ First session"))!
+    expect(hdr.indexOf("Title")).toBe(row.indexOf("First session"))
+    expect(hdr.indexOf("Source")).toBe(row.indexOf("TUI"))
+
+    // Narrow enough that TABLE_MIN kicks in → h-scrollbar, right cols clipped.
+    t.resize(55, 20)
+    await t.settle(); await t.settle()
+    const n = t.frame()
+    expect(n).toMatch(/Title\s+Source/)
+    expect(n).not.toMatch(/Title.*Msgs/)        // right-side clipped
+    const nrow = n.split("\n").find(l => l.includes("▸ First session"))!
+    expect(nrow).toContain("TUI")               // alignment preserved under clip
     t.destroy()
   })
 })

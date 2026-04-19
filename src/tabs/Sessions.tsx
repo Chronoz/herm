@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
-import { useKeyboard } from "@opentui/react"
+import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
 import { queryRecentSessions, type SessionRow } from "../utils/hermes-home"
 import type {
@@ -37,12 +37,13 @@ const badge = (src: string): string => ({
 const stamp = (ts: number): string =>
   new Date(ts * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
 
-const when = (ts: number): string =>
-  `${new Date(ts * 1000).toLocaleDateString()} ${new Date(ts * 1000).toLocaleTimeString()}`
+const when = (ts: number): string => {
+  const d = new Date(ts * 1000)
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`
+}
 
-const span = (start: number, end: number | null): string => {
-  if (!end) return "ongoing"
-  const s = end - start
+const span = (start: number, end: number): string => {
+  const s = Math.round(end - start)
   if (s < 0) return "—"
   if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
   if (s >= 60) return `${Math.floor(s / 60)}m`
@@ -61,56 +62,78 @@ const trunc = (s: string, max: number): string =>
   s.length <= max ? s : s.slice(0, max - 1) + "…"
 
 // ─── Detail Panel ────────────────────────────────────────────────────
+//
+// Data provenance:
+//   RPC (session.list): id, title, preview (first user msg), source,
+//                       started_at, message_count
+//   state.db enrich:    model, last_active, ended_at, end_reason,
+//                       tokens, cost, tool_call_count, lastMessage
+//
+// `ended_at` is NULL for ~80% of rows — hermes-agent only sets it on
+// clean CLI exit / compression / explicit reset, never on process
+// kill or abandoned TUI connects. So we derive Duration and "Last
+// active" from MAX(messages.timestamp) instead, which is always
+// accurate, and only show the ended_at/end_reason pair when it's
+// actually populated.
+
+const DLine = (props: { label: string; value: string; fg?: RGBA }) => {
+  const theme = useTheme().theme
+  return (
+    <box height={1} flexDirection="row">
+      <box width={13} flexShrink={0}>
+        <text fg={theme.textMuted}>{props.label}</text>
+      </box>
+      <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+        <text fg={props.fg ?? theme.text}>{props.value}</text>
+      </box>
+    </box>
+  )
+}
 
 const Detail = memo((props: { row: Row }) => {
   const theme = useTheme().theme
   const r = props.row
   const d = r.detail
-
-  const lines: Array<[string, string]> = [
-    ["ID", r.id],
-    ["Source", badge(r.source ?? "")],
-    ["Started", when(r.started_at)],
-    ["Messages", String(r.message_count)],
-  ]
-  if (d) {
-    lines.push(
-      ["Model", d.model ?? "—"],
-      ["Ended", d.ended_at ? when(d.ended_at) : "ongoing"],
-      ["Duration", span(d.started_at, d.ended_at)],
-      ["Tool Calls", String(d.tool_call_count)],
-      ["Input", `${fmt(d.input_tokens)} tok`],
-      ["Output", `${fmt(d.output_tokens)} tok`],
-      ["Cache", `${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w`],
-      ["Reasoning", `${fmt(d.reasoning_tokens)} tok`],
-      ["Cost", cost(d.estimated_cost_usd)],
-    )
-    if (d.end_reason) lines.push(["End Reason", d.end_reason])
-    if (d.parent_session_id) lines.push(["Parent", d.parent_session_id])
-  }
+  const lastActive = d?.last_active ?? d?.ended_at ?? null
 
   return (
     <box flexDirection="column" padding={1} border borderColor={theme.border}
          backgroundColor={theme.backgroundPanel} width="40%">
-      <text><span fg={theme.primary}><strong>Session Detail</strong></span></text>
-      <text> </text>
-      <text><span fg={theme.accent}><strong>{r.title || "Untitled"}</strong></span></text>
-      {r.preview && r.preview !== r.title ? (
-        <text wrapMode="word"><span fg={theme.textMuted}>{trunc(r.preview, 80)}</span></text>
-      ) : null}
-      <text> </text>
-      {lines.map(([k, v]) => (
-        <text key={k}>
-          <span fg={theme.textMuted}>{k.padEnd(13)}</span>
-          <span fg={theme.text}>{` ${v}`}</span>
-        </text>
-      ))}
-      {!d ? (
-        <>
-          <text> </text>
-          <text fg={theme.textMuted}>(no local detail — state.db mismatch)</text>
-        </>
-      ) : null}
+      <box height={1}><text fg={theme.primary}><strong>Session Detail</strong></text></box>
+      <box height={1} />
+      <box minHeight={1}>
+        <text wrapMode="word"><span fg={theme.accent}><strong>{r.title || "Untitled"}</strong></span></text>
+      </box>
+      <box height={1} />
+
+      <DLine label="ID" value={r.id} />
+      <DLine label="Source" value={badge(r.source ?? "")} />
+      <DLine label="Model" value={d?.model ?? "—"} />
+      <DLine label="Started" value={when(r.started_at)} />
+      <DLine label="Last active" value={lastActive ? `${when(lastActive)}  (${ago(lastActive)})` : "—"} />
+      <DLine label="Duration" value={lastActive ? span(r.started_at, lastActive) : "—"} />
+      {d?.ended_at ? <DLine label="Ended" value={`${when(d.ended_at)}  ·  ${d.end_reason ?? "—"}`} /> : null}
+      <box height={1} />
+
+      <DLine label="Messages" value={String(r.message_count)} />
+      {d ? <>
+        <DLine label="Tool calls" value={String(d.tool_call_count)} />
+        <DLine label="Input" value={`${fmt(d.input_tokens)} tok`} />
+        <DLine label="Output" value={`${fmt(d.output_tokens)} tok`} />
+        <DLine label="Cache" value={`${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w`} />
+        <DLine label="Reasoning" value={`${fmt(d.reasoning_tokens)} tok`} />
+        <DLine label="Cost" value={cost(d.estimated_cost_usd)} fg={theme.success} />
+        {d.parent_session_id ? <DLine label="Parent" value={d.parent_session_id} /> : null}
+      </> : null}
+      <box height={1} />
+
+      <DLine label="First msg" value={r.preview || "—"} fg={theme.textMuted} />
+      <DLine label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} />
+
+      {!d ? <>
+        <box height={1} />
+        <box height={1}><text fg={theme.textMuted}>(no local detail — state.db mismatch)</text></box>
+      </> : null}
     </box>
   )
 })
@@ -206,19 +229,47 @@ const ConfirmDelete = (props: { title: string; onConfirm: () => void; onCancel: 
 // all remaining width (grows on wide terminals, truncates via overflow
 // on narrow ones) while meta columns hold fixed width. height={1}
 // forces single-line truncation instead of wrap.
+//
+// The whole table (header + body) sits inside an h-scrollbox with a
+// minWidth floor so once the list panel drops below TABLE_MIN cols
+// the table scrolls horizontally instead of crushing the title column
+// to nothing. Header and rows share the same Col structure so they
+// stay aligned under h-scroll.
 
-type ColProps = { w?: number; grow?: boolean; fg: RGBA; bold?: boolean; children: string }
+const TABLE_MIN = 70
+
+type ColProps = { w?: number; grow?: boolean; fg: RGBA; bold?: boolean; right?: boolean; children: string }
 const Col = (p: ColProps) => (
   <box width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
-       minWidth={p.grow ? 8 : p.w} height={1} overflow="hidden">
+       minWidth={p.grow ? 12 : p.w} height={1} overflow="hidden"
+       justifyContent={p.right ? "flex-end" : "flex-start"}>
     <text>{p.bold
       ? <span fg={p.fg}><strong>{p.children}</strong></span>
       : <span fg={p.fg}>{p.children}</span>}</text>
   </box>
 )
 
+const HeaderRow = memo((props: { detail: boolean }) => {
+  const theme = useTheme().theme
+  const fg = theme.textMuted
+  return (
+    <box flexDirection="row" height={1}>
+      <Col w={2} fg={fg}>{"  "}</Col>
+      <Col grow fg={fg} bold>Title</Col>
+      <Col w={9} fg={fg} bold>Source</Col>
+      <Col w={7} fg={fg} bold>Start</Col>
+      <Col w={7} fg={fg} bold right>Msgs</Col>
+      {props.detail ? <>
+        <Col w={7} fg={fg} bold right>Tools</Col>
+        <Col w={9} fg={fg} bold right>Cost</Col>
+      </> : null}
+      <box width={3} />
+    </box>
+  )
+})
+
 const Item = memo((props: {
-  row: Row; selected: boolean
+  row: Row; selected: boolean; detail: boolean
   onActivate: () => void; onHover: () => void; onDelete: () => void
 }) => {
   const theme = useTheme().theme
@@ -235,18 +286,30 @@ const Item = memo((props: {
       </Col>
       <Col w={9} fg={theme.info}>{badge(r.source ?? "")}</Col>
       <Col w={7} fg={theme.textMuted}>{stamp(r.started_at)}</Col>
-      <Col w={10} fg={theme.textMuted}>{`${String(r.message_count).padStart(4)} msgs`}</Col>
-      {r.detail ? (
-        <>
-          <Col w={11} fg={theme.textMuted}>{`${String(r.detail.tool_call_count).padStart(4)} tools`}</Col>
-          <Col w={9} fg={theme.success}>{cost(r.detail.estimated_cost_usd).padStart(8)}</Col>
-        </>
-      ) : null}
+      <Col w={7} fg={theme.textMuted} right>{String(r.message_count)}</Col>
+      {props.detail ? <>
+        <Col w={7} fg={theme.textMuted} right>{r.detail ? String(r.detail.tool_call_count) : "—"}</Col>
+        <Col w={9} fg={theme.success} right>{r.detail ? cost(r.detail.estimated_cost_usd) : "—"}</Col>
+      </> : null}
       <box width={3}
            onMouseDown={(e) => { e.stopPropagation(); props.onDelete() }}
            onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
         <text><span fg={x ? theme.error : theme.textMuted}>{" ✕"}</span></text>
       </box>
+    </box>
+  )
+})
+
+const SearchHeaderRow = memo(() => {
+  const theme = useTheme().theme
+  const fg = theme.textMuted
+  return (
+    <box flexDirection="row" height={1}>
+      <Col w={2} fg={fg}>{"  "}</Col>
+      <Col grow fg={fg} bold>Title</Col>
+      <Col w={9} fg={fg} bold>Source</Col>
+      <Col w={10} fg={fg} bold>When</Col>
+      <Col w={20} fg={fg} bold>Model</Col>
     </box>
   )
 })
@@ -281,6 +344,7 @@ export const Sessions = memo((props: Props) => {
   const gw = useGateway()
   const dialog = useDialog()
   const toast = useToast()
+  const dims = useTerminalDimensions()
 
   const [rows, setRows] = useState<Row[]>([])
   const [warn, setWarn] = useState("")
@@ -393,6 +457,8 @@ export const Sessions = memo((props: Props) => {
   })
 
   const empty = searching ? results.length === 0 && query.length > 0 : rows.length === 0
+  const hasDetail = rows.some(r => r.detail)
+  const showDetailPanel = dims.width >= 140
 
   return (
     <box flexDirection="row" flexGrow={1}>
@@ -426,7 +492,7 @@ export const Sessions = memo((props: Props) => {
           </box>
         ) : null}
 
-        <text> </text>
+        <box height={1} />
 
         {empty ? (
           <box flexGrow={1} padding={2}>
@@ -435,26 +501,32 @@ export const Sessions = memo((props: Props) => {
             </text>
           </box>
         ) : (
-          <scrollbox scrollY>
-            {searching
-              ? results.map((r, i) => (
-                  <SearchItem key={r.session_id} result={r} selected={i === sel}
-                    onActivate={() => { setSel(i); props.onSwitch?.(r.session_id) }}
-                    onHover={() => setSel(i)} />
-                ))
-              : rows.map((r, i) => (
-                  <Item key={r.id} row={r} selected={i === sel}
-                    onActivate={() => { setSel(i); props.onSwitch?.(r.id) }}
-                    onHover={() => setSel(i)}
-                    onDelete={() => confirmDelete(r)} />
-                ))}
+          <scrollbox scrollX flexGrow={1}>
+            <box flexDirection="column" flexGrow={1} minWidth={TABLE_MIN}>
+              {searching ? <SearchHeaderRow /> : <HeaderRow detail={hasDetail} />}
+              <box height={1} />
+              <scrollbox scrollY flexGrow={1}>
+                {searching
+                  ? results.map((r, i) => (
+                      <SearchItem key={r.session_id} result={r} selected={i === sel}
+                        onActivate={() => { setSel(i); props.onSwitch?.(r.session_id) }}
+                        onHover={() => setSel(i)} />
+                    ))
+                  : rows.map((r, i) => (
+                      <Item key={r.id} row={r} selected={i === sel} detail={hasDetail}
+                        onActivate={() => { setSel(i); props.onSwitch?.(r.id) }}
+                        onHover={() => setSel(i)}
+                        onDelete={() => confirmDelete(r)} />
+                    ))}
+              </scrollbox>
+            </box>
           </scrollbox>
         )}
       </box>
 
-      {searching && results[sel]
+      {showDetailPanel && searching && results[sel]
         ? <SearchDetail result={results[sel]} />
-        : !searching && rows[sel]
+        : showDetailPanel && !searching && rows[sel]
           ? <Detail row={rows[sel]} />
           : null}
     </box>
