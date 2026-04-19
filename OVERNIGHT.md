@@ -1,6 +1,8 @@
 # Overnight — 2026-04-18 → 04-19
 
-Branch: `overnight/audit-2026-04-18` (off `dev` @ 4a57f73)
+Branch: `overnight/audit-2026-04-18` → merged to `dev` @ f6e7082.
+Continuation: `overnight/p4-main` in `~/Dev/herm-wt` @ 7a0695f (not yet
+merged to dev).
 If context compacted: read this + `git log --oneline -30` to resume.
 
 ## Ground rules
@@ -53,12 +55,17 @@ processes. Plus: active delegate_task subagents (need new RPC reading
 Row: pid/sid, command preview, status, uptime, kill button.
 Refresh on tab-focus + `r`.
 
-- [ ] A0.1 gateway: `profile.*` RPCs (list/active/use/create/delete)
-- [ ] A0.2 gateway: extend `agents.list` with subagent + bg-prompt info
-- [ ] A0.3 `src/tabs/Agents.tsx` — split layout, profile list+detail
-- [ ] A0.4 Agents.tsx — live processes pane, kill via `process.stop`
-- [ ] A0.5 wire into TABS (after Sessions), app.tsx switch case
-- [ ] A0.6 tests: mount, profile list renders, switch confirm flow, kill flow
+- [~] A0.1 gateway `profile.*` RPCs — DROPPED per "no hermes-agent edits"
+      constraint. Replaced by `src/utils/hermes-profiles.ts` (fs scan of
+      `<root>/profiles/`; create via fs; delete via `shell.exec → hermes
+      profile delete -y`). "Switch" intentionally omitted — would sever
+      session. → UPSTREAM.md.
+- [ ] A0.2 gateway: extend `agents.list` — not done (no-edit constraint).
+      Running pane shows bg procs only.
+- [x] A0.3 `src/tabs/Agents.tsx` — split layout, profile list+detail
+- [x] A0.4 Agents.tsx — live processes pane, kill via `process.stop`
+- [x] A0.5 wire into TABS (index 3), app.tsx switch case
+- [x] A0.6 tests: 4 hermes-profiles unit + 5 component (9 total)
 
 ═══════════════════════════════════════════════════════════════════
 ## P1 — #12130 Tier-1 brownie points         [ship before official TUI]
@@ -67,26 +74,33 @@ These are the items teknium1 flagged as "daily friction" that the Ink TUI
 lacks. Herm already has native Skills/Toolsets/Cron tabs — half done.
 Remaining:
 
-- [ ] B1.1 **@ context refs** — `@file:path[:a-b]` `@folder:` `@diff` `@staged`
+- [x] B1.1 **@ context refs** — `@file:path[:a-b]` `@folder:` `@diff` `@staged`
       `@git:N` `@url:` expanded client-side in `send()` before prompt.submit.
       Autocomplete in Composer after `@` (reuse `complete.path` RPC for files,
       add `complete.atref` for the fixed keywords). opencode's `attach.ts` is
       the reference. See existing plan doc §"@ context refs".
-- [ ] B1.2 **quick_commands** — read `config.quick_commands` via config.get,
+      → impl: popover only (useAtRefPopover + AtRefPopover). Expansion is
+        server-side in prompt.submit (already existed). No new RPC needed —
+        complete.path is already @-aware.
+- [x] B1.2 **quick_commands** — read `config.quick_commands` via config.get,
       register as local slash entries with target=shell, run via `shell.exec`
       RPC (already exists), render output as system message.
-- [ ] B1.3 **MCP boot status** — gateway emits nothing. Add `mcp.status` RPC
+- [x] B1.3 **MCP boot status** — gateway emits nothing. Add `mcp.status` RPC
       (reads tools/mcp_tool.py connection state). Surface in sidebar Identity
       section as a collapsible `▸ MCP  N servers` row; expand shows per-server
       transport + tool count + error. Also a system line on ready if any failed.
+      → impl: no new RPC; session.info already carries mcp_servers[]. Sidebar
+        MCP section + fail-line on ready.
 - [ ] B1.4 **Persistent attachment badges** — composer shows `📎 image.png`
       chips above input until sent; Ctrl+C idle clears. State already flows
       through `image.attach` → track locally in Composer, clear on send.
-- [ ] B1.5 **/title** native — session.title RPC exists. Local slash: bare
+      → deferred: image.attach event isn't wired into herm yet.
+- [x] B1.5 **/title** native — session.title RPC exists. Local slash: bare
       → prompt dialog; with arg → set. Reflect in Sessions tab + status bar.
 - [ ] B1.6 **Paste-to-file** — `paste.collapse` RPC exists but herm never
       calls it. On bracketed paste ≥5 lines, POST to gateway, insert
       `[Pasted #N: L lines → path]` placeholder. Matches v1 CLI convention.
+      → deferred: no app-level paste handler yet (needs onPaste on root box).
 
 ═══════════════════════════════════════════════════════════════════
 ## P2 — Visual language consolidation              [worktree: visual-lang]
@@ -94,20 +108,23 @@ Remaining:
 Audit result: tabs diverge on card/no-card, header in/out, border style.
 Define ONE grammar, extract primitives, migrate every tab.
 
-- [ ] C2.1 `src/ui/shell.tsx` — `<TabShell title hint actions?>` wrapper:
+- [x] C2.1 `src/ui/shell.tsx` — `<TabShell title hint actions?>` wrapper:
       border + backgroundPanel + padding=1, header row (title bold primary,
       hint textMuted, flexGrow truncate), body = children in flexGrow column.
       `<SplitShell left right ratio?>` for list+detail tabs.
 - [ ] C2.2 `src/ui/list.tsx` — `<DataList rows cols onActivate onDelete>`:
       the Sessions table pattern (Col, HeaderRow, VBAR_W gutter, memo-safe
       callbacks, scrollChildIntoView nav) extracted. Every list tab uses it.
-- [ ] C2.3 `src/ui/kv.tsx` — `<KV label value fg?>` (= DLine), `<KVBlock rows>`.
-- [ ] C2.4 Migrate: Sessions, Skills, Cron, Toolsets, Config, Env, Memory,
+      → deferred (deliberately; Sessions.tsx stays the reference impl).
+- [x] C2.3 `src/ui/kv.tsx` — `<KV label value fg?>` (= DLine), `<KVBlock rows>`.
+- [~] C2.4 Migrate: Sessions, Skills, Cron, Toolsets, Config, Env, Memory,
       Analytics, Context, Agents → TabShell/SplitShell/DataList/KV.
       One commit per tab. Diff should be mostly deletions.
+      → done: Skills, Cron, Toolsets, Env, Agents, Analytics (via P4).
+        remaining: Sessions, Config, Memory, Context.
 - [ ] C2.5 Chat stays special (no card) — but MessageList gets the same
       scrollbox inner-column discipline.
-- [ ] C2.6 Delete now-dead per-tab formatters (trunc/badge/etc → src/ui/fmt.ts).
+- [x] C2.6 Delete now-dead per-tab formatters (trunc/badge/etc → src/ui/fmt.ts).
 
 ═══════════════════════════════════════════════════════════════════
 ## P3 — Chat UX → opencode polish                [worktree: chat-polish]
@@ -115,20 +132,26 @@ Define ONE grammar, extract primitives, migrate every tab.
 Reference: `~/Dev/clones/opencode/.../tui/routes/session/` +
 `component/message.tsx` + `component/editor.tsx`.
 
-- [ ] D3.1 **Message chrome** — assistant msgs get a left gutter glyph
+- [x] D3.1 **Message chrome** — assistant msgs get a left gutter glyph
       (themed `│` or `⚕`) + header line `Hermes · model · 3→5 tok`; user
       msgs right-aligned or prefix `▸ You`. No full border box (too heavy
       in a TUI), just the gutter line like opencode.
-- [ ] D3.2 **Tool call rendering** — collapsible tree row per tool:
+- [x] D3.2 **Tool call rendering** — collapsible tree row per tool:
       `▸ read_file  path/to/x.ts  12ms` → expand shows args + result
       preview (first 3 lines). opencode's subagent accordion is the model.
       Shift+click = expand all. Already have turnReducer parts; need the
       render component.
-- [ ] D3.3 **Code blocks** — per-language syntax via tree-sitter (opentui
+      → no shift+click expand-all yet.
+- [~] D3.3 **Code blocks** — per-language syntax via tree-sitter (opentui
       `<code>` renderable supports `filetype` + `treeSitterClient`). Wire
       the client once at app level, pass through MarkdownRenderer.
-- [ ] D3.4 **Inline diffs** — already flows through tool.complete; render
+      → tree-sitter already active via <markdown>; added themed fg.
+        Background box + language label deferred (MarkdownRenderable not
+        JSX-hookable).
+- [x] D3.4 **Inline diffs** — already flows through tool.complete; render
       with opentui `<diff>` renderable instead of plain text. Cap 80 lines.
+      → impl: DiffBlock (lightweight coloring). OpenTUI's native <diff>
+        manages own scroll regions — too heavy for nested inline preview.
 - [ ] D3.5 **Sticky prompt tracker** — when scrolled up, show a 1-line
       `↳ <last user msg>` chip at top of viewport (opencode has this).
 - [ ] D3.6 **Queue UI** — `/queue` already RPC'd. Show queued prompts as
@@ -146,25 +169,34 @@ Reference: `~/Dev/clones/opencode/.../tui/routes/session/` +
 Herm's tab model means it doesn't need modal overlays for these, but the
 tabs themselves are thin. Bring each to web-ui parity using its RPC.
 
-- [ ] E4.1 **Rollback** — new tab or Sessions-tab action? → Sessions detail
+- [x] E4.1 **Rollback** — new tab or Sessions-tab action? → Sessions detail
       panel gets a `▸ Checkpoints (N)` section: `rollback.list` →
       per-checkpoint row → `rollback.diff` in a dialog → `rollback.restore`
       with confirm. No new tab.
-- [ ] E4.2 **Skills tab** — currently lists installed. Add: search hub
+      → impl deviated: standalone /rollback dialog (src/dialogs/rollback.tsx)
+        instead of Sessions-detail embed (simpler; Sessions.tsx is large).
+- [~] E4.2 **Skills tab** — currently lists installed. Add: search hub
       (`skills.manage action=search`), install/uninstall, view SKILL.md in
       a scroll dialog, category tree on left. web-ui SkillsPage is the ref.
-- [ ] E4.3 **Cron tab** — currently lists. Add: create (schedule+prompt
+      → done: '/' hub search, install, 'i' inspect. Not done: uninstall,
+        category tree.
+- [~] E4.3 **Cron tab** — currently lists. Add: create (schedule+prompt
       form dialog), pause/resume toggle, run-now, delete confirm. RPC
       `cron.manage` covers all actions.
-- [ ] E4.4 **Toolsets tab** — currently lists. Add: per-tool enable/disable
+      → done: n/Space/d. Not done: run-now (gateway cron.manage lacks 'run').
+- [~] E4.4 **Toolsets tab** — currently lists. Add: per-tool enable/disable
       checkboxes via `tools.configure`, per-toolset expand showing tools.
-- [ ] E4.5 **Analytics tab** — replace with `insights.get` RPC (days param).
+      → done: per-TOOLSET toggle via tools.configure. Dropped: per-tool
+        list (toolsets.list doesn't expose per-tool, and '/' search removed).
+- [x] E4.5 **Analytics tab** — replace with `insights.get` RPC (days param).
       Cost/tokens over time, per-model breakdown, top tools. Text bars only
       (▰▱), no charts. web-ui AnalyticsPage shape.
+      → impl deviated: insights.get too thin; reads state.db directly via
+        hermes-analytics.ts. No top-tools breakdown (no tool_name column).
 - [ ] E4.6 **Config tab** — already an editor? Verify it writes via
       `config.set` not direct file. Add: validation errors inline, diff
       preview before save, "reset section to default" per key.
-- [ ] E4.7 **Env tab** — mask values by default, eye toggle per row,
+- [x] E4.7 **Env tab** — mask values by default, eye toggle per row,
       add/edit/delete via dialog, category grouping (provider/tool/
       messaging per OPTIONAL_ENV_VARS metadata).
 
@@ -174,32 +206,37 @@ tabs themselves are thin. Bring each to web-ui parity using its RPC.
 - [ ] F5.1 `/status` `/profile` `/usage` `/platforms` as local slashes →
       each opens a small info dialog (reuse KV primitive). RPCs exist.
 - [ ] F5.2 `/save` `/history` native — session.save / session.history RPCs.
-- [ ] F5.3 `/rollback` `/snapshot` `/browser` `/plugins` `/insights` `/debug`
+- [~] F5.3 `/rollback` `/snapshot` `/browser` `/plugins` `/insights` `/debug`
       slashes → jump to the relevant tab (setTab), or dialog if no tab.
+      → impl: TAB_SLASH intercepts any gateway slash matching a tab name
+        (lowercase); /insights→analytics alias. /rollback is a local dialog
+        (E4.1). /snapshot /browser /plugins /debug still fall through to
+        slash.exec (no tab/dialog for them).
 - [ ] F5.4 Ctrl+Z suspend (process.kill SIGTSTP self), Ctrl+V paste fallback.
 - [ ] F5.5 Rate-limit line in status bar when session.usage returns limits.
-- [ ] F5.6 Profile name in sidebar Identity when non-default.
+- [x] F5.6 Profile name in sidebar Identity when non-default.
 
 ═══════════════════════════════════════════════════════════════════
 ## P6 — Eikon integration                          [worktree: eikon-slot]
 ═══════════════════════════════════════════════════════════════════
 Goal: browse/pick/load `.eikon` avatars into the sidebar slot. NO video gen.
 
-- [ ] G6.1 `src/components/avatar/eikon.ts` — `.eikon` NDJSON parser
+- [x] G6.1 `src/components/avatar/eikon.ts` — `.eikon` NDJSON parser
       (header + state decls + frames) per `~/Dev/eikon/docs/SPEC.md`.
       Pure, no deps. Returns `{meta, states: Map<name, {fps, frames[]}>}`.
-- [ ] G6.2 `AnimatedAvatar` → accept `eikon?: ParsedEikon` prop; if present,
+- [x] G6.2 `AnimatedAvatar` → accept `eikon?: ParsedEikon` prop; if present,
       play `eikon.states[agentState]` frames at its fps instead of the
       baked STATE_FRAMES. Fallback to baked if state missing.
-- [ ] G6.3 `src/dialogs/eikon-picker.tsx` — lists `~/Dev/eikon/avatars/*.eikon`
+- [x] G6.3 `src/dialogs/eikon-picker.tsx` — lists `~/Dev/eikon/avatars/*.eikon`
       + `~/.hermes/eikons/*.eikon`, shows name/author/states/size, live
       preview pane cycling idle state. Enter → load into sidebar.
-- [ ] G6.4 `/eikon` local slash + command-palette entry → opens picker.
+- [x] G6.4 `/eikon` local slash + command-palette entry → opens picker.
       Persist choice to preferences (`eikonPath`), load on boot.
 - [ ] G6.5 Eikon preview app (`~/Dev/eikon/preview/`) — if time: align its
       player with G6.1 parser so there's one impl. Low priority.
-- [ ] G6.6 tests: parser (valid/malformed/unknown-version), picker mount,
+- [~] G6.6 tests: parser (valid/malformed/unknown-version), picker mount,
       avatar plays eikon frames when loaded.
+      → done: 6 parser + 1 picker. Not done: avatar-plays-eikon assertion.
 
 ═══════════════════════════════════════════════════════════════════
 ## Execution order
@@ -227,21 +264,27 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
   `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-- [x] P0 Agents tab — 82ac163 + 2e795f0 (fs-based, no gateway edits)
-- [x] B1.1 @-refs popover — existing complete.path; expansion server-side
-- [x] B1.2 quick_commands — config.get(full).quick_commands → target:shell → shell.exec
-- [x] B1.3 MCP status — session.info.mcp_servers → sidebar section + fail line
-- [x] B1.5 /title — session.title RPC, TextPrompt dialog, status bar
-- [~] B1.4/B1.6 skipped: no paste plumbing in app yet (D3.7 prereq);
-      attachments (B1.4) deferred — image.attach event isn't wired
-- [x] P2 visual-lang merged — src/ui/{fmt,kv,shell}, 5 tabs migrated
-- [x] P3 D3.1-4 chat-polish merged — gutter/ToolPart/DiffBlock/code fg
-- [x] P6 eikon-slot merged — parser/avatar/picker/slash
-- [x] b4a26a9 fix: opencode.json gitignore trap (broke fresh worktrees)
-- [x] P4 merged to overnight/p4-main:
-      E4.1 /rollback dialog · E4.2 Skills hub search/install/inspect
-      E4.3 Cron CRUD · E4.4 Toolsets toggle · E4.5 Analytics breakdowns
-      E4.7 Env mask+CRUD. E4.6 Config validation deferred.
-- [x] F5.3 slash→tab jump (TAB_SLASH) · F5.6 Profile in sidebar
-- [ ] P3 D3.5-8, F5.1/2/4/5, B1.4/6, P2 remaining migrations + DataList
-Tests: 61→112 passing, 5× stable.
+Tally: 27 done, 5 partial, 13 open. Tests 61→112, 5× stable, tsc clean.
+
+Tree state:
+  dev                      f6e7082  (P0+P1+P2+P3.1-4+P6 merged, 91 tests)
+  overnight/p4-main        7a0695f  ~/Dev/herm-wt (P4+F5.3/6, 112 tests,
+                                     awaiting review → dev)
+
+Bugs fixed along the way:
+  b4a26a9  opencode.json in global ~/.gitignore → fresh worktrees broke tsc
+  2e795f0  GatewayProvider never self-drained → ready=false without subscriber
+  f6e7082  SystemMessage clipped to height={1} (chat-polish regression)
+  011ade2  DialogProvider Esc races component Esc (fixed via replace()+setState
+           in same batch; should go into opentui-component-patterns skill)
+
+Open (prioritized):
+  1. C2.4 tail — Sessions/Config/Memory/Context → TabShell
+  2. C2.2 DataList extraction from Sessions
+  3. D3.5-8 — sticky tracker, queue UI, Ctrl+G editor, tips
+  4. D3.ad-hoc — click user msg → revert to that state
+  5. B1.4/B1.6 — attachment chips, paste-to-file (need onPaste plumbing)
+  6. F5.1/2/4/5 — info dialogs, /save /history, Ctrl+Z, rate-limit line
+  7. E4.6 — Config validation/diff-preview
+  8. A0.2 — subagent rows in Running pane (blocked on gateway)
+  9. G6.5 — eikon preview app parser alignment
