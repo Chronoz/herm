@@ -76,6 +76,7 @@ const AppInner = () => {
   const [tab, setTab] = useState(CHAT_TAB)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [cost, setCost] = useState(0)
+  const [ctxPct, setCtxPct] = useState<number | undefined>(undefined)
   const [msgCount, setMsgCount] = useState(0)
   const [info, setInfo] = useState<SessionInfo | null>(null)
   const [title, setTitle] = useState("")
@@ -99,6 +100,7 @@ const AppInner = () => {
     dispatch({ kind: "reset" })
     setMsgCount(0)
     setCost(0)
+    setCtxPct(undefined)
     setUsage(undefined)
     setReady(false)
     setStatus("")
@@ -125,7 +127,10 @@ const AppInner = () => {
 
   const pollUsage = useCallback(() => {
     gw.request<SessionUsageResponse>("session.usage")
-      .then(r => { if (r.cost_usd != null) setCost(r.cost_usd) })
+      .then(r => {
+        if (r.cost_usd != null) setCost(r.cost_usd)
+        setCtxPct(r.context_percent ?? undefined)
+      })
       .catch(() => {})
   }, [gw])
 
@@ -423,6 +428,7 @@ const AppInner = () => {
                 ref={composer}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}
                 status={status} model={model} title={title} usage={usage} cost={cost} turns={msgCount}
+                contextPct={ctxPct}
                 queue={queue}
                 onSend={send} onSlash={slash}
                 onEnqueue={(t) => setQueue(q => [...q, t])}

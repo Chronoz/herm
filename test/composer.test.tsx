@@ -28,6 +28,20 @@ async function setup(gw = new MockGateway()) {
 }
 
 describe("composer", () => {
+  test("status bar shows context % segment when provided", async () => {
+    const t: Harness = await mountNode(
+      <box flexDirection="column" flexGrow={1} width="100%" height="100%">
+        <box flexGrow={1} />
+        <Composer focused ready streaming={false} model="m" contextPct={73}
+          onSend={() => {}} onSlash={() => {}} />
+      </box>,
+      { width: 100, height: 20 },
+    )
+    await until(t, () => t.frame().includes("Ready"))
+    expect(t.frame()).toContain("ctx 73%")
+    t.destroy()
+  })
+
   test("type + Enter sends and clears", async () => {
     const { t, ref, sent } = await setup()
     await act(async () => { await t.keys.typeText("hello there") })

@@ -354,7 +354,7 @@ describe("app", () => {
       "session.usage": () => ({
         model: "test-model", calls: 7, input: 1234, output: 567, total: 1801,
         cache_read: 0, cache_write: 0, cost_usd: 0.0412, cost_status: "estimated",
-        context_used: 4200, context_max: 200_000, context_percent: 0.021,
+        context_used: 4200, context_max: 200_000, context_percent: 2,
       }),
     })
     const t = await mount({ gw })

@@ -67,7 +67,7 @@ const UsageDialog = ({ gw }: { gw: Gateway }) => {
   if (!u) return <InfoDialog title="Usage" rows={[["", "…"]]} />
 
   const ctx = u.context_max
-    ? `${fmt(u.context_used ?? 0)} / ${fmt(u.context_max)} (${Math.round((u.context_percent ?? 0) * 100)}%)`
+    ? `${fmt(u.context_used ?? 0)} / ${fmt(u.context_max)} (${Math.round(u.context_percent ?? 0)}%)`
     : undefined
   return (
     <InfoDialog title="Usage" note={u.cost_status === "estimated" ? "cost is estimated" : undefined} rows={[

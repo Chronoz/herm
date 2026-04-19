@@ -40,6 +40,8 @@ type Props = {
   usage?: Usage
   cost?: number
   turns?: number
+  /** 0–100; context window fill from session.usage. */
+  contextPct?: number
   queue?: ReadonlyArray<string>
   onSend: (text: string) => void
   onSlash: (cmd: SlashCommand) => void
@@ -166,6 +168,16 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   if (props.usage) stats.push(`${fmt(props.usage.input)}→${fmt(props.usage.output)}`)
   if (props.cost != null && props.cost > 0) stats.push(`$${props.cost.toFixed(2)}`)
 
+  // Context fill — shown as its own colored segment so it can tint
+  // independently of the rest of the (muted) stats line. Mirrors the
+  // hermes CLI status bar's yellow→orange→red ramp.
+  const pct = props.contextPct
+  const ctxFg = pct == null ? undefined
+    : pct >= 85 ? theme.error
+    : pct >= 70 ? theme.warning
+    : pct >= 50 ? theme.accent
+    : theme.textMuted
+
   const hint = props.streaming
     ? (input ? "Enter: Queue · " : "") + "Esc×2: Interrupt" + ((props.queue?.length ?? 0) > 0 ? " · Ctrl+U: Pop queued" : "")
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
@@ -245,6 +257,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
             <span fg={dot}>● </span>
             <span fg={theme.textMuted}>{label}</span>
             {stats.length ? <span fg={theme.textMuted}> · {stats.join(" · ")}</span> : null}
+            {pct != null ? <span fg={ctxFg}> · ctx {Math.round(pct)}%</span> : null}
           </text>
         </box>
         <box>
