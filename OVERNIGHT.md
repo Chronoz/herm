@@ -214,8 +214,11 @@ tabs themselves are thin. Bring each to web-ui parity using its RPC.
 ═══════════════════════════════════════════════════════════════════
 ## P5 — #12130 Tier-3 + misc parity
 ═══════════════════════════════════════════════════════════════════
-- [ ] F5.1 `/status` `/profile` `/usage` `/platforms` as local slashes →
+- [~] F5.1 `/status` `/profile` `/usage` `/platforms` as local slashes →
       each opens a small info dialog (reuse KV primitive). RPCs exist.
+      → done: /status /usage /profile via src/dialogs/info.tsx (one
+        shared InfoDialog + KVBlock). /platforms left to slash.exec
+        (no structured RPC) → UPSTREAM.md.
 - [~] F5.2 `/save` `/history` native — session.save / session.history RPCs.
       → /save done (toast file path). /history used by rewind() for
         authoritative reload; no standalone viewer yet.
@@ -228,7 +231,9 @@ tabs themselves are thin. Bring each to web-ui parity using its RPC.
 - [~] F5.4 Ctrl+Z suspend (process.kill SIGTSTP self), Ctrl+V paste fallback.
       → Ctrl+Z done (renderer.suspend + SIGTSTP; resume on SIGCONT).
         Ctrl+V fallback not done (bracketed paste covers it).
-- [ ] F5.5 Rate-limit line in status bar when session.usage returns limits.
+- [x] F5.5 Rate-limit line in status bar when session.usage returns limits.
+      → impl: context-fill % (only limit session.usage exposes).
+        'ctx N%' segment, tinted at 50/70/85 thresholds.
 - [x] F5.6 Profile name in sidebar Identity when non-default.
 
 ═══════════════════════════════════════════════════════════════════
@@ -279,13 +284,13 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
   `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-Tally: 34 done, 5 partial, 6 open. Tests 61→127, 10× stable, tsc clean.
+Tally: 35 done, 6 partial, 4 open. Tests 61→130, 10× stable, tsc clean.
 
 Tree state:
   dev                      75b87bb  (through P4 + slash-fix, 113 tests)
-  overnight/p5             398994a  ~/Dev/herm-wt (B1.6, D3.rewind/6/7/8,
-                                     F5.2-save, F5.4, openConfirm
-                                     consolidation; 127 tests,
+  overnight/p5             a855f62  ~/Dev/herm-wt (B1.6, D3.rewind/6/7/8,
+                                     F5.1/2-save/4/5, openConfirm
+                                     consolidation; 130 tests,
                                      awaiting review → dev)
 
 Bugs fixed along the way:
@@ -303,8 +308,7 @@ Open (prioritized):
   2. C2.2 DataList extraction from Sessions
   3. D3.5 — sticky prompt tracker (needs scrollbox scrollTop hook)
   4. B1.4 — attachment chips (image.attach event not yet wired)
-  5. F5.1/5 — info dialogs, rate-limit line
-  6. F5.2 /history — needs a transcript viewer dialog
-  7. E4.6 — Config validation/diff-preview
-  8. A0.2 — subagent rows in Running pane (blocked on gateway)
-  9. G6.5 — eikon preview app parser alignment
+  5. F5.2 /history — needs a transcript viewer dialog
+  6. E4.6 — Config validation/diff-preview
+  7. A0.2 — subagent rows in Running pane (blocked on gateway)
+  8. G6.5 — eikon preview app parser alignment
