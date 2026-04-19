@@ -30,6 +30,7 @@ import {
 } from "../utils/context-segments"
 import { FileLink } from "../components/ui/FileLink"
 import { useTheme, type Theme } from "../theme"
+import { TabShell } from "../ui/shell"
 import type { RGBA } from "@opentui/core"
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -480,30 +481,20 @@ export const Context = memo(({ messages = [] }: Props) => {
 
 
 
-  return (
-    <box flexGrow={1} flexDirection="column" padding={1}>
-      {/* Header + breadcrumb */}
-      <box marginBottom={1}>
-        <text>
-          <strong>Context Window</strong>
-          <span> {fmt(fill)} / {fmt(ctxLen)} ({pct}%)</span>
-          {drilled ? (
-            <>
-              <span fg={theme.textMuted}> · </span>
-              <span fg={theme.info}>{drilledGroup?.label}</span>
-              {selected ? <span fg={theme.textMuted}> · {findSeg(selected)?.label}</span> : null}
-            </>
-          ) : null}
-          {!drilled && !selected && wire.calls === 0 && fill === 0 ? <span fg={theme.warning}> [no data]</span> : null}
-          {!drilled && !selected && cumulative ? <span fg={theme.warning}> [cumulative — not current fill]</span> : null}
-          {!drilled && !selected && wire.calls === 0 && !cumulative && fill > 0 ? <span fg={theme.info}> [live session]</span> : null}
-        </text>
-      </box>
+  const crumb = drilled
+    ? `${drilledGroup?.label}${selected ? ` · ${findSeg(selected)?.label}` : ""}`
+    : wire.calls === 0 && fill === 0 ? "[no data]"
+    : cumulative ? "[cumulative — not current fill]"
+    : wire.calls === 0 && fill > 0 ? "[live session]"
+    : "click a group to drill in"
 
-      {/* Grid + right panel */}
-      <box flexDirection="row">
+  return (
+    <TabShell
+      title={`Context · ${fmt(fill)} / ${fmt(ctxLen)} (${pct}%)`}
+      hint={crumb}
+    >
+      <box flexDirection="row" flexGrow={1}>
         <box flexDirection="column" marginRight={2} flexShrink={0}>
-          {/* Back button when drilled */}
           {drilled ? (
             <box height={1} marginBottom={1} onMouseDown={back}>
               <text fg={theme.info}>◀ Back to overview</text>
@@ -534,10 +525,10 @@ export const Context = memo(({ messages = [] }: Props) => {
           </box>
         </box>
 
-        <box flexDirection="column" flexGrow={1}>
+        <box flexDirection="column" flexGrow={1} minWidth={0}>
           {selected ? detail() : overview()}
         </box>
       </box>
-    </box>
+    </TabShell>
   )
 })
