@@ -118,11 +118,11 @@ Define ONE grammar, extract primitives, migrate every tab.
       callbacks, scrollChildIntoView nav) extracted. Every list tab uses it.
       → deferred (deliberately; Sessions.tsx stays the reference impl).
 - [x] C2.3 `src/ui/kv.tsx` — `<KV label value fg?>` (= DLine), `<KVBlock rows>`.
-- [~] C2.4 Migrate: Sessions, Skills, Cron, Toolsets, Config, Env, Memory,
+- [x] C2.4 Migrate: Sessions, Skills, Cron, Toolsets, Config, Env, Memory,
       Analytics, Context, Agents → TabShell/SplitShell/DataList/KV.
       One commit per tab. Diff should be mostly deletions.
-      → done: Skills, Cron, Toolsets, Env, Agents, Analytics (via P4).
-        remaining: Sessions, Config, Memory, Context.
+      → done: all 10. Net −250 lines across the 4-tab tail
+        (Memory/Context/Config/Sessions); DLine dropped for KVBlock.
 - [ ] C2.5 Chat stays special (no card) — but MessageList gets the same
       scrollbox inner-column discipline.
 - [x] C2.6 Delete now-dead per-tab formatters (trunc/badge/etc → src/ui/fmt.ts).
@@ -219,9 +219,10 @@ tabs themselves are thin. Bring each to web-ui parity using its RPC.
       → done: /status /usage /profile via src/dialogs/info.tsx (one
         shared InfoDialog + KVBlock). /platforms left to slash.exec
         (no structured RPC) → UPSTREAM.md.
-- [~] F5.2 `/save` `/history` native — session.save / session.history RPCs.
-      → /save done (toast file path). /history used by rewind() for
-        authoritative reload; no standalone viewer yet.
+- [x] F5.2 `/save` `/history` native — session.save / session.history RPCs.
+      → /save toasts file path. /history opens src/dialogs/history.tsx
+        (one-line-per-message transcript viewer, role-tagged columns).
+        Same session.history path rewind() already uses for reload.
 - [~] F5.3 `/rollback` `/snapshot` `/browser` `/plugins` `/insights` `/debug`
       slashes → jump to the relevant tab (setTab), or dialog if no tab.
       → impl: TAB_SLASH intercepts any gateway slash matching a tab name
@@ -284,14 +285,14 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
   `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-Tally: 35 done, 6 partial, 4 open. Tests 61→130, 10× stable, tsc clean.
+Tally: 37 done, 4 partial, 4 open. Tests 61→131, 10× stable, tsc clean.
 
 Tree state:
   dev                      75b87bb  (through P4 + slash-fix, 113 tests)
-  overnight/p5             a855f62  ~/Dev/herm-wt (B1.6, D3.rewind/6/7/8,
-                                     F5.1/2-save/4/5, openConfirm
-                                     consolidation; 130 tests,
-                                     awaiting review → dev)
+  overnight/p5             de9016a  ~/Dev/herm-wt (B1.6, D3.rewind/6/7/8,
+                                     F5.1/2/4/5, C2.4 complete,
+                                     openConfirm consolidation; 131
+                                     tests, awaiting review → dev)
 
 Bugs fixed along the way:
   b4a26a9  opencode.json in global ~/.gitignore → fresh worktrees broke tsc
@@ -304,11 +305,9 @@ Bugs fixed along the way:
            composer popover overdrawn by remounted tab (per-parent zIndex)
 
 Open (prioritized):
-  1. C2.4 tail — Sessions/Config/Memory/Context → TabShell
-  2. C2.2 DataList extraction from Sessions
-  3. D3.5 — sticky prompt tracker (needs scrollbox scrollTop hook)
+  1. C2.2 DataList extraction from Sessions
+  2. D3.5 — sticky prompt tracker (needs scrollbox scrollTop hook)
+  3. E4.6 — Config validation/diff-preview
   4. B1.4 — attachment chips (image.attach event not yet wired)
-  5. F5.2 /history — needs a transcript viewer dialog
-  6. E4.6 — Config validation/diff-preview
-  7. A0.2 — subagent rows in Running pane (blocked on gateway)
-  8. G6.5 — eikon preview app parser alignment
+  5. A0.2 — subagent rows in Running pane (blocked on gateway)
+  6. G6.5 — eikon preview app parser alignment
