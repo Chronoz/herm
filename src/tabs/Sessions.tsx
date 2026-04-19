@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard } from "@opentui/react"
+import type { RGBA } from "@opentui/core"
 import { queryRecentSessions, type SessionRow } from "../utils/hermes-home"
 import type {
   SessionListItem, SessionListResponse,
@@ -200,34 +201,47 @@ const ConfirmDelete = (props: { title: string; onConfirm: () => void; onCancel: 
 }
 
 // ─── Rows ────────────────────────────────────────────────────────────
+//
+// Columns are flex boxes, not padded strings — the title column takes
+// all remaining width (grows on wide terminals, truncates via overflow
+// on narrow ones) while meta columns hold fixed width. height={1}
+// forces single-line truncation instead of wrap.
+
+type ColProps = { w?: number; grow?: boolean; fg: RGBA; bold?: boolean; children: string }
+const Col = (p: ColProps) => (
+  <box width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
+       minWidth={p.grow ? 8 : p.w} height={1} overflow="hidden">
+    <text>{p.bold
+      ? <span fg={p.fg}><strong>{p.children}</strong></span>
+      : <span fg={p.fg}>{p.children}</span>}</text>
+  </box>
+)
 
 const Item = memo((props: {
   row: Row; selected: boolean
-  onSelect: () => void; onHover: () => void; onDelete: () => void
+  onActivate: () => void; onHover: () => void; onDelete: () => void
 }) => {
   const theme = useTheme().theme
   const r = props.row
   const [x, setX] = useState(false)
 
   return (
-    <box flexDirection="row"
+    <box flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseDown={props.onSelect} onMouseOver={props.onHover}>
-      <box flexGrow={1}>
-        <text>
-          <span fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</span>
-          <span fg={props.selected ? theme.accent : theme.text}>{trunc(r.title || "Untitled", 30).padEnd(32)}</span>
-          <span fg={theme.info}>{` ${badge(r.source ?? "").padEnd(9)}`}</span>
-          <span fg={theme.textMuted}>{` ${stamp(r.started_at)}`}</span>
-          <span fg={theme.textMuted}>{` │ ${String(r.message_count).padStart(3)} msgs`}</span>
-          {r.detail ? (
-            <>
-              <span fg={theme.textMuted}>{` │ ${String(r.detail.tool_call_count).padStart(3)} tools`}</span>
-              <span fg={theme.success}>{` │ ${cost(r.detail.estimated_cost_usd).padStart(7)}`}</span>
-            </>
-          ) : null}
-        </text>
-      </box>
+         onMouseDown={props.onActivate} onMouseOver={props.onHover}>
+      <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+      <Col grow fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
+        {r.title || "Untitled"}
+      </Col>
+      <Col w={9} fg={theme.info}>{badge(r.source ?? "")}</Col>
+      <Col w={7} fg={theme.textMuted}>{stamp(r.started_at)}</Col>
+      <Col w={10} fg={theme.textMuted}>{`${String(r.message_count).padStart(4)} msgs`}</Col>
+      {r.detail ? (
+        <>
+          <Col w={11} fg={theme.textMuted}>{`${String(r.detail.tool_call_count).padStart(4)} tools`}</Col>
+          <Col w={9} fg={theme.success}>{cost(r.detail.estimated_cost_usd).padStart(8)}</Col>
+        </>
+      ) : null}
       <box width={3}
            onMouseDown={(e) => { e.stopPropagation(); props.onDelete() }}
            onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
@@ -239,20 +253,21 @@ const Item = memo((props: {
 
 const SearchItem = memo((props: {
   result: SessionSearchHit; selected: boolean
-  onSelect: () => void; onHover: () => void
+  onActivate: () => void; onHover: () => void
 }) => {
   const theme = useTheme().theme
   const r = props.result
   return (
-    <box backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseDown={props.onSelect} onMouseOver={props.onHover}>
-      <text>
-        <span fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</span>
-        <span fg={props.selected ? theme.accent : theme.text}>{trunc(r.title ?? "Untitled", 30).padEnd(32)}</span>
-        <span fg={theme.info}>{` ${badge(r.source).padEnd(9)}`}</span>
-        <span fg={theme.textMuted}>{` ${ago(r.started_at).padEnd(10)}`}</span>
-        <span fg={theme.textMuted}>{` ${r.model ?? "—"}`}</span>
-      </text>
+    <box flexDirection="row" height={1}
+         backgroundColor={props.selected ? theme.backgroundElement : undefined}
+         onMouseDown={props.onActivate} onMouseOver={props.onHover}>
+      <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+      <Col grow fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
+        {r.title ?? "Untitled"}
+      </Col>
+      <Col w={9} fg={theme.info}>{badge(r.source)}</Col>
+      <Col w={10} fg={theme.textMuted}>{ago(r.started_at)}</Col>
+      <Col w={20} fg={theme.textMuted}>{r.model ?? "—"}</Col>
     </box>
   )
 })
@@ -381,18 +396,23 @@ export const Sessions = memo((props: Props) => {
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <box flexDirection="column" flexGrow={1} border borderColor={theme.border}
+      <box flexDirection="column" flexGrow={1} minWidth={0}
+           border borderColor={theme.border}
            backgroundColor={theme.backgroundPanel} padding={1}>
-        <text>
-          <span fg={theme.primary}><strong>
-            {searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
-          </strong></span>
-          <span fg={theme.textMuted}>
-            {searching
-              ? "  ↑↓ navigate  Enter switch  Esc cancel"
-              : "  ↑↓ navigate  Enter switch  / search  d delete  r refresh"}
-          </span>
-        </text>
+        <box height={1} flexDirection="row" overflow="hidden">
+          <box flexShrink={0}>
+            <text><span fg={theme.primary}><strong>
+              {searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
+            </strong></span></text>
+          </box>
+          <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+            <text fg={theme.textMuted}>
+              {searching
+                ? "  ↑↓ navigate  Enter/click switch  Esc cancel"
+                : "  ↑↓ navigate  Enter/click switch  / search  d delete  r refresh"}
+            </text>
+          </box>
+        </box>
 
         {warn ? <text fg={theme.warning}>⚠ {warn}</text> : null}
 
@@ -419,11 +439,13 @@ export const Sessions = memo((props: Props) => {
             {searching
               ? results.map((r, i) => (
                   <SearchItem key={r.session_id} result={r} selected={i === sel}
-                    onSelect={() => setSel(i)} onHover={() => setSel(i)} />
+                    onActivate={() => { setSel(i); props.onSwitch?.(r.session_id) }}
+                    onHover={() => setSel(i)} />
                 ))
               : rows.map((r, i) => (
                   <Item key={r.id} row={r} selected={i === sel}
-                    onSelect={() => setSel(i)} onHover={() => setSel(i)}
+                    onActivate={() => { setSel(i); props.onSwitch?.(r.id) }}
+                    onHover={() => setSel(i)}
                     onDelete={() => confirmDelete(r)} />
                 ))}
           </scrollbox>

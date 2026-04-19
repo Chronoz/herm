@@ -158,4 +158,60 @@ describe("Sessions tab", () => {
     expect(t.frame()).toContain("Sessions (2)")
     t.destroy()
   })
+
+  test("click on row switches to that session", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused onSwitch={sid => { switched = sid }} />,
+      { gw, width: 160, height: 48 },
+    )
+    await until(t, () => t.frame().includes("Second session"))
+
+    const lines = t.frame().split("\n")
+    const y = lines.findIndex(l => l.includes("Second session"))
+    const x = lines[y].indexOf("Second session")
+    await act(async () => { await t.mouse.pressDown(x, y) })
+    await t.settle()
+    expect(switched).toBe("sid-b")
+    t.destroy()
+  })
+
+  test("columns reflow on resize — title grows/shrinks, meta stays aligned", async () => {
+    const long = "A rather long session title that definitely exceeds thirty characters"
+    const gw = new MockGateway({
+      "session.list": () => ({ sessions: [
+        { id: "sid-long", title: long, preview: "", message_count: 7, started_at: 1700000000, source: "tui" },
+      ]}),
+    })
+    const t = await mountNode(<Sessions focused />, { gw, width: 200, height: 30 })
+    await until(t, () => t.frame().includes("Sessions (1)"))
+
+    const row = (f: string) => f.split("\n").find(l => l.includes("▸ A rather"))!
+    const titleLen = (f: string) => {
+      const r = row(f)
+      return r.indexOf("TUI") - r.indexOf("A rather")
+    }
+
+    const wide = t.frame()
+    expect(row(wide)).toContain("7 msgs")
+    // Full title visible at 200 cols
+    expect(row(wide)).toContain("exceeds thirty characters")
+
+    t.resize(110, 30)
+    await t.settle()
+    await t.settle()
+    const narrow = t.frame()
+
+    // meta column still present and aligned; title column shrank
+    expect(row(narrow)).toContain("7 msgs")
+    expect(row(narrow)).toContain("TUI")
+    expect(titleLen(narrow)).toBeLessThan(titleLen(wide))
+    // Truncated, not wrapped to a second line
+    expect(narrow.split("\n").filter(l => /▸.*A rather/.test(l)).length).toBe(1)
+    // Header doesn't wrap at narrow width either
+    const headerY = narrow.split("\n").findIndex(l => l.includes("Sessions (1)"))
+    expect(narrow.split("\n")[headerY + 1]).not.toContain("refresh")
+    t.destroy()
+  })
 })
