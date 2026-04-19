@@ -138,6 +138,7 @@ Reference: `~/Dev/clones/opencode/.../tui/routes/session/` +
       Pattern is in opentui-component-patterns skill.
 - [ ] D3.8 **Tips on empty transcript** — import `hermes_cli/tips.py` list
       via a one-time gateway RPC `tips.list`, rotate one on empty chat.
+- [ ] (ad hoc added by kaio) click on your message and revert to that state
 
 ═══════════════════════════════════════════════════════════════════
 ## P4 — #12130 Tier-2 overlays herm already has as tabs — finish them
@@ -219,7 +220,13 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
 ## Late additions
 - opencode-style diffing in chat → already D3.4 (opentui `<diff>` renderable).
   Bumping D3.4 priority to run alongside D3.1-2 in first chat-polish batch.
+- **CONSTRAINT (kaio, overnight):** do NOT edit hermes-agent. Herm must
+  work against upstream tui_gateway as-is. Where a feature needs a new
+  RPC, route through an existing one (`shell.exec`, `config.get`) or
+  read the filesystem directly. Any gateway gaps → note in
+  `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-- [x] P0 Agents tab — profiles + running split view (commit pending)
-- [~] P1 next
+- [x] P0 Agents tab — 82ac163 + e… (fs-based rework, no gateway edits)
+- [x] B1.1 @-refs popover — uses existing complete.path; expansion server-side
+- [~] B1.2 quick_commands next

@@ -38,6 +38,7 @@ export const GatewayProvider = ({ client, children }: { client?: Gateway; childr
     }
     c.on("event", onEvent)
     c.start()
+    c.drain()
     return () => {
       c.off("event", onEvent)
       c.removeAllListeners()

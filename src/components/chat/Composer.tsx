@@ -9,8 +9,10 @@ import type { Usage } from "../../types/message"
 import type { SlashCommand } from "../../commands/slash"
 import { useSlashCommands } from "../../app/useSlashCommands"
 import { useSlashPopover } from "../../app/useSlashPopover"
+import { useAtRefPopover } from "../../app/useAtRefPopover"
 import { useInputHistory } from "../../app/useInputHistory"
 import { SlashPopover } from "./SlashPopover"
+import { AtRefPopover } from "./AtRefPopover"
 
 export type ComposerHandle = {
   value: () => string
@@ -48,11 +50,12 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
 
   const cmds = useSlashCommands().cmds
   const pop = useSlashPopover(input, cmds)
+  const at = useAtRefPopover(input)
   const hist = useInputHistory(input, setInput)
 
   // Hold latest pop/props in a ref so the imperative handle is stable.
-  const live = useRef({ pop, props, input })
-  live.current = { pop, props, input }
+  const live = useRef({ pop, at, props, input })
+  live.current = { pop, at, props, input }
 
   // Selecting a popover entry: subcommand synthetics (name contains a
   // space) complete the input for further typing; real commands dispatch.
@@ -62,7 +65,14 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     live.current.props.onSlash(c)
   }
 
+  const atAccept = (idx?: number) => {
+    const next = live.current.at.accept(live.current.input, idx)
+    if (next !== null) setInput(next)
+  }
+
   const submit = () => {
+    const a = live.current.at
+    if (a.open) return atAccept()
     const p = live.current.pop
     if (p.open) {
       const c = p.popover?.[p.cursor]
@@ -79,17 +89,25 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   useImperativeHandle(ref, () => ({
     value: () => live.current.input,
     set: setInput,
-    popOpen: () => live.current.pop.open,
+    popOpen: () => live.current.pop.open || live.current.at.open,
     popNav: (d) => {
+      const a = live.current.at
+      if (a.open) return a.setCursor(c => Math.max(0, Math.min(a.items.length - 1, c + d)))
       const max = (live.current.pop.popover?.length ?? 1) - 1
       pop.setCursor(c => Math.max(0, Math.min(max, c + d)))
     },
     popAccept: () => {
+      const a = live.current.at
+      if (a.open) return atAccept()
       const p = live.current.pop
       const c = p.popover?.[p.cursor]
       if (c) setInput(`/${c.name}${c.name.includes(" ") ? " " : ""}`)
     },
-    popCancel: () => setInput(""),
+    popCancel: () => {
+      const a = live.current.at
+      if (a.open) return a.dismiss()
+      setInput("")
+    },
     historyUp: hist.up,
     historyDown: hist.down,
   }), [hist.up, hist.down, pop.setCursor])
@@ -108,7 +126,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
 
   const hint = props.streaming ? "Esc×2: Interrupt"
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
-    : props.focused ? "Enter: Send · ↑↓: History · /: Commands · Tab: Content"
+    : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
+    : props.focused ? "Enter: Send · ↑↓: History · /: Commands · @: Context · Tab: Content"
     : "Tab: Focus input · Esc: Focus input"
 
   return (
@@ -120,6 +139,15 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
             cursor={pop.cursor}
             onCursor={pop.setCursor}
             onSelect={select}
+          />
+        </box>
+      ) : at.open ? (
+        <box position="absolute" bottom={4} left={0} right={0}>
+          <AtRefPopover
+            items={at.items}
+            cursor={at.cursor}
+            onCursor={at.setCursor}
+            onSelect={atAccept}
           />
         </box>
       ) : null}

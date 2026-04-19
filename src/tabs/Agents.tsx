@@ -5,17 +5,20 @@ import { useGateway } from "../app/gateway"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
-import type {
-  ProfileInfo, ProfileListResponse,
-  AgentProcess, AgentsListResponse,
-} from "../utils/gateway-types"
+import {
+  listProfiles, createProfile, validateName,
+  type ProfileInfo,
+} from "../utils/hermes-profiles"
+import type { AgentProcess, AgentsListResponse } from "../utils/gateway-types"
 
 // Two panes:
-//   Profiles (left)  — hermes_cli/profiles.py via profile.* RPCs. Each
+//   Profiles (left)  — filesystem scan of `<root>/profiles/`. Each
 //     profile is an isolated HERMES_HOME (config, env, memory, skills).
-//     Switching profiles = restarting the gateway under a new HERMES_HOME,
-//     which would sever this session — so "switch" is deliberately NOT
-//     offered here. Create/delete only.
+//     Switching profiles = restarting the gateway under a new
+//     HERMES_HOME, which would sever this session — so "switch" is
+//     deliberately NOT offered here. Create is additive (fs only);
+//     delete runs `hermes profile delete -y` via shell.exec so the
+//     authoritative CLI handles gateway stop + wrapper cleanup.
 //   Running (right)  — agents.list RPC: background processes + subagent
 //     tasks. Kill via process.stop.
 
@@ -115,7 +118,8 @@ const CreateProfile = (props: {
   const [name, setName] = useState("")
   const [cloneIdx, setCloneIdx] = useState(0)
   const options = ["(fresh)", ...props.existing]
-  const valid = /^[a-z0-9][a-z0-9_-]{0,63}$/.test(name) && !props.existing.includes(name)
+  const err = name ? validateName(name, props.existing) : null
+  const valid = !!name && !err
 
   useKeyboard((key) => {
     if (key.name === "escape") return props.onCancel()
@@ -153,7 +157,7 @@ const CreateProfile = (props: {
       ))}
       <box height={1} />
       <box height={1}><text fg={theme.textMuted}>
-        {valid ? "Enter create  ·  Esc cancel" : name ? "invalid name" : "type a name"}
+        {valid ? "Enter create  ·  Esc cancel" : err ?? "type a name"}
       </text></box>
     </box>
   )
@@ -239,9 +243,12 @@ export const Agents = memo((props: Props) => {
   live.current = { profiles, procs }
 
   const load = useCallback(() => {
-    gw.request<ProfileListResponse>("profile.list")
-      .then(r => { setProfiles(r.profiles); setErr("") })
-      .catch((e: Error) => setErr(`profile.list: ${e.message}`))
+    try {
+      setProfiles(listProfiles())
+      setErr("")
+    } catch (e) {
+      setErr(`profiles: ${(e as Error).message}`)
+    }
     gw.request<AgentsListResponse>("agents.list")
       .then(r => setProcs(r.processes ?? []))
       .catch(() => {})
@@ -260,8 +267,14 @@ export const Agents = memo((props: Props) => {
       <ConfirmDeleteProfile name={p.name}
         onConfirm={() => {
           dialog.clear()
-          gw.request("profile.delete", { name: p.name })
-            .then(() => { toast.show({ variant: "success", message: `Deleted '${p.name}'` }); load() })
+          gw.request<{ stdout: string; stderr: string; code: number }>(
+            "shell.exec", { command: `hermes profile delete ${p.name} -y` },
+          )
+            .then(r => {
+              if (r.code !== 0) throw new Error((r.stderr || r.stdout || "exit " + r.code).trim())
+              toast.show({ variant: "success", message: `Deleted '${p.name}'` })
+              load()
+            })
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
         }}
         onCancel={() => dialog.clear()}
@@ -283,14 +296,18 @@ export const Agents = memo((props: Props) => {
         existing={live.current.profiles.map(p => p.name)}
         onSubmit={(name, cloneFrom) => {
           dialog.clear()
-          gw.request("profile.create", { name, clone_from: cloneFrom, clone_config: !!cloneFrom })
-            .then(() => { toast.show({ variant: "success", message: `Created '${name}'` }); load() })
-            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          try {
+            createProfile(name, cloneFrom)
+            toast.show({ variant: "success", message: `Created '${name}'` })
+            load()
+          } catch (e) {
+            toast.show({ variant: "error", message: (e as Error).message })
+          }
         }}
         onCancel={() => dialog.clear()}
       />,
     )
-  }, [gw, dialog, toast, load])
+  }, [dialog, toast, load])
 
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return

@@ -1,81 +1,144 @@
-import { describe, test, expect } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { act } from "react"
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { mountNode, until, MockGateway } from "./harness"
 import { Agents } from "../src/tabs/Agents"
-import type { ProfileInfo, AgentProcess } from "../src/utils/gateway-types"
+import {
+  listProfiles, createProfile, validateName, activeProfileName,
+} from "../src/utils/hermes-profiles"
+import type { AgentProcess } from "../src/utils/gateway-types"
 
-const PROFILES: ProfileInfo[] = [
-  { name: "default", path: "/home/t/.hermes", is_default: true, is_active: true,
-    gateway_running: true, model: "test-model", provider: "anthropic",
-    has_env: true, skill_count: 42, has_alias: false, soul_preview: "I am default." },
-  { name: "coder", path: "/home/t/.hermes/profiles/coder", is_default: false, is_active: false,
-    gateway_running: false, model: "claude-4", provider: "anthropic",
-    has_env: true, skill_count: 7, has_alias: true, soul_preview: "" },
-]
+// ─── fixture ─────────────────────────────────────────────────────────
+
+let ROOT: string
+let PREV: string | undefined
+
+const mkProfile = (name: string, cfg: Record<string, unknown>) => {
+  const d = name === "default" ? ROOT : join(ROOT, "profiles", name)
+  mkdirSync(join(d, "skills"), { recursive: true })
+  const body = "model:\n" + Object.entries(cfg).map(([k, v]) => `  ${k}: ${v}`).join("\n") + "\n"
+  writeFileSync(join(d, "config.yaml"), body)
+  return d
+}
+
+beforeEach(() => {
+  ROOT = mkdtempSync(join(tmpdir(), "herm-agents-"))
+  PREV = process.env.HERMES_HOME
+  process.env.HERMES_HOME = ROOT
+  mkProfile("default", { default: "test-model", provider: "anthropic" })
+  writeFileSync(join(ROOT, "SOUL.md"), "I am default.")
+  writeFileSync(join(ROOT, ".env"), "FOO=bar")
+  mkdirSync(join(ROOT, "skills", "a"), { recursive: true })
+  writeFileSync(join(ROOT, "skills", "a", "SKILL.md"), "---\nname: a\n---")
+  mkProfile("coder", { default: "claude-4", provider: "anthropic" })
+})
+
+afterEach(() => {
+  process.env.HERMES_HOME = PREV
+  try { rmSync(ROOT, { recursive: true, force: true }) } catch { /* ignore */ }
+})
+
+// ─── hermes-profiles.ts ──────────────────────────────────────────────
+
+describe("hermes-profiles", () => {
+  test("listProfiles reads root + profiles/, detects active", () => {
+    const ps = listProfiles()
+    expect(ps.map(p => p.name)).toEqual(["default", "coder"])
+    const def = ps[0]
+    expect(def.is_default).toBe(true)
+    expect(def.is_active).toBe(true)
+    expect(def.model).toBe("test-model")
+    expect(def.provider).toBe("anthropic")
+    expect(def.has_env).toBe(true)
+    expect(def.skill_count).toBe(1)
+    expect(def.soul_preview).toContain("I am default")
+    expect(ps[1].is_active).toBe(false)
+    expect(ps[1].model).toBe("claude-4")
+    expect(activeProfileName()).toBe("default")
+  })
+
+  test("activeProfileName when running under a named profile", () => {
+    process.env.HERMES_HOME = join(ROOT, "profiles", "coder")
+    expect(activeProfileName()).toBe("coder")
+    const ps = listProfiles()
+    expect(ps.find(p => p.name === "coder")?.is_active).toBe(true)
+    expect(ps.find(p => p.name === "default")?.is_active).toBe(false)
+  })
+
+  test("validateName", () => {
+    expect(validateName("ok-name_1", ["x"])).toBeNull()
+    expect(validateName("Bad", [])).toMatch(/must match/)
+    expect(validateName("coder", ["coder"])).toBe("already exists")
+    expect(validateName("default", [])).toBe("reserved name")
+  })
+
+  test("createProfile scaffolds dirs and clones config files", () => {
+    const path = createProfile("fresh", null)
+    expect(existsSync(join(path, "memories"))).toBe(true)
+    expect(existsSync(join(path, "config.yaml"))).toBe(false) // no clone
+    expect(listProfiles().map(p => p.name)).toContain("fresh")
+
+    createProfile("cloned", "default")
+    expect(existsSync(join(ROOT, "profiles", "cloned", "config.yaml"))).toBe(true)
+    expect(existsSync(join(ROOT, "profiles", "cloned", "SOUL.md"))).toBe(true)
+    expect(existsSync(join(ROOT, "profiles", "cloned", ".env"))).toBe(true)
+
+    expect(() => createProfile("fresh", null)).toThrow(/already exists/)
+  })
+})
+
+// ─── Agents tab ──────────────────────────────────────────────────────
 
 const PROCS: AgentProcess[] = [
   { session_id: "bg_abc123", command: "npm test", status: "running", uptime: 95 },
 ]
 
 describe("Agents tab", () => {
-  test("loads profiles + running panes from RPC", async () => {
-    const gw = new MockGateway({
-      "profile.list": () => ({ profiles: PROFILES, active: "default" }),
-      "agents.list": () => ({ processes: PROCS }),
-    })
+  test("loads profiles (fs) + running (RPC)", async () => {
+    const gw = new MockGateway({ "agents.list": () => ({ processes: PROCS }) })
     const t = await mountNode(<Agents focused />, { gw })
     await until(t, () => t.frame().includes("Profiles (2)"))
 
     const f = t.frame()
     expect(f).toContain("default")
     expect(f).toContain("coder")
-    expect(f).toContain(" you") // active marker
+    expect(f).toContain(" you")
     expect(f).toContain("Running (1)")
     expect(f).toContain("npm test")
     expect(f).toContain("1m35s")
-    expect(f).toContain("I am default.") // SOUL preview for selected row
-    expect(t.gw.last("profile.list")).toBeDefined()
+    expect(f).toContain("I am default.")
     expect(t.gw.last("agents.list")).toBeDefined()
     t.destroy()
   })
 
-  test("↓ selects, detail follows, d opens confirm → y deletes via RPC", async () => {
-    let profiles = [...PROFILES]
+  test("↓ selects, detail follows; d on active/default is no-op; d on other confirms → shell.exec", async () => {
     const gw = new MockGateway({
-      "profile.list": () => ({ profiles, active: "default" }),
-      "profile.delete": p => {
-        profiles = profiles.filter(x => x.name !== p.name)
-        return { deleted: true, name: p.name }
-      },
+      "shell.exec": () => ({ stdout: "deleted", stderr: "", code: 0 }),
     })
     const t = await mountNode(<Agents focused />, { gw })
     await until(t, () => t.frame().includes("Profiles (2)"))
 
-    // row 0 (default, active) → d is a no-op
     await act(async () => { await t.keys.typeText("d") })
     await t.settle()
     expect(t.frame()).not.toContain("Delete Profile?")
 
     act(() => t.keys.pressArrow("down"))
-    await until(t, () => t.frame().includes("claude-4")) // detail followed selection
+    await until(t, () => t.frame().includes("claude-4"))
 
     await act(async () => { await t.keys.typeText("d") })
     await until(t, () => t.frame().includes("Delete Profile?"))
     expect(t.frame()).toContain("'coder'")
 
     await act(async () => { await t.keys.typeText("y") })
-    await until(t, () => t.frame().includes("Profiles (1)"))
-    expect(t.gw.last("profile.delete")?.params.name).toBe("coder")
+    await t.settle()
+    expect(t.gw.last("shell.exec")?.params.command).toBe("hermes profile delete coder -y")
     t.destroy()
   })
 
-  test("n opens create dialog; validates name; Enter creates via RPC", async () => {
-    const created: string[] = []
-    const gw = new MockGateway({
-      "profile.list": () => ({ profiles: PROFILES, active: "default" }),
-      "profile.create": p => { created.push(p.name as string); return { created: true, name: p.name, path: "/p" } },
-    })
-    const t = await mountNode(<Agents focused />, { gw })
+  test("n opens create dialog; validates; Enter scaffolds profile on disk", async () => {
+    const t = await mountNode(<Agents focused />, { gw: new MockGateway() })
     await until(t, () => t.frame().includes("Profiles (2)"))
 
     await act(async () => { await t.keys.typeText("n") })
@@ -83,32 +146,26 @@ describe("Agents tab", () => {
     expect(t.frame()).toContain("(fresh)")
     expect(t.frame()).toContain("type a name")
 
-    // collision with existing → invalid
     for (const c of "coder") await act(async () => { await t.keys.typeText(c) })
-    await until(t, () => t.frame().includes("invalid name"))
+    await until(t, () => t.frame().includes("already exists"))
     act(() => t.keys.pressEnter())
     await t.settle()
-    expect(created).toHaveLength(0) // blocked
+    expect(existsSync(join(ROOT, "profiles", "coder-v2"))).toBe(false) // nothing yet
 
-    // append → valid; select clone source = default
     for (const c of "-v2") await act(async () => { await t.keys.typeText(c) })
-    await until(t, () => !t.frame().includes("invalid name"))
-    act(() => t.keys.pressArrow("down")) // (fresh) → default
+    await until(t, () => t.frame().includes("Enter create"))
+    act(() => t.keys.pressArrow("down")) // clone: (fresh) → default
     await t.settle()
 
     act(() => t.keys.pressEnter())
-    await until(t, () => !t.frame().includes("New Profile"))
-    expect(created).toEqual(["coder-v2"])
-    const call = t.gw.last("profile.create")
-    expect(call?.params.clone_from).toBe("default")
-    expect(call?.params.clone_config).toBe(true)
+    await until(t, () => t.frame().includes("Profiles (3)"))
+    expect(existsSync(join(ROOT, "profiles", "coder-v2", "config.yaml"))).toBe(true)
     t.destroy()
   })
 
   test("Tab switches pane; k kills via process.stop", async () => {
     let stopped = ""
     const gw = new MockGateway({
-      "profile.list": () => ({ profiles: PROFILES, active: "default" }),
       "agents.list": () => ({ processes: PROCS }),
       "process.stop": p => { stopped = p.session_id as string; return {} },
     })
@@ -117,7 +174,6 @@ describe("Agents tab", () => {
 
     act(() => t.keys.pressTab())
     await t.settle()
-    // 'd' should now be inert (running pane has no 'd' binding)
     await act(async () => { await t.keys.typeText("d") })
     await t.settle()
     expect(t.frame()).not.toContain("Delete Profile?")
@@ -128,21 +184,8 @@ describe("Agents tab", () => {
     t.destroy()
   })
 
-  test("profile.list error surfaces inline warning", async () => {
-    const gw = new MockGateway({
-      "profile.list": () => { throw new Error("module missing") },
-    })
-    const t = await mountNode(<Agents focused />, { gw })
-    await until(t, () => t.frame().includes("⚠ profile.list: module missing"))
-    expect(t.frame()).toContain("Profiles (0)")
-    t.destroy()
-  })
-
   test("narrow width: single pane, Tab swaps between them", async () => {
-    const gw = new MockGateway({
-      "profile.list": () => ({ profiles: PROFILES, active: "default" }),
-      "agents.list": () => ({ processes: PROCS }),
-    })
+    const gw = new MockGateway({ "agents.list": () => ({ processes: PROCS }) })
     const t = await mountNode(<Agents focused />, { gw, width: 100 })
     await until(t, () => t.frame().includes("Profiles (2)"))
     expect(t.frame()).not.toContain("Running (")
@@ -151,9 +194,7 @@ describe("Agents tab", () => {
     act(() => t.keys.pressTab())
     await until(t, () => t.frame().includes("Running (1)"))
     expect(t.frame()).not.toContain("Profiles (")
-    expect(t.frame()).toContain("Tab ↔ profiles")
 
-    // widen → both visible
     act(() => t.resize(160, 48))
     await t.settle()
     await until(t, () => t.frame().includes("Profiles (2)") && t.frame().includes("Running (1)"))

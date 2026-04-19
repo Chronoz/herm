@@ -1,20 +1,27 @@
 import { describe, expect, test } from "bun:test"
 import { act, createRef } from "react"
-import { mountNode, until, type Harness } from "./harness"
+import { mountNode, until, MockGateway, type Harness } from "./harness"
 import { Composer, type ComposerHandle } from "../src/components/chat/Composer"
 import type { SlashCommand } from "../src/commands/slash"
+import { atWordAt } from "../src/app/useAtRefPopover"
 
-async function setup() {
+async function setup(gw = new MockGateway()) {
   const ref = createRef<ComposerHandle>()
   const sent: string[] = []
   const slashed: SlashCommand[] = []
+  // Mirror app layout: Composer pinned to bottom of a tall column so
+  // its absolute-positioned popover (bottom={4}) has room to render
+  // upward into visible frame space.
   const t: Harness = await mountNode(
-    <Composer
-      ref={ref}
-      focused ready streaming={false}
-      model="test" onSend={m => sent.push(m)} onSlash={c => slashed.push(c)}
-    />,
-    { width: 120, height: 30 },
+    <box flexDirection="column" flexGrow={1} width="100%" height="100%">
+      <box flexGrow={1} />
+      <Composer
+        ref={ref}
+        focused ready streaming={false}
+        model="test" onSend={m => sent.push(m)} onSlash={c => slashed.push(c)}
+      />
+    </box>,
+    { gw, width: 120, height: 30 },
   )
   await until(t, () => t.frame().includes("Ready"))
   return { t, ref, sent, slashed }
@@ -98,6 +105,71 @@ describe("composer", () => {
     await t.settle()
     expect(ref.current?.value()).toBe("")
     expect(ref.current?.popOpen()).toBe(false)
+    t.destroy()
+  })
+
+  test("atWordAt: extracts @-word under caret", () => {
+    expect(atWordAt("")).toBeNull()
+    expect(atWordAt("hello")).toBeNull()
+    expect(atWordAt("/help @")).toBeNull()          // slash mode suppresses
+    expect(atWordAt("@")).toEqual({ word: "@", start: 0 })
+    expect(atWordAt("look at @file:src/a")).toEqual({ word: "@file:src/a", start: 8 })
+    expect(atWordAt("foo@bar")).toBeNull()           // not word-initial
+    expect(atWordAt("a @b c")).toBeNull()            // caret not at end of @-word
+    expect(atWordAt("a @b")).toEqual({ word: "@b", start: 2 })
+  })
+
+  test("@ opens atref popover; Tab inserts; Esc dismisses without clearing", async () => {
+    const gw = new MockGateway({
+      "complete.path": p => {
+        if (p.word === "@") return { items: [
+          { text: "@diff", display: "@diff", meta: "git diff" },
+          { text: "@file:", display: "@file:", meta: "attach file" },
+        ] }
+        if ((p.word as string).startsWith("@file:")) return { items: [
+          { text: "@file:src/", display: "src/", meta: "dir" },
+          { text: "@file:README.md", display: "README.md", meta: "" },
+        ] }
+        return { items: [] }
+      },
+    })
+    const { t, ref, sent } = await setup(gw)
+
+    await act(async () => { await t.keys.typeText("review @") })
+    await until(t, () => t.frame().includes("@diff"))
+    expect(ref.current?.popOpen()).toBe(true)
+    expect(t.frame()).toContain("@file:")
+    expect(t.frame()).toContain("Tab/Enter: Insert")
+
+    // Enter on keyword-with-colon → inserts without trailing space
+    act(() => ref.current?.popNav(1))
+    await t.settle()
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(sent).toEqual([]) // did NOT send
+    expect(ref.current?.value()).toBe("review @file:")
+    expect(t.gw.last("complete.path")?.params.word).toBe("@file:")
+    await until(t, () => t.frame().includes("README.md"))
+
+    // Nav to README, Tab accepts → adds trailing space
+    act(() => ref.current?.popNav(1))
+    act(() => ref.current?.popAccept())
+    await t.settle()
+    expect(ref.current?.value()).toBe("review @file:README.md ")
+    expect(ref.current?.popOpen()).toBe(false)
+
+    // Dismiss: type @ again, Esc closes but keeps input
+    await act(async () => { await t.keys.typeText("and @") })
+    await until(t, () => ref.current?.popOpen() === true)
+    act(() => ref.current?.popCancel())
+    await t.settle()
+    expect(ref.current?.popOpen()).toBe(false)
+    expect(ref.current?.value()).toBe("review @file:README.md and @")
+
+    // Now Enter actually sends
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(sent).toEqual(["review @file:README.md and @"])
     t.destroy()
   })
 })
