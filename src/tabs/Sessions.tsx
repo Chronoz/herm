@@ -102,39 +102,43 @@ const Detail = memo((props: { row: Row }) => {
          backgroundColor={theme.backgroundPanel} width="40%">
       <box height={1}><text fg={theme.primary}><strong>Session Detail</strong></text></box>
       <box height={1} />
-      <box minHeight={1}>
-        <text wrapMode="word"><span fg={theme.accent}><strong>{r.title || "Untitled"}</strong></span></text>
-      </box>
-      <box height={1} />
+      <scrollbox scrollY flexGrow={1}>
+        <box flexDirection="column" width="100%">
+          <box minHeight={1}>
+            <text wrapMode="word"><span fg={theme.accent}><strong>{r.title || "Untitled"}</strong></span></text>
+          </box>
+          <box height={1} />
 
-      <DLine label="ID" value={r.id} />
-      <DLine label="Source" value={badge(r.source ?? "")} />
-      <DLine label="Model" value={d?.model ?? "—"} />
-      <DLine label="Started" value={when(r.started_at)} />
-      <DLine label="Last active" value={lastActive ? `${when(lastActive)}  (${ago(lastActive)})` : "—"} />
-      <DLine label="Duration" value={lastActive ? span(r.started_at, lastActive) : "—"} />
-      {d?.ended_at ? <DLine label="Ended" value={`${when(d.ended_at)}  ·  ${d.end_reason ?? "—"}`} /> : null}
-      <box height={1} />
+          <DLine label="ID" value={r.id} />
+          <DLine label="Source" value={badge(r.source ?? "")} />
+          <DLine label="Model" value={d?.model ?? "—"} />
+          <DLine label="Started" value={when(r.started_at)} />
+          <DLine label="Last active" value={lastActive ? `${when(lastActive)}  (${ago(lastActive)})` : "—"} />
+          <DLine label="Duration" value={lastActive ? span(r.started_at, lastActive) : "—"} />
+          {d?.ended_at ? <DLine label="Ended" value={`${when(d.ended_at)}  ·  ${d.end_reason ?? "—"}`} /> : null}
+          <box height={1} />
 
-      <DLine label="Messages" value={String(r.message_count)} />
-      {d ? <>
-        <DLine label="Tool calls" value={String(d.tool_call_count)} />
-        <DLine label="Input" value={`${fmt(d.input_tokens)} tok`} />
-        <DLine label="Output" value={`${fmt(d.output_tokens)} tok`} />
-        <DLine label="Cache" value={`${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w`} />
-        <DLine label="Reasoning" value={`${fmt(d.reasoning_tokens)} tok`} />
-        <DLine label="Cost" value={cost(d.estimated_cost_usd)} fg={theme.success} />
-        {d.parent_session_id ? <DLine label="Parent" value={d.parent_session_id} /> : null}
-      </> : null}
-      <box height={1} />
+          <DLine label="Messages" value={String(r.message_count)} />
+          {d ? <>
+            <DLine label="Tool calls" value={String(d.tool_call_count)} />
+            <DLine label="Input" value={`${fmt(d.input_tokens)} tok`} />
+            <DLine label="Output" value={`${fmt(d.output_tokens)} tok`} />
+            <DLine label="Cache" value={`${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w`} />
+            <DLine label="Reasoning" value={`${fmt(d.reasoning_tokens)} tok`} />
+            <DLine label="Cost" value={cost(d.estimated_cost_usd)} fg={theme.success} />
+            {d.parent_session_id ? <DLine label="Parent" value={d.parent_session_id} /> : null}
+          </> : null}
+          <box height={1} />
 
-      <DLine label="First msg" value={r.preview || "—"} fg={theme.textMuted} />
-      <DLine label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} />
+          <DLine label="First msg" value={r.preview || "—"} fg={theme.textMuted} />
+          <DLine label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} />
 
-      {!d ? <>
-        <box height={1} />
-        <box height={1}><text fg={theme.textMuted}>(no local detail — state.db mismatch)</text></box>
-      </> : null}
+          {!d ? <>
+            <box height={1} />
+            <box height={1}><text fg={theme.textMuted}>(no local detail — state.db mismatch)</text></box>
+          </> : null}
+        </box>
+      </scrollbox>
     </box>
   )
 })
@@ -161,30 +165,29 @@ const SearchDetail = memo((props: { result: SessionSearchHit }) => {
   return (
     <box flexDirection="column" padding={1} border borderColor={theme.border}
          backgroundColor={theme.backgroundPanel} width="40%">
-      <text><span fg={theme.primary}><strong>Search Match</strong></span></text>
-      <text> </text>
-      <text><span fg={theme.accent}><strong>{r.title ?? "Untitled"}</strong></span></text>
-      <text> </text>
-      <text>
-        <span fg={theme.textMuted}>{"Source".padEnd(13)}</span>
-        <span fg={theme.info}>{` ${badge(r.source)}`}</span>
-      </text>
-      <text>
-        <span fg={theme.textMuted}>{"Model".padEnd(13)}</span>
-        <span fg={theme.text}>{` ${r.model ?? "—"}`}</span>
-      </text>
-      <text>
-        <span fg={theme.textMuted}>{"Time".padEnd(13)}</span>
-        <span fg={theme.text}>{` ${when(r.started_at)}`}</span>
-      </text>
-      <text> </text>
-      <text><span fg={theme.textMuted}>Snippet:</span></text>
-      <text wrapMode="word">
-        {parts.map((p, i) => p.hi
-          ? <span key={i} fg={theme.accent}><strong>{p.text}</strong></span>
-          : <span key={i} fg={theme.text}>{p.text}</span>
-        )}
-      </text>
+      <box height={1}><text fg={theme.primary}><strong>Search Match</strong></text></box>
+      <box height={1} />
+      <scrollbox scrollY flexGrow={1}>
+        <box flexDirection="column" width="100%">
+          <box minHeight={1}>
+            <text wrapMode="word"><span fg={theme.accent}><strong>{r.title ?? "Untitled"}</strong></span></text>
+          </box>
+          <box height={1} />
+          <DLine label="Source" value={badge(r.source)} />
+          <DLine label="Model" value={r.model ?? "—"} />
+          <DLine label="Time" value={when(r.started_at)} />
+          <box height={1} />
+          <box height={1}><text fg={theme.textMuted}>Snippet</text></box>
+          <box minHeight={1}>
+            <text wrapMode="word">
+              {parts.map((p, i) => p.hi
+                ? <span key={i} fg={theme.accent}><strong>{p.text}</strong></span>
+                : <span key={i} fg={theme.text}>{p.text}</span>
+              )}
+            </text>
+          </box>
+        </box>
+      </scrollbox>
     </box>
   )
 })

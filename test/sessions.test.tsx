@@ -289,4 +289,20 @@ describe("Sessions tab", () => {
     expect(f).not.toContain("Session 0 ")
     t.destroy()
   })
+
+  test("detail panel scrolls instead of overflowing at short height", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    const t = await mountNode(<Sessions focused />, { gw, width: 180, height: 12 })
+    await until(t, () => t.frame().includes("Sessions (2)"))
+
+    const f = t.frame()
+    expect(f).toContain("Session Detail")
+    // Bottom rows clipped by scrollbox, not painted onto/past the border.
+    expect(f).not.toContain("First msg")
+    expect(f).not.toContain("Last msg")
+    // Bottom border intact (no content bleeding through it).
+    const last = f.split("\n").filter(l => l.trim()).at(-1)!
+    expect(last).toMatch(/└─+┘└─+┘$/)
+    t.destroy()
+  })
 })
