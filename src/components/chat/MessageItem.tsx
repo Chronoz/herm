@@ -118,9 +118,22 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
     if (p.type === "thinking") return <Thinking key={`t-${i}`} part={p} />
     if (p.type === "tool") return <ToolPart key={p.id || `tool-${i}`} tool={p} />
     if (!p.content) return null
+    // Fenced code blocks inside assistant markdown are rendered by
+    // OpenTUI's MarkdownRenderable → CodeRenderable, which uses the
+    // process-global TreeSitterClient singleton for syntax highlighting
+    // and the theme's SyntaxStyle for token colors. No per-block wiring
+    // needed here.
+    // TODO: override renderNode for `code` tokens to wrap them in a
+    // backgroundElement box with a top-right language label once
+    // OpenTUI exposes a React-safe renderNode hook.
     return (
       <box key={`x-${i}`}>
-        <markdown content={p.content} syntaxStyle={ctx.syntaxStyle} streaming={streaming && p.streaming} />
+        <markdown
+          content={p.content}
+          fg={theme.markdownText}
+          syntaxStyle={ctx.syntaxStyle}
+          streaming={streaming && p.streaming}
+        />
       </box>
     )
   }
