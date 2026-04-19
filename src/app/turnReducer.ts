@@ -76,8 +76,12 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
       }
 
     case "tool.start": {
+      // `context` carries the raw tool input; when JSON-shaped we keep it
+      // as args so the UI can render KV lines on expand.
+      const json = a.preview && /^\s*\{/.test(a.preview)
       const part: ToolPart = {
-        type: "tool", id: a.id, name: a.name, args: "",
+        type: "tool", id: a.id, name: a.name,
+        args: json ? a.preview! : "",
         status: "running", startedAt: Date.now(),
         preview: a.preview,
       }
@@ -114,6 +118,8 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
           status: (a.error ? "error" : "done") as ToolPart["status"],
           duration: p.startedAt ? Date.now() - p.startedAt : undefined,
           preview: a.summary || a.inline_diff || p.preview,
+          result: a.error || a.summary,
+          diff: a.inline_diff,
         })),
       }
 

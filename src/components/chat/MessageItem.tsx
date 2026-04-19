@@ -1,6 +1,7 @@
 import { memo, useState } from "react"
+import type { RGBA } from "@opentui/core"
 import type { Message, Part, TextPart, ThinkingPart } from "../../types/message"
-import { ToolCallItem } from "./ToolCallItem"
+import { ToolPart } from "./ToolPart"
 import { useTheme } from "../../theme"
 
 export type { Message }
@@ -18,16 +19,36 @@ function tokens(n: number): string {
   return `${(n / 1_000_000).toFixed(2)}M`
 }
 
-function stamp(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-}
-
 function extract(msg: Message): string {
   return msg.parts
     .filter((p): p is TextPart => p.type === "text")
     .map(p => p.content)
     .join("")
 }
+
+/** Two-column gutter: a themed vertical bar runs the full height of the body. */
+const Gutter = memo(({ color, glyph = "│", children }: {
+  color: RGBA
+  glyph?: string
+  children: React.ReactNode
+}) => (
+  <box flexDirection="row">
+    <box
+      width={2}
+      flexShrink={0}
+      border={["left"]}
+      borderColor={color}
+      customBorderChars={{
+        topLeft: glyph, bottomLeft: glyph, vertical: glyph,
+        topRight: "", bottomRight: "", horizontal: "",
+        topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
+      }}
+    />
+    <box flexDirection="column" flexGrow={1} flexShrink={1}>
+      {children}
+    </box>
+  </box>
+))
 
 export const MessageItem = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
   if (message.role === "system") return <SystemMessage message={message} />
@@ -38,11 +59,12 @@ export const MessageItem = memo(({ message, streaming }: { message: Message; str
 const SystemMessage = memo(({ message }: { message: Message }) => {
   const theme = useTheme().theme
   return (
-    <box paddingLeft={1} height={1}>
-      <text>
-        <span fg={theme.borderSubtle}>── </span>
-        <span fg={theme.textMuted}>{extract(message)}</span>
-      </text>
+    <box marginBottom={1}>
+      <Gutter color={theme.textMuted} glyph="·">
+        <box height={1}>
+          <text fg={theme.textMuted}>{extract(message)}</text>
+        </box>
+      </Gutter>
     </box>
   )
 })
@@ -58,13 +80,12 @@ const UserMessage = memo(({ message }: { message: Message }) => {
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
     >
-      <box height={1} flexDirection="row" paddingLeft={1}>
+      <box height={1}>
         <text>
-          <span fg={theme.primary}>▌ You</span>
-          {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
+          <span fg={theme.accent}>▸ you</span>
         </text>
       </box>
-      <box paddingLeft={3}>
+      <box paddingLeft={2}>
         <text fg={theme.text}>{extract(message)}</text>
       </box>
     </box>
@@ -76,8 +97,7 @@ const Thinking = memo(({ part }: { part: ThinkingPart }) => {
   const [open, setOpen] = useState(false)
   const body = open ? part.content : part.content.slice(0, 80).replace(/\n/g, " ")
   return (
-    <box paddingLeft={2} marginTop={1} border={["left"]} borderColor={theme.borderSubtle}
-         onMouseDown={() => setOpen(o => !o)}>
+    <box onMouseDown={() => setOpen(o => !o)}>
       <text fg={theme.textMuted}>💭 {body}{!open && part.content.length > 80 ? "…" : ""}</text>
     </box>
   )
@@ -86,52 +106,51 @@ const Thinking = memo(({ part }: { part: ThinkingPart }) => {
 const AssistantMessage = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
   const ctx = useTheme()
   const theme = ctx.theme
-  const hasError = !!message.error
-  const border = hasError ? theme.error : theme.secondary
+  const err = !!message.error
+
+  const header = [
+    message.model ?? "assistant",
+    message.usage ? `${tokens(message.usage.input)}→${tokens(message.usage.output)} tok` : null,
+    message.duration ? duration(message.duration) : null,
+  ].filter(Boolean).join(" · ")
 
   const part = (p: Part, i: number) => {
     if (p.type === "thinking") return <Thinking key={`t-${i}`} part={p} />
-    if (p.type === "tool") return <ToolCallItem key={p.id || `tool-${i}`} tool={p} />
+    if (p.type === "tool") return <ToolPart key={p.id || `tool-${i}`} tool={p} />
     if (!p.content) return null
+    // Fenced code blocks inside assistant markdown are rendered by
+    // OpenTUI's MarkdownRenderable → CodeRenderable, which uses the
+    // process-global TreeSitterClient singleton for syntax highlighting
+    // and the theme's SyntaxStyle for token colors. No per-block wiring
+    // needed here.
+    // TODO: override renderNode for `code` tokens to wrap them in a
+    // backgroundElement box with a top-right language label once
+    // OpenTUI exposes a React-safe renderNode hook.
     return (
-      <box key={`x-${i}`} paddingLeft={3}>
-        <markdown content={p.content} syntaxStyle={ctx.syntaxStyle} streaming={streaming && p.streaming} />
+      <box key={`x-${i}`}>
+        <markdown
+          content={p.content}
+          fg={theme.markdownText}
+          syntaxStyle={ctx.syntaxStyle}
+          streaming={streaming && p.streaming}
+        />
       </box>
     )
   }
 
   return (
     <box flexDirection="column" marginBottom={1}>
-      <box height={1} flexDirection="row" paddingLeft={1}>
-        <text>
-          <span fg={border}>▌ Hermes</span>
-          {message.model ? <span fg={theme.textMuted}> · {message.model}</span> : null}
-          {message.timestamp ? <span fg={theme.textMuted}> {stamp(message.timestamp)}</span> : null}
-        </text>
-      </box>
-
-      {message.parts.map(part)}
-
-      {!streaming && (message.duration || message.usage || hasError) ? (
-        <box height={1} paddingLeft={3}>
-          <text>
-            {hasError ? (
-              <span fg={theme.error}>✗ {message.error}</span>
-            ) : (
-              <>
-                <span fg={theme.textMuted}>▣ </span>
-                {message.duration ? <span fg={theme.textMuted}>{duration(message.duration)}</span> : null}
-                {message.usage ? (
-                  <span fg={theme.textMuted}>
-                    {message.duration ? " · " : ""}
-                    {tokens(message.usage.input)}→{tokens(message.usage.output)}
-                  </span>
-                ) : null}
-              </>
-            )}
-          </text>
+      <Gutter color={err ? theme.error : theme.primary}>
+        <box height={1}>
+          <text fg={theme.textMuted}>{header}</text>
         </box>
-      ) : null}
+        {message.parts.map(part)}
+        {err ? (
+          <box height={1}>
+            <text fg={theme.error}>✗ {message.error}</text>
+          </box>
+        ) : null}
+      </Gutter>
     </box>
   )
 })

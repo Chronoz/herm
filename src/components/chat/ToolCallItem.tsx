@@ -101,7 +101,6 @@ export const ToolCallItem = memo(({ tool }: { tool: ToolPart }) => {
   return (
     <box
       flexDirection="column"
-      paddingLeft={2}
       marginBottom={0}
     >
       <box height={1} flexDirection="row" onMouseDown={() => setExpanded(e => !e)}>
