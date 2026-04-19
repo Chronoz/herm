@@ -1,26 +1,20 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard } from "@opentui/react"
-import {
-  queryRecentSessions,
-  searchSessions,
-  deleteSession,
-  type SessionRow,
-  type SearchResult,
-} from "../utils/hermes-home"
-import type { SessionListItem, SessionListResponse } from "../utils/gateway-types"
+import { queryRecentSessions, type SessionRow } from "../utils/hermes-home"
+import type {
+  SessionListItem, SessionListResponse,
+  SessionSearchHit, SessionSearchResponse, SessionDeleteResponse,
+} from "../utils/gateway-types"
 import { useGateway } from "../app/gateway"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { invalidate } from "../utils/cache"
 
-// The list comes from `session.list` RPC so every id is resumable through
-// the same gateway. Rows are then enriched (best-effort) from state.db for
-// token/cost/model detail the RPC doesn't expose. If the RPC fails the tab
-// falls back to the old filesystem list with a warning.
-//
-// Search and delete remain filesystem-backed — the gateway has no
-// equivalents yet.
+// All reads/writes go through the gateway (session.list / .search /
+// .delete) so the tab is correct under profiles and remote gateways.
+// Rows are enriched best-effort from state.db for token/cost/model
+// detail the list RPC doesn't expose; absence is non-fatal.
 
 type Row = SessionListItem & { detail?: SessionRow }
 
@@ -122,7 +116,7 @@ const Detail = memo((props: { row: Row }) => {
 
 // ─── Search Detail Panel ─────────────────────────────────────────────
 
-const SearchDetail = memo((props: { result: SearchResult }) => {
+const SearchDetail = memo((props: { result: SessionSearchHit }) => {
   const theme = useTheme().theme
   const r = props.result
 
@@ -148,7 +142,7 @@ const SearchDetail = memo((props: { result: SearchResult }) => {
       <text> </text>
       <text>
         <span fg={theme.textMuted}>{"Source".padEnd(13)}</span>
-        <span fg={theme.info}>{` ${badge(r.sessionSource)}`}</span>
+        <span fg={theme.info}>{` ${badge(r.source)}`}</span>
       </text>
       <text>
         <span fg={theme.textMuted}>{"Model".padEnd(13)}</span>
@@ -244,7 +238,7 @@ const Item = memo((props: {
 })
 
 const SearchItem = memo((props: {
-  result: SearchResult; selected: boolean
+  result: SessionSearchHit; selected: boolean
   onSelect: () => void; onHover: () => void
 }) => {
   const theme = useTheme().theme
@@ -255,7 +249,7 @@ const SearchItem = memo((props: {
       <text>
         <span fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</span>
         <span fg={props.selected ? theme.accent : theme.text}>{trunc(r.title ?? "Untitled", 30).padEnd(32)}</span>
-        <span fg={theme.info}>{` ${badge(r.sessionSource).padEnd(9)}`}</span>
+        <span fg={theme.info}>{` ${badge(r.source).padEnd(9)}`}</span>
         <span fg={theme.textMuted}>{` ${ago(r.started_at).padEnd(10)}`}</span>
         <span fg={theme.textMuted}>{` ${r.model ?? "—"}`}</span>
       </text>
@@ -278,8 +272,8 @@ export const Sessions = memo((props: Props) => {
   const [sel, setSel] = useState(0)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<SearchResult[]>([])
-  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [results, setResults] = useState<SessionSearchHit[]>([])
+  const seq = useRef(0)
 
   const load = useCallback(async () => {
     const [rpc, fs] = await Promise.allSettled([
@@ -313,17 +307,21 @@ export const Sessions = memo((props: Props) => {
 
   useEffect(() => { load() }, [load])
 
-  // Debounced FTS5 search (filesystem — gateway has no search endpoint)
+  // Search via gateway RPC. The old filesystem implementation debounced
+  // with setTimeout because a sync sqlite query on every keystroke blocked
+  // the render thread. RPC is async — fire per keystroke and drop any
+  // response whose seq no longer matches (out-of-order or superseded).
   useEffect(() => {
-    if (!searching) return
-    if (debounce.current) clearTimeout(debounce.current)
-    if (!query.trim()) { setResults([]); return }
-    debounce.current = setTimeout(() => {
-      setResults(searchSessions(query, 30))
-      setSel(0)
-    }, 200)
-    return () => { if (debounce.current) clearTimeout(debounce.current) }
-  }, [query, searching])
+    const id = ++seq.current
+    if (!searching || !query.trim()) { setResults([]); return }
+    gw.request<SessionSearchResponse>("session.search", { query, limit: 30 })
+      .then(r => {
+        if (seq.current !== id) return
+        setResults(r.results ?? [])
+        setSel(0)
+      })
+      .catch(() => { if (seq.current === id) setResults([]) })
+  }, [gw, query, searching])
 
   const activate = useCallback(() => {
     const id = searching ? results[sel]?.session_id : rows[sel]?.id
@@ -335,18 +333,22 @@ export const Sessions = memo((props: Props) => {
       <ConfirmDelete
         title={r.title || "Untitled"}
         onConfirm={() => {
-          const ok = deleteSession(r.id)
           dialog.clear()
-          if (!ok) return toast.show({ variant: "error", message: "Failed to delete session" })
-          invalidate()
-          toast.show({ variant: "success", message: "Session deleted" })
-          load()
-          setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
+          gw.request<SessionDeleteResponse>("session.delete", { session_id: r.id })
+            .then(res => {
+              if (!res.deleted) throw new Error("not found")
+              invalidate()
+              toast.show({ variant: "success", message: "Session deleted" })
+              setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
+              return load()
+            })
+            .catch((e: Error) =>
+              toast.show({ variant: "error", message: `Delete failed: ${e.message}` }))
         }}
         onCancel={() => dialog.clear()}
       />,
     )
-  }, [dialog, toast, load, rows.length])
+  }, [gw, dialog, toast, load, rows.length])
 
   const count = searching ? results.length : rows.length
 
