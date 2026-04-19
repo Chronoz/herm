@@ -13,7 +13,7 @@ export type GatewayEvent =
   | { type: "skin.changed"; payload?: GatewaySkin }
   | { type: "message.start"; payload?: undefined }
   | { type: "message.delta"; payload?: { text?: string; rendered?: string } }
-  | { type: "message.complete"; payload?: { text?: string; rendered?: string; reasoning?: string; usage?: Usage } }
+  | { type: "message.complete"; payload?: { text?: string | null; rendered?: string; reasoning?: string; status?: "complete" | "error" | "interrupted"; usage?: Usage } }
   | { type: "thinking.delta"; payload?: { text?: string } }
   | { type: "reasoning.delta"; payload?: { text?: string } }
   | { type: "reasoning.available"; payload?: { text?: string } }
@@ -60,8 +60,8 @@ export type SessionInfo = {
   model?: string
   cwd?: string
   session_id?: string
-  tools?: string[]
-  skills?: string[]
+  tools?: Record<string, string[]>
+  skills?: Record<string, string[]>
   version?: string
   usage?: Usage
   context_max?: number

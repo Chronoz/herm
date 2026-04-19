@@ -3,12 +3,12 @@
 import { useEffect, useState, useCallback } from "react"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect, type SelectOption } from "../ui/dialog-select"
-import type { GatewayClient } from "../utils/gateway-client"
+import type { Gateway } from "../app/gateway"
 import type { ModelOptionsResponse } from "../utils/gateway-types"
 
 type Step = "provider" | "model"
 
-const ModelPickerDialog = ({ gw }: { gw: GatewayClient }) => {
+const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
   const dialog = useDialog()
   const [data, setData] = useState<ModelOptionsResponse | null>(null)
   const [step, setStep] = useState<Step>("provider")
@@ -65,6 +65,6 @@ const ModelPickerDialog = ({ gw }: { gw: GatewayClient }) => {
   )
 }
 
-export const openModelPicker = (dialog: ReturnType<typeof useDialog>, gw: GatewayClient) => {
+export const openModelPicker = (dialog: ReturnType<typeof useDialog>, gw: Gateway) => {
   dialog.replace(<ModelPickerDialog gw={gw} />)
 }

@@ -39,7 +39,7 @@ const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {
 
 // ─── Paths ───────────────────────────────────────────────────────────
 
-const CONFIG_DIR = join(homedir(), ".config", "herm")
+const CONFIG_DIR = process.env.HERM_CONFIG_DIR || join(homedir(), ".config", "herm")
 const CONFIG_FILE = join(CONFIG_DIR, "tui.json")
 
 // ─── Load ────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { useRenderer } from "@opentui/react"
 import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "react"
 import * as perf from "./utils/perf"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
-import { GatewayProvider, useGateway, useGatewayEvent } from "./app/gateway"
+import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
 import type { GatewayEvent, SessionInfo, SessionUsageResponse } from "./utils/gateway-types"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
@@ -37,17 +37,17 @@ import { useSession } from "./app/useSession"
 import { useAppKeys } from "./app/useAppKeys"
 import { TABS, TAB_MAX } from "./app/tabs"
 
-export const App = ({ initialTheme }: { initialTheme?: string }) => (
-  <ThemeProvider initial={initialTheme}>
-    <ToastProvider>
-      <DialogProvider>
-        <GatewayProvider>
+export const App = (props: { initialTheme?: string; gateway?: Gateway }) => (
+  <ThemeProvider initial={props.initialTheme}>
+    <GatewayProvider client={props.gateway}>
+      <ToastProvider>
+        <DialogProvider>
           <CommandProvider>
             <AppInner />
           </CommandProvider>
-        </GatewayProvider>
-      </DialogProvider>
-    </ToastProvider>
+        </DialogProvider>
+      </ToastProvider>
+    </GatewayProvider>
   </ThemeProvider>
 )
 

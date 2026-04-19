@@ -3,10 +3,9 @@ peer = false
 
 [install.cache]
 disable = false
-# Use default cache location (Bun will handle it properly)
 
 [install.lockfile]
 save = true
 
 [test]
-preload = "./happydom.ts"
+preload = "./test/preload.ts"

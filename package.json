@@ -14,6 +14,8 @@
     "dev:full": "PERF=1 CONTROL=1 bun run --watch src/index.tsx",
     "build": "bun build src/index.tsx --target=bun --outdir=dist --minify",
     "start": "bun run dist/index.js",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
     "postinstall": "bun run scripts/postinstall.ts"
   },
   "dependencies": {

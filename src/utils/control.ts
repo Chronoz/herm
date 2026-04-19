@@ -393,6 +393,26 @@ async function handle(req: Request): Promise<Response> {
     return json({ focused, currentFocus, counts, tree })
   }
 
+  // GET /frame — current screen buffer as plain text. `?grep=pat` returns
+  // only matching lines. `?json=1` wraps in {frame, match, lines}.
+  if (path === "/frame") {
+    const r = bridge.renderer() as {
+      currentRenderBuffer?: { getRealCharBytes(nl: boolean): Uint8Array }
+    } | null
+    if (!r?.currentRenderBuffer) return json({ error: "no render buffer" }, 503)
+    const frame = new TextDecoder().decode(r.currentRenderBuffer.getRealCharBytes(true))
+    const grep = url.searchParams.get("grep")
+    const body = grep ? frame.split("\n").filter(l => l.includes(grep)).join("\n") : frame
+    if (url.searchParams.get("json") === "1") {
+      return json({
+        frame: body,
+        match: grep ? frame.includes(grep) : undefined,
+        lines: frame.split("\n").length,
+      })
+    }
+    return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8" } })
+  }
+
   // GET /perf — return all profiling data as JSON
   if (path === "/perf") {
     const d = perf.data()
@@ -432,6 +452,7 @@ async function handle(req: Request): Promise<Response> {
       "POST /key    {name, ctrl?, shift?, meta?, raw?, safe?}",
       "POST /keys   {keys: [{name, ...}], delay?, safe?}",
       "POST /type   {text, safe?}",
+      "GET  /frame  ?grep=pat&json=1",
       "GET  /focus",
       "GET  /perf",
       "GET  /tabs",

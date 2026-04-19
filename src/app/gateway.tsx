@@ -1,21 +1,34 @@
-// Singleton GatewayClient exposed via React context.
+// GatewayClient exposed via React context. The provider accepts an
+// injected client so tests can substitute a MockGateway without
+// spawning the Python tui_gateway subprocess.
 
 import { createContext, useContext, useEffect, useRef, useState, useMemo } from "react"
 import type { ReactNode } from "react"
+import { EventEmitter } from "events"
 import { GatewayClient } from "../utils/gateway-client"
 import type { GatewayEvent } from "../utils/gateway-types"
 
+/** Minimal surface consumers depend on. GatewayClient satisfies this. */
+export interface Gateway extends EventEmitter {
+  request<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>
+  setSession(sid: string): void
+  start(): void
+  drain(): void
+  kill(): void
+  readonly ready: boolean
+}
+
 type Ctx = {
-  client: GatewayClient
+  client: Gateway
   ready: boolean
 }
 
 const Gw = createContext<Ctx | null>(null)
 
-export const GatewayProvider = ({ children }: { children: ReactNode }) => {
-  const ref = useRef<GatewayClient | null>(null)
-  if (!ref.current) ref.current = new GatewayClient()
-  const [ready, setReady] = useState(false)
+export const GatewayProvider = ({ client, children }: { client?: Gateway; children: ReactNode }) => {
+  const ref = useRef<Gateway | null>(null)
+  if (!ref.current) ref.current = client ?? new GatewayClient()
+  const [ready, setReady] = useState(ref.current.ready)
 
   useEffect(() => {
     const c = ref.current!
@@ -35,7 +48,7 @@ export const GatewayProvider = ({ children }: { children: ReactNode }) => {
   return <Gw.Provider value={value}>{children}</Gw.Provider>
 }
 
-export function useGateway(): GatewayClient {
+export function useGateway(): Gateway {
   const ctx = useContext(Gw)
   if (!ctx) throw new Error("useGateway() must be inside <GatewayProvider>")
   return ctx.client
