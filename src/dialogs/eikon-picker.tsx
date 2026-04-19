@@ -1,0 +1,98 @@
+// Browse available .eikon avatars from known directories with a live
+// preview. ↑/↓ to navigate, Enter to select, Esc closes (via DialogProvider).
+
+import { useMemo, useState } from "react"
+import { useKeyboard } from "@opentui/react"
+import { readFileSync } from "fs"
+import { homedir } from "os"
+import { join } from "path"
+import { useTheme } from "../theme"
+import { useDialog } from "../ui/dialog"
+import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar"
+import { listEikons, parseEikon, type ParsedEikon } from "../components/avatar/eikon"
+
+const DIRS = [
+  join(homedir(), "Dev", "eikon", "avatars"),
+  join(homedir(), ".hermes", "eikons"),
+]
+
+const trunc = (s: string, n: number) => s.length <= n ? s : s.slice(0, n - 1) + "…"
+
+export const EikonPickerDialog = (props: {
+  dirs?: string[]
+  onSelect: (path: string) => void
+  onCancel?: () => void
+}) => {
+  const theme = useTheme().theme
+  const dialog = useDialog()
+  const dirs = props.dirs ?? DIRS
+
+  const found = useMemo(() => listEikons(dirs), [dirs])
+  const [cursor, setCursor] = useState(0)
+
+  const cur = found[cursor]
+  const parsed = useMemo<ParsedEikon | undefined>(() => {
+    if (!cur) return undefined
+    try { return parseEikon(readFileSync(cur.path, "utf8")) }
+    catch { return undefined }
+  }, [cur])
+
+  useKeyboard((key) => {
+    if (key.name === "up") return void setCursor(c => Math.max(0, c - 1))
+    if (key.name === "down") return void setCursor(c => Math.min(found.length - 1, c + 1))
+    if (key.name === "return" && cur) {
+      props.onSelect(cur.path)
+      dialog.clear()
+      return
+    }
+    if (key.name === "escape") props.onCancel?.()
+  })
+
+  const w = (parsed?.meta.width ?? 48) + 2
+  const h = Math.max(parsed?.meta.height ?? 24, 12)
+
+  return (
+    <box flexDirection="column" width={40 + w} height={h + 4}>
+      <box height={1}><text fg={theme.primary}><strong>Pick Avatar</strong></text></box>
+      <box height={1}><text fg={theme.textMuted}>{`${found.length} found · ↑↓ nav · Enter select · Esc close`}</text></box>
+      <box height={1} />
+      <box flexDirection="row" flexGrow={1}>
+        {/* list */}
+        <box width={38} marginRight={2}>
+          <scrollbox scrollY flexGrow={1}>
+            <box flexDirection="column" width="100%">
+              {found.length === 0 ? (
+                <box key="empty" height={1}><text fg={theme.textMuted}>No .eikon files found.</text></box>
+              ) : found.map((e, i) => {
+                const on = i === cursor
+                return (
+                  <box key={e.path} flexDirection="column" paddingLeft={1} paddingRight={1}
+                       backgroundColor={on ? theme.backgroundElement : undefined}
+                       onMouseDown={() => setCursor(i)}>
+                    <box height={1}>
+                      <text fg={on ? theme.text : theme.textMuted}><strong>{trunc(e.meta.name, 34)}</strong></text>
+                    </box>
+                    <box height={1}>
+                      <text fg={theme.textMuted}>
+                        {`${e.meta.author ?? "—"} · ${e.meta.states.length} states · ${e.meta.width}×${e.meta.height}`}
+                      </text>
+                    </box>
+                  </box>
+                )
+              })}
+            </box>
+          </scrollbox>
+        </box>
+        {/* preview */}
+        <box flexGrow={1} flexDirection="column" overflow="hidden">
+          {parsed
+            ? <AnimatedAvatar key={cur?.path ?? "none"} state="idle" eikon={parsed} />
+            : <box key="blank" height={1}><text fg={theme.textMuted}>No preview.</text></box>}
+        </box>
+      </box>
+    </box>
+  )
+}
+
+export const openEikonPicker = (dialog: ReturnType<typeof useDialog>, onSelect: (path: string) => void) =>
+  dialog.replace(<EikonPickerDialog onSelect={onSelect} />)
