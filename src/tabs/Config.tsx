@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useToast } from "../ui/toast";
+import { TabShell } from "../ui/shell";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 
 // ─── Schema ──────────────────────────────────────────────────────────
@@ -334,80 +335,40 @@ export const Config = memo((props: { focused?: boolean }) => {
     }
   });
 
+  const dirty = hasChanges ? "● unsaved  " : "";
+
   if (mode === "yaml") {
     return (
-      <box flexDirection="column" flexGrow={1}>
-        <box padding={1}>
-          <text>
-            <span fg={theme.primary}><strong>Config Editor</strong></span>
-            <span fg={theme.textMuted}>{" — "}</span>
-            <span fg={theme.accent}>YAML</span>
-            <span fg={theme.textMuted}>{"  Tab form  Ctrl+S save"}</span>
-            {hasChanges ? <span fg={theme.warning}>{" ● unsaved"}</span> : null}
+      <TabShell title="Config · YAML" hint={`${dirty}Tab form  Ctrl+S save`}>
+        <scrollbox scrollY flexGrow={1}>
+          <text wrapMode="word">
+            <span fg={theme.text}>{yaml}</span>
+            <span fg={theme.accent}>█</span>
           </text>
-        </box>
-        <box
-          flexGrow={1}
-          border
-          borderColor={theme.border}
-          backgroundColor={theme.backgroundPanel}
-          padding={1}
-        >
-          <scrollbox scrollY>
-            <text wrapMode="word">
-              <span fg={theme.text}>{yaml}</span>
-              <span fg={theme.accent}>{"█"}</span>
-            </text>
-          </scrollbox>
-        </box>
-      </box>
+        </scrollbox>
+      </TabShell>
     );
   }
 
   return (
-    <box flexDirection="column" flexGrow={1}>
-      <box padding={1}>
-        <text>
-          <span fg={theme.primary}><strong>Config Editor</strong></span>
-          <span fg={theme.textMuted}>{" — "}</span>
-          <span fg={theme.accent}>Form</span>
-          <span fg={theme.textMuted}>
-            {"  Tab yaml  ←→ pane  ↑↓ navigate  / search  Ctrl+S save"}
-          </span>
-          {hasChanges ? <span fg={theme.warning}>{" ● unsaved"}</span> : null}
-        </text>
-      </box>
-
-      <box flexDirection="row" flexGrow={1}>
-        <box
-          flexDirection="column"
-          width={20}
-          border
-          borderColor={focus === "categories" ? theme.borderActive : theme.border}
-          backgroundColor={theme.backgroundPanel}
-          paddingTop={1}
-          paddingBottom={1}
-        >
-          <text>
-            <span fg={theme.primary}><strong>{" Categories"}</strong></span>
-          </text>
-          <text>{" "}</text>
+    <box flexDirection="row" flexGrow={1}>
+      <TabShell title="Config" hint="↑↓ → select" grow={1}
+                focus={focus === "categories" && !searching}>
+        <scrollbox scrollY flexGrow={1}>
           {CATEGORIES.map((c, i) => {
             const sel = i === cat && !searching;
-            const focused = sel && focus === "categories";
+            const hot = sel && focus === "categories";
             const items = grouped.get(c) ?? [];
-            const dirty = items.some(f => changed(f.key));
+            const catDirty = items.some(f => changed(f.key));
             return (
               <box
                 key={c}
-                backgroundColor={focused ? theme.backgroundElement : undefined}
+                backgroundColor={hot ? theme.backgroundElement : undefined}
                 onMouseDown={() => { setCat(i); setCursor(0); setFocus("categories"); }}
               >
                 <text>
-                  <span fg={dirty ? theme.warning : theme.textMuted}>
-                    {dirty ? "●" : " "}
-                  </span>
-                  <span fg={focused ? theme.accent : sel ? theme.primary : theme.text}>
+                  <span fg={catDirty ? theme.warning : theme.textMuted}>{catDirty ? "●" : " "}</span>
+                  <span fg={hot ? theme.accent : sel ? theme.primary : theme.text}>
                     {sel ? "▸ " : "  "}{c}
                   </span>
                   <span fg={theme.textMuted}>{` (${items.length})`}</span>
@@ -415,69 +376,57 @@ export const Config = memo((props: { focused?: boolean }) => {
               </box>
             );
           })}
-        </box>
+        </scrollbox>
+      </TabShell>
 
-        <box
-          flexDirection="column"
-          flexGrow={1}
-          border
-          borderColor={focus === "fields" ? theme.borderActive : theme.border}
-          backgroundColor={theme.backgroundPanel}
-          padding={1}
-        >
-          {searching ? (
-            <box>
-              <text>
-                <span fg={theme.accent}>{"/ "}</span>
-                <span fg={theme.text}>{query}</span>
-                <span fg={theme.accent}>{"█"}</span>
-                <span fg={theme.textMuted}>{`  ${count} matches  Esc cancel`}</span>
-              </text>
-            </box>
-          ) : (
+      <TabShell
+        title={searching ? `${count} matches` : active}
+        hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  / search  Ctrl+S save`}
+        grow={3} focus={focus === "fields" || searching}
+      >
+        {searching ? (
+          <box height={1}>
             <text>
-              <span fg={theme.primary}><strong>{`  ${active}`}</strong></span>
-              <span fg={theme.textMuted}>{` — ${count} fields`}</span>
-            </text>
-          )}
-
-          <box marginTop={1}>
-            <text>
-              <span fg={theme.textMuted}>
-                {"    "}{"Field".padEnd(28)}{"Value".padEnd(30)}{"Action"}
-              </span>
+              <span fg={theme.accent}>/ </span>
+              <span fg={theme.text}>{query}</span>
+              <span fg={theme.accent}>█</span>
+              <span fg={theme.textMuted}>  Esc cancel</span>
             </text>
           </box>
-          <text>
-            <span fg={theme.borderSubtle}>
-              {"    "}{"─".repeat(26)}{"  "}{"─".repeat(28)}{"  "}{"─".repeat(10)}
-            </span>
-          </text>
+        ) : null}
 
-          {count === 0 ? (
-            <box padding={2}>
-              <text>
-                <span fg={theme.textMuted}>
-                  {searching ? "No matching fields" : "No fields in this category"}
-                </span>
-              </text>
-            </box>
-          ) : (
-            <scrollbox scrollY>
-              {fields.map((f, i) => (
-                <FieldRow
-                  key={f.key}
-                  field={f}
-                  active={i === cursor && focus === "fields"}
-                  changed={changed(f.key)}
-                  editing={editing && i === cursor}
-                  buf={buf}
-                />
-              ))}
-            </scrollbox>
-          )}
+        <box height={1}>
+          <text fg={theme.textMuted}>
+            {"    "}{"Field".padEnd(28)}{"Value".padEnd(30)}Action
+          </text>
         </box>
-      </box>
+        <box height={1}>
+          <text fg={theme.borderSubtle}>
+            {"    "}{"─".repeat(26)}{"  "}{"─".repeat(28)}{"  "}{"─".repeat(10)}
+          </text>
+        </box>
+
+        {count === 0 ? (
+          <box key="empty" flexGrow={1} padding={2}>
+            <text fg={theme.textMuted}>
+              {searching ? "No matching fields" : "No fields in this category"}
+            </text>
+          </box>
+        ) : (
+          <scrollbox key="list" scrollY flexGrow={1}>
+            {fields.map((f, i) => (
+              <FieldRow
+                key={f.key}
+                field={f}
+                active={i === cursor && (focus === "fields" || searching)}
+                changed={changed(f.key)}
+                editing={editing && i === cursor}
+                buf={buf}
+              />
+            ))}
+          </scrollbox>
+        )}
+      </TabShell>
     </box>
   );
 });
