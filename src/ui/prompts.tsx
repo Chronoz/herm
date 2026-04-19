@@ -1,23 +1,42 @@
 // Interactive prompt dialogs: approval, clarify, sudo, secret.
+//
+// Every prompt guarantees a response is sent back to the gateway exactly
+// once, regardless of how the dialog is dismissed (Enter, Escape, click-
+// outside, or another dialog replacing it). The unmount cleanup sends the
+// cancel/deny response if the user didn't answer explicitly.
 
-import { useState, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
+import type { SubmitEvent } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
 import { useTheme } from "../theme"
 import { useDialog } from "./dialog"
 import { useGateway } from "../app/gateway"
 
-// ── Shared helpers ───────────────────────────────────────────────────
+// ── Shared ───────────────────────────────────────────────────────────
 
-function digit(key: { name: string }): number | null {
-  const n = parseInt(key.name, 10)
+function digit(name: string): number | null {
+  const n = parseInt(name, 10)
   return Number.isFinite(n) ? n : null
+}
+
+/** Send `fn()` exactly once; on unmount send `cancel()` if never fired. */
+function useRespondOnce(cancel: () => void) {
+  const done = useRef(false)
+  const ref = useRef(cancel)
+  ref.current = cancel
+  useEffect(() => () => { if (!done.current) ref.current() }, [])
+  return (fn: () => void) => {
+    if (done.current) return
+    done.current = true
+    fn()
+  }
 }
 
 // ── Approval ─────────────────────────────────────────────────────────
 
-const APPROVAL_OPTS = ["once", "session", "always", "deny"] as const
-type ApprovalChoice = typeof APPROVAL_OPTS[number]
-const APPROVAL_LABELS: Record<ApprovalChoice, string> = {
+const CHOICES = ["once", "session", "always", "deny"] as const
+type Choice = typeof CHOICES[number]
+const LABELS: Record<Choice, string> = {
   once: "Allow once",
   session: "Allow this session",
   always: "Always allow",
@@ -27,22 +46,24 @@ const APPROVAL_LABELS: Record<ApprovalChoice, string> = {
 export type ApprovalReq = { command: string; description: string }
 
 export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
-  const [sel, setSel] = useState(0)
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   const dialog = useDialog()
   const gw = useGateway()
+  const [sel, setSel] = useState(0)
 
-  const answer = useCallback((choice: ApprovalChoice) => {
-    gw.request("approval.respond", { choice }).catch(() => {})
-    dialog.clear()
-  }, [gw, dialog])
+  const send = (choice: Choice) =>
+    void gw.request("approval.respond", { choice }).catch(() => {})
+
+  const once = useRespondOnce(() => send("deny"))
+  const answer = (c: Choice) => { once(() => send(c)); dialog.clear() }
 
   useKeyboard((key) => {
     if (key.name === "up") return setSel(s => Math.max(0, s - 1))
-    if (key.name === "down") return setSel(s => Math.min(APPROVAL_OPTS.length - 1, s + 1))
-    const n = digit(key)
-    if (n !== null && n >= 1 && n <= APPROVAL_OPTS.length) return answer(APPROVAL_OPTS[n - 1])
-    if (key.name === "return") return answer(APPROVAL_OPTS[sel])
+    if (key.name === "down") return setSel(s => Math.min(CHOICES.length - 1, s + 1))
+    if (key.name === "return") return answer(CHOICES[sel])
+    if (key.name === "escape") return answer("deny")
+    const n = digit(key.name)
+    if (n !== null && n >= 1 && n <= CHOICES.length) answer(CHOICES[n - 1])
   })
 
   return (
@@ -50,13 +71,13 @@ export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
       <text fg={theme.warning}><strong>⚠ Approval required — {req.description}</strong></text>
       <text fg={theme.text}> {req.command}</text>
       <box height={1} />
-      {APPROVAL_OPTS.map((o, i) => (
+      {CHOICES.map((o, i) => (
         <text key={o} fg={sel === i ? theme.text : theme.textMuted}>
-          {sel === i ? "▸ " : "  "}{i + 1}. {APPROVAL_LABELS[o]}
+          {sel === i ? "▸ " : "  "}{i + 1}. {LABELS[o]}
         </text>
       ))}
       <box height={1} />
-      <text fg={theme.textMuted}>↑/↓ select · Enter confirm · 1-4 quick pick · Esc deny</text>
+      <text fg={theme.textMuted}>↑/↓ select · Enter confirm · 1-4 quick · Esc deny</text>
     </box>
   )
 }
@@ -66,7 +87,7 @@ export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
 export type ClarifyReq = { request_id: string; question: string; choices: string[] | null }
 
 export const ClarifyPrompt = ({ req }: { req: ClarifyReq }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   const dialog = useDialog()
   const gw = useGateway()
   const choices = req.choices ?? []
@@ -74,16 +95,16 @@ export const ClarifyPrompt = ({ req }: { req: ClarifyReq }) => {
   const [custom, setCustom] = useState("")
   const [typing, setTyping] = useState(choices.length === 0)
 
-  const answer = useCallback((answer: string) => {
-    gw.request("clarify.respond", { request_id: req.request_id, answer }).catch(() => {})
-    dialog.clear()
-  }, [gw, dialog, req.request_id])
+  const send = (answer: string) =>
+    void gw.request("clarify.respond", { request_id: req.request_id, answer }).catch(() => {})
+
+  const once = useRespondOnce(() => send(""))
+  const answer = (v: string) => { once(() => send(v)); dialog.clear() }
 
   useKeyboard((key) => {
     if (key.name === "escape") {
-      if (typing && choices.length) { setTyping(false); return }
-      dialog.clear()
-      return
+      if (typing && choices.length) { setTyping(false); key.stopPropagation(); return }
+      return answer("")
     }
     if (typing) return
     if (key.name === "up") return setSel(s => Math.max(0, s - 1))
@@ -94,7 +115,7 @@ export const ClarifyPrompt = ({ req }: { req: ClarifyReq }) => {
       if (c) answer(c)
       return
     }
-    const n = digit(key)
+    const n = digit(key.name)
     if (n !== null && n >= 1 && n <= choices.length) answer(choices[n - 1])
   })
 
@@ -110,9 +131,9 @@ export const ClarifyPrompt = ({ req }: { req: ClarifyReq }) => {
           <text fg={theme.textMuted}>{"> "}</text>
           <input
             value={custom}
-            onChange={setCustom}
-            onSubmit={answer as any}
-            focused={true}
+            onInput={setCustom}
+            onSubmit={answer as unknown as (e: SubmitEvent) => void}
+            focused
             textColor={theme.text}
             backgroundColor={theme.backgroundElement}
             focusedBackgroundColor={theme.backgroundElement}
@@ -132,52 +153,54 @@ export const ClarifyPrompt = ({ req }: { req: ClarifyReq }) => {
         </text>
       ))}
       <box height={1} />
-      <text fg={theme.textMuted}>↑/↓ select · Enter confirm · 1-{choices.length} quick pick · Esc cancel</text>
+      <text fg={theme.textMuted}>↑/↓ select · Enter confirm · 1-{choices.length} quick · Esc cancel</text>
     </box>
   )
 }
 
-// ── Masked prompt (sudo / secret) ────────────────────────────────────
+// ── Masked (sudo / secret) ───────────────────────────────────────────
+//
+// The <input> owns focus and editing; its text is painted in the background
+// color so the raw value never renders. A bullet overlay sits on top.
 
-type MaskedProps = {
+const Masked = (props: {
   title: string
-  description: string
+  note: string
   onSubmit: (value: string) => void
-}
-
-const MaskedPrompt = ({ title, description, onSubmit }: MaskedProps) => {
-  const { theme } = useTheme()
+  onCancel: () => void
+}) => {
+  const theme = useTheme().theme
   const dialog = useDialog()
   const [value, setValue] = useState("")
 
-  const submit = useCallback((v: string) => {
-    onSubmit(v)
-    dialog.clear()
-  }, [onSubmit, dialog])
+  const once = useRespondOnce(props.onCancel)
+  const submit = (v: string) => { once(() => props.onSubmit(v)); dialog.clear() }
 
   useKeyboard((key) => {
-    if (key.name === "escape") dialog.clear()
+    if (key.name === "escape") { once(props.onCancel); dialog.clear() }
   })
-
-  const mask = "*".repeat(value.length)
 
   return (
     <box flexDirection="column" width={60}>
-      <text fg={theme.warning}><strong>{title}</strong></text>
-      <text fg={theme.text}>{description}</text>
+      <text fg={theme.warning}><strong>{props.title}</strong></text>
+      <text fg={theme.text}>{props.note}</text>
       <box height={1} />
-      <box flexDirection="row">
+      <box flexDirection="row" height={1} position="relative">
         <text fg={theme.textMuted}>{"> "}</text>
         <input
           value={value}
-          onChange={setValue}
-          onSubmit={submit as any}
-          focused={true}
-          textColor={theme.text}
+          onInput={setValue}
+          onSubmit={submit as unknown as (e: SubmitEvent) => void}
+          focused
+          flexGrow={1}
+          textColor={theme.backgroundElement}
+          cursorColor={theme.accent}
           backgroundColor={theme.backgroundElement}
           focusedBackgroundColor={theme.backgroundElement}
-          placeholder={mask}
         />
+        <box position="absolute" left={2} top={0} height={1}>
+          <text fg={theme.text} bg={theme.backgroundElement}>{"•".repeat(value.length)}</text>
+        </box>
       </box>
       <text fg={theme.textMuted}>Enter submit · Esc cancel</text>
     </box>
@@ -186,26 +209,28 @@ const MaskedPrompt = ({ title, description, onSubmit }: MaskedProps) => {
 
 export const SudoPrompt = ({ req }: { req: { request_id: string } }) => {
   const gw = useGateway()
+  const send = (password: string) =>
+    void gw.request("sudo.respond", { request_id: req.request_id, password }).catch(() => {})
   return (
-    <MaskedPrompt
+    <Masked
       title="🔒 Sudo required"
-      description="Enter your password to elevate privileges."
-      onSubmit={(password) =>
-        void gw.request("sudo.respond", { request_id: req.request_id, password }).catch(() => {})
-      }
+      note="Enter your password to elevate privileges."
+      onSubmit={send}
+      onCancel={() => send("")}
     />
   )
 }
 
 export const SecretPrompt = ({ req }: { req: { request_id: string; prompt: string; env_var: string } }) => {
   const gw = useGateway()
+  const send = (value: string) =>
+    void gw.request("secret.respond", { request_id: req.request_id, value }).catch(() => {})
   return (
-    <MaskedPrompt
+    <Masked
       title={`🔑 Secret: ${req.env_var}`}
-      description={req.prompt}
-      onSubmit={(value) =>
-        void gw.request("secret.respond", { request_id: req.request_id, value }).catch(() => {})
-      }
+      note={req.prompt}
+      onSubmit={send}
+      onCancel={() => send("")}
     />
   )
 }
