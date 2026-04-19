@@ -21,7 +21,7 @@
  */
 
 import * as perf from "./perf"
-import { TABS, TAB_MAX } from "../app/tabs"
+import { TABS, TAB_MAX, CHAT_TAB } from "../app/tabs"
 
 const PORT = Number(process.env.CONTROL_PORT) || 7777
 export const enabled = process.env.CONTROL === "1"
@@ -434,7 +434,7 @@ async function handle(req: Request): Promise<Response> {
       bridge.setTab(i)
       await new Promise(r => setTimeout(r, ms))
     }
-    bridge.setTab(1)
+    bridge.setTab(CHAT_TAB)
     return json({ cycled: TAB_MAX + 1, delay: ms })
   }
 

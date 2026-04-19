@@ -7,7 +7,6 @@ import type { GatewayEvent, SessionInfo, SessionUsageResponse } from "./utils/ga
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
-import { Overview } from "./tabs/Overview"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
@@ -36,7 +35,7 @@ import { turnReducer, initialTurn } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
 import { useAppKeys } from "./app/useAppKeys"
-import { TABS, TAB_MAX } from "./app/tabs"
+import { TABS, TAB_MAX, CHAT_TAB } from "./app/tabs"
 
 export const App = (props: { initialTheme?: string; gateway?: Gateway }) => (
   <ThemeProvider initial={props.initialTheme}>
@@ -64,7 +63,7 @@ const AppInner = () => {
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
   const [ready, setReady] = useState(false)
   const [sid, setSid] = useState("")
-  const [tab, setTab] = useState(1)
+  const [tab, setTab] = useState(CHAT_TAB)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [cost, setCost] = useState(0)
   const [msgCount, setMsgCount] = useState(0)
@@ -138,7 +137,7 @@ const AppInner = () => {
     dispatch({ kind: "user", text })
     preferences.set("lastSessionId", sid)
     gw.request("prompt.submit", { text }).catch(() => {})
-    setTab(1)
+    setTab(CHAT_TAB)
   }, [sid, gw])
 
   // ── Copy last assistant ───────────────────────────────────────────
@@ -227,7 +226,7 @@ const AppInner = () => {
         if (!state.current.ready || state.current.streaming) return
         dispatch({ kind: "user", text: msg })
         gw.request("prompt.submit", { text: msg }).catch(() => {})
-        setTab(1)
+        setTab(CHAT_TAB)
       },
       ready: () => state.current.ready,
       streaming: () => state.current.streaming,
@@ -248,18 +247,17 @@ const AppInner = () => {
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Overview />
-        case 1: return <Chat messages={turn.messages} streaming={turn.streaming} />
-        case 2: return <Context description={TABS[tab].description} messages={turn.messages}
+        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} />
+        case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} />
-        case 3: return <Sessions onSwitch={switchSession} focused={contentFocused} />
-        case 4: return <Analytics />
-        case 5: return <Skills focused={contentFocused} />
-        case 6: return <Cron focused={contentFocused} />
-        case 7: return <Toolsets focused={contentFocused} />
-        case 8: return <Config focused={contentFocused} />
-        case 9: return <Env focused={contentFocused} />
-        case 10: return <Memory />
+        case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />
+        case 3: return <Analytics />
+        case 4: return <Skills focused={contentFocused} />
+        case 5: return <Cron focused={contentFocused} />
+        case 6: return <Toolsets focused={contentFocused} />
+        case 7: return <Config focused={contentFocused} />
+        case 8: return <Env focused={contentFocused} />
+        case 9: return <Memory />
         default: return null
       }
     })()
@@ -289,7 +287,7 @@ const AppInner = () => {
             </box>
           </box>
           <Profiler id="sidebar" onRender={perf.onRender}>
-            <Sidebar agentState={agentState} />
+            <Sidebar agentState={agentState} info={info} />
           </Profiler>
         </box>
       </box>

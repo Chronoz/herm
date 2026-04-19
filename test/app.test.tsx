@@ -22,12 +22,13 @@ describe("app", () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
-    // → Overview (index 0)
+    // Chat is index 0; ctrl+left should clamp (no Overview anymore)
     act(() => t.keys.pressArrow("left", { ctrl: true }))
-    await until(t, () => /overview|Identity/i.test(t.frame()))
+    await t.settle()
+    expect(t.frame()).toContain("Message Hermes")
 
-    // → Sessions (index 3)
-    act(() => { for (let i = 0; i < 3; i++) t.keys.pressArrow("right", { ctrl: true }) })
+    // → Sessions (index 2)
+    act(() => { for (let i = 0; i < 2; i++) t.keys.pressArrow("right", { ctrl: true }) })
     await t.settle()
     // Sandboxed HERMES_HOME has no state.db → empty state
     expect(t.frame()).toContain("No sessions")

@@ -79,11 +79,19 @@ export function resolveTheme(
  * hermBodyText is auto-computed for legibility against hermBody.
  */
 function resolveHermTokens(accent: RGBA): HermTokens {
+  const text = contrastText(accent);
   return {
     hermAvatar: accent,
     hermBody: accent,
-    hermBodyText: contrastText(accent),
+    hermBodyText: text,
+    hermBodyTextMuted: mix(text, accent, 0.45),
   };
+}
+
+/** Linear mix a→b by t (0=a, 1=b). */
+function mix(a: RGBA, b: RGBA, t: number): RGBA {
+  const l = (x: number, y: number) => x + (y - x) * t;
+  return RGBA.fromValues(l(a.r, b.r), l(a.g, b.g), l(a.b, b.b), 1);
 }
 
 /**

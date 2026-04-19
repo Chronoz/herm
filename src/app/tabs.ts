@@ -1,5 +1,4 @@
 export const TABS = [
-  { name: "Overview",  description: "Dashboard" },
   { name: "Chat",      description: "Main chat interface" },
   { name: "Context",   description: "Context and session info" },
   { name: "Sessions",  description: "Session history" },
@@ -13,3 +12,4 @@ export const TABS = [
 ] as const
 
 export const TAB_MAX = TABS.length - 1
+export const CHAT_TAB = 0

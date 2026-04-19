@@ -88,6 +88,8 @@ export type HermTokens = {
   readonly hermBody: RGBA;
   /** Auto-computed text color for legibility on hermBody */
   readonly hermBodyText: RGBA;
+  /** Dimmed hermBodyText — labels/secondary content on the pillar */
+  readonly hermBodyTextMuted: RGBA;
 };
 
 /** Internal resolved theme with extra tracking + herm tokens */
