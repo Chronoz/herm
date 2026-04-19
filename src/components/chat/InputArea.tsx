@@ -12,6 +12,7 @@ type InputAreaProps = {
   focused: boolean
   ready: boolean
   streaming: boolean
+  status?: string
   model?: string
   usage?: Usage
   cost?: number
@@ -36,6 +37,7 @@ export const InputArea = memo(({
   focused,
   ready,
   streaming,
+  status,
   model,
   usage,
   cost,
@@ -49,7 +51,7 @@ export const InputArea = memo(({
   const { theme } = useTheme()
 
   // Left status
-  const status = ready ? (streaming ? "Generating..." : "Ready") : "Connecting..."
+  const label = !ready ? "Connecting..." : streaming ? (status || "Generating...") : "Ready"
   const dot = ready ? (streaming ? theme.warning : theme.success) : theme.error
 
   // Right status — model info + stats
@@ -116,7 +118,7 @@ export const InputArea = memo(({
         <box flexGrow={1}>
           <text>
             <span fg={dot}>● </span>
-            <span fg={theme.textMuted}>{status}</span>
+            <span fg={theme.textMuted}>{label}</span>
             {stats.length > 0 ? <span fg={theme.textMuted}> · {stats.join(" · ")}</span> : null}
           </text>
         </box>

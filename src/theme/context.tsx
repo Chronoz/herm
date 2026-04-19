@@ -12,6 +12,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
 import type { SyntaxStyle } from "@opentui/core";
 import type { Theme, ThemeJson } from "./types";
 import { resolveTheme } from "./resolve";
@@ -39,7 +40,7 @@ interface ThemeContext {
 const Ctx = createContext<ThemeContext | null>(null);
 
 interface ThemeProviderProps {
-  children: any;
+  children: ReactNode;
   initial?: string;
   mode?: "dark" | "light";
 }

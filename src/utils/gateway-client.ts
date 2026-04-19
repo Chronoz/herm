@@ -186,6 +186,7 @@ export class GatewayClient extends EventEmitter {
   }
 
   drain() {
+    if (this.sub) return
     this.sub = true
     for (const ev of this.buf.splice(0)) this.emit("event", ev)
     if (this.exit !== undefined) {

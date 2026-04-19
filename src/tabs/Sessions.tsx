@@ -399,6 +399,7 @@ const SearchItem = memo((props: {
 // ─── Main Component ──────────────────────────────────────────────────
 
 type SessionsProps = {
+  focused?: boolean;
   onSwitch?: (sid: string) => void;
 };
 

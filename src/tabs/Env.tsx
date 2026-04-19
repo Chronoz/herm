@@ -140,7 +140,7 @@ const VarRow = memo((props: {
 
 // ─── Main Component ───────────────────────────────────────────────
 
-export const Env = memo(() => {
+export const Env = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const dialog = useDialog();
   const toast = useToast();

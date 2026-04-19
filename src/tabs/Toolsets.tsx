@@ -141,7 +141,7 @@ const EmptyState = memo((props: { searching: boolean }) => {
 
 // ─── Main Component ───────────────────────────────────────────────────
 
-export const Toolsets = memo(() => {
+export const Toolsets = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const gw = useGateway();
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);

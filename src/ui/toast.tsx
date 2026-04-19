@@ -9,7 +9,7 @@
  *   toast.error(new Error("oops"))
  */
 
-import { createContext, useContext, useState, useCallback, useRef } from "react"
+import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react"
 import type { ReactNode } from "react"
 import { useTheme } from "../theme"
 import type { RGBA } from "@opentui/core"
@@ -53,7 +53,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     show({ variant: "error", title: "Error", message: err.message })
   }, [show])
 
-  const value: ToastContext = { show, error }
+  const value = useMemo<ToastContext>(() => ({ show, error }), [show, error])
 
   return (
     <Ctx.Provider value={value}>

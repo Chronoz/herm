@@ -1,9 +1,9 @@
 import { useRenderer } from "@opentui/react"
-import { Profiler, useState, useEffect, useRef, useCallback, useMemo, useReducer } from "react"
+import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "react"
 import * as perf from "./utils/perf"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { GatewayProvider, useGateway, useGatewayEvent } from "./app/gateway"
-import type { GatewayEvent, SessionInfo } from "./utils/gateway-types"
+import type { GatewayEvent, SessionInfo, SessionUsageResponse } from "./utils/gateway-types"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
@@ -31,13 +31,14 @@ import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/pr
 import type { SlashCommand } from "./commands/slash"
 import { InputArea } from "./components/chat/InputArea"
 import * as preferences from "./utils/preferences"
-import { turnReducer, initialTurn, userMessage, systemMessage } from "./app/turnReducer"
+import { turnReducer, initialTurn } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
 import { useSlashCommands } from "./app/useSlashCommands"
 import { useInputHistory } from "./app/useInputHistory"
 import { useSlashPopover } from "./app/useSlashPopover"
 import { useAppKeys } from "./app/useAppKeys"
+import { TABS, TAB_MAX } from "./app/tabs"
 
 export const App = ({ initialTheme }: { initialTheme?: string }) => (
   <ThemeProvider initial={initialTheme}>
@@ -61,7 +62,7 @@ const AppInner = () => {
   const toast = useToast()
   const renderer = useRenderer()
   const session = useSession()
-  const { cmds } = useSlashCommands()
+  const cmds = useSlashCommands().cmds
 
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
   const [input, setInput] = useState("")
@@ -79,7 +80,6 @@ const AppInner = () => {
   const history = useInputHistory(input, setInput)
   const pop = useSlashPopover(input, cmds)
 
-  // Derive avatar state
   const agentState: AvatarState = !ready
     ? "error"
     : turn.toolActive ? "working"
@@ -87,15 +87,97 @@ const AppInner = () => {
     : turn.streaming ? "thinking"
     : "idle"
 
-  // ── Handle gateway events ─────────────────────────────────────────
+  // ── Session reset ─────────────────────────────────────────────────
+  const reset = useCallback(() => {
+    dispatch({ kind: "reset" })
+    setMsgCount(0)
+    setCost(0)
+    setUsage(undefined)
+    setReady(false)
+    setStatus("")
+  }, [])
+
+  const newSession = useCallback(async () => {
+    reset()
+    try { setSid(await session.create()); sessionStart.current = Date.now() }
+    catch {}
+  }, [reset, session])
+
+  const switchSession = useCallback(async (target: string) => {
+    reset()
+    try {
+      const res = await session.resume(target)
+      setSid(res.id)
+      sessionStart.current = Date.now()
+      if (res.messages.length) { dispatch({ kind: "load", messages: res.messages }); setMsgCount(res.messages.length) }
+    } catch (err) {
+      dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
+    }
+  }, [reset, session])
+
+  // ── Usage poll (authoritative cost from gateway) ──────────────────
+  const pollUsage = useCallback(() => {
+    gw.request<SessionUsageResponse>("session.usage")
+      .then(r => { if (r.cost_usd != null) setCost(r.cost_usd) })
+      .catch(() => {})
+  }, [gw])
+
+  // ── Slash dispatch (declared before send; send uses it via ref) ──
+  const slashRef = useRef<(c: SlashCommand) => void>(() => {})
+  const slash = useCallback((c: SlashCommand) => {
+    if (c.name.includes(" ")) { setInput(`/${c.name} `); return }
+    setInput("")
+    if (c.target === "local") {
+      switch (c.name) {
+        case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
+        case "new": newSession(); return
+        case "theme": openThemePicker(dialog, themeCtx); return
+        case "help": dialog.replace(<HelpDialog />); return
+      }
+    }
+    if (c.target !== "gateway" || !ready || turn.streaming) return
+    dispatch({ kind: "user", text: `/${c.name}` })
+    gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
+      .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
+      .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw])
+  slashRef.current = slash
+
+  // ── Send ──────────────────────────────────────────────────────────
+  const send = useCallback((val?: string) => {
+    if (pop.open) { slashRef.current(pop.popover![pop.cursor]); return }
+    const msg = (val ?? input).trim()
+    if (!msg || !ready || turn.streaming) return
+    history.push(msg)
+    dispatch({ kind: "user", text: msg })
+    preferences.set("lastSessionId", sid)
+    gw.request("prompt.submit", { text: msg }).catch(() => {})
+    setInput("")
+    setTab(1)
+  }, [input, ready, turn.streaming, pop.open, pop.popover, pop.cursor, sid, gw, history])
+
+  // ── Copy last assistant ───────────────────────────────────────────
+  const copyLast = useCallback(() => {
+    for (let i = turn.messages.length - 1; i >= 0; i--) {
+      const m = turn.messages[i]
+      if (m.role !== "assistant") continue
+      const text = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
+      if (!text) continue
+      process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`)
+      return true
+    }
+    return false
+  }, [turn.messages])
+
+  // ── Gateway events ────────────────────────────────────────────────
   const handle = useCallback((ev: GatewayEvent) => {
     const action = mapEvent(ev, {
       onReady: () => {
-        session.boot().then(({ id, messages }) => {
-          setSid(id)
+        session.boot().then((r) => {
+          setSid(r.id)
           sessionStart.current = Date.now()
-          if (messages.length) dispatch({ kind: "load", messages })
-          setMsgCount(messages.length)
+          if (r.messages.length) dispatch({ kind: "load", messages: r.messages })
+          setMsgCount(r.messages.length)
         })
       },
       onSessionInfo: (si) => {
@@ -103,11 +185,8 @@ const AppInner = () => {
         setReady(true)
         if (si.session_id) setSid(si.session_id)
       },
-      onUsage: (u) => {
-        setUsage(u)
-        setCost(prev => prev + (u.input * 3 + u.output * 15) / 1_000_000)
-      },
-      onTurnComplete: () => setMsgCount(c => c + 1),
+      onUsage: (u) => setUsage(u),
+      onTurnComplete: () => { setMsgCount(c => c + 1); setStatus(""); pollUsage() },
       onClarify: (req) => dialog.replace(<ClarifyPrompt req={req} />),
       onApproval: (req) => dialog.replace(<ApprovalPrompt req={req} />),
       onSudo: (req) => dialog.replace(<SudoPrompt req={req} />),
@@ -117,7 +196,7 @@ const AppInner = () => {
       onStatus: (text) => setStatus(text),
     })
     if (action) dispatch(action)
-  }, [session, dialog, toast])
+  }, [session, dialog, toast, pollUsage])
 
   useGatewayEvent(handle)
 
@@ -137,85 +216,11 @@ const AppInner = () => {
       onSelect: () => session.undo() },
     { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
       onSelect: () => session.branch() },
-  ]), [cmd, dialog, themeCtx, session, gw])
-
-  // ── Session ops ───────────────────────────────────────────────────
-  const newSession = useCallback(async () => {
-    dispatch({ kind: "reset" })
-    setMsgCount(0)
-    setCost(0)
-    setUsage(undefined)
-    setReady(false)
-    try { setSid(await session.create()); sessionStart.current = Date.now() }
-    catch {}
-  }, [session])
-
-  const switchSession = useCallback(async (target: string) => {
-    dispatch({ kind: "reset" })
-    setMsgCount(0)
-    setCost(0)
-    setUsage(undefined)
-    setReady(false)
-    try {
-      const { id, messages } = await session.resume(target)
-      setSid(id)
-      sessionStart.current = Date.now()
-      if (messages.length) { dispatch({ kind: "load", messages }); setMsgCount(messages.length) }
-    } catch (err) {
-      dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
-    }
-  }, [session])
-
-  // ── Send message ──────────────────────────────────────────────────
-  const send = useCallback((val?: string) => {
-    if (pop.open) { slash(pop.popover![pop.cursor]); return }
-    const msg = (val ?? input).trim()
-    if (!msg || !ready || turn.streaming) return
-
-    history.push(msg)
-    dispatch({ kind: "user", text: msg })
-    preferences.set("lastSessionId", sid)
-    gw.request("prompt.submit", { text: msg }).catch(() => {})
-    setInput("")
-    setTab(1)
-  }, [input, ready, turn.streaming, pop.open, pop.popover, pop.cursor, sid, gw, history])
-
-  // ── Slash dispatch ────────────────────────────────────────────────
-  const slash = useCallback((command: SlashCommand) => {
-    if (command.name.includes(" ")) { setInput(`/${command.name} `); return }
-    setInput("")
-    if (command.target === "local") {
-      switch (command.name) {
-        case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
-        case "new": newSession(); return
-        case "theme": openThemePicker(dialog, themeCtx); return
-        case "help": dialog.replace(<HelpDialog />); return
-      }
-    }
-
-    if (command.target !== "gateway" || !ready || turn.streaming) return
-    dispatch({ kind: "user", text: `/${command.name}` })
-    gw.request<{ output?: string }>("slash.exec", { command: `/${command.name}` })
-      .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
-      .catch(() => { gw.request("prompt.submit", { text: `/${command.name}` }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw])
-
-  // ── Copy last assistant ───────────────────────────────────────────
-  const copyLast = useCallback(() => {
-    for (let i = turn.messages.length - 1; i >= 0; i--) {
-      const m = turn.messages[i]
-      if (m.role !== "assistant") continue
-      const content = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
-      if (!content) continue
-      process.stdout.write(`\x1b]52;c;${Buffer.from(content).toString("base64")}\x07`)
-      return true
-    }
-    return false
-  }, [turn.messages])
+  ]), [cmd, dialog, themeCtx, session, gw, newSession])
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({
-    tab, setTab, focusRegion, setFocusRegion,
+    tab, tabMax: TAB_MAX, setTab, focusRegion, setFocusRegion,
     streaming: turn.streaming,
     popOpen: pop.open,
     onPopNavigate: (d) => pop.setCursor(c => Math.max(0, Math.min((pop.popover?.length ?? 1) - 1, c + d))),
@@ -233,7 +238,7 @@ const AppInner = () => {
     input,
   })
 
-  // ── Control server bridge (headless/automation) ───────────────────
+  // ── Control bridge ────────────────────────────────────────────────
   const state = useRef({ tab, ready, streaming: turn.streaming, messages: turn.messages, sid, input, focusRegion })
   state.current = { tab, ready, streaming: turn.streaming, messages: turn.messages, sid, input, focusRegion }
   useEffect(() => {
@@ -260,44 +265,31 @@ const AppInner = () => {
   }, [gw, renderer])
 
   const model = info?.model ?? "hermes-agent"
-
-  const tabs = useMemo(() => [
-    { name: "Overview", description: "Dashboard" },
-    { name: "Chat", description: "Main chat interface" },
-    { name: "Context", description: "Context and session info" },
-    { name: "Sessions", description: "Session history" },
-    { name: "Analytics", description: "Token usage and costs" },
-    { name: "Skills", description: "Installed skills browser" },
-    { name: "Cron", description: "Scheduled job manager" },
-    { name: "Toolsets", description: "Available toolsets manager" },
-    { name: "Config", description: "Configuration editor" },
-    { name: "Env", description: "API keys & env variables" },
-    { name: "Memory", description: "Agent memory browser" },
-  ], [])
+  const contentFocused = focusRegion === "content" && !turn.streaming
 
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Overview visible={tab === 0} />
+        case 0: return <Overview />
         case 1: return <Chat messages={turn.messages} streaming={turn.streaming} />
-        case 2: return <Context description={tabs[tab].description} messages={turn.messages}
-                               sessionStart={sessionStart.current} visible={tab === 2} />
-        case 3: return <Sessions onSwitch={switchSession} />
-        case 4: return <Analytics visible={tab === 4} />
-        case 5: return <Skills />
-        case 6: return <Cron />
-        case 7: return <Toolsets />
-        case 8: return <Config />
-        case 9: return <Env />
-        case 10: return <Memory visible={tab === 10} />
+        case 2: return <Context description={TABS[tab].description} messages={turn.messages}
+                               sessionStart={sessionStart.current} />
+        case 3: return <Sessions onSwitch={switchSession} focused={contentFocused} />
+        case 4: return <Analytics />
+        case 5: return <Skills focused={contentFocused} />
+        case 6: return <Cron focused={contentFocused} />
+        case 7: return <Toolsets focused={contentFocused} />
+        case 8: return <Config focused={contentFocused} />
+        case 9: return <Env focused={contentFocused} />
+        case 10: return <Memory />
         default: return null
       }
     })()
-    const name = tabs[tab]?.name ?? "unknown"
+    const name = TABS[tab]?.name ?? "unknown"
     return <Profiler id={`tab:${name}`} onRender={perf.onRender}>{inner}</Profiler>
   }
 
-  const { theme } = useTheme()
+  const theme = themeCtx.theme
   const onMouseUp = useCallback(() => copySelection(renderer), [renderer])
   const inputFocused = focusRegion === "input" && !turn.streaming
 
@@ -305,7 +297,7 @@ const AppInner = () => {
     <Profiler id="shell" onRender={perf.onRender}>
       <box width="100%" height="100%" flexDirection="column"
            backgroundColor={theme.background} onMouseUp={onMouseUp}>
-        <TabBar tabs={tabs} activeTab={tab} onTabChange={setTab} />
+        <TabBar tabs={TABS} activeTab={tab} onTabChange={setTab} />
         <box flexGrow={1} flexDirection="row">
           <box flexGrow={1} flexDirection="column">
             {content()}
@@ -313,7 +305,7 @@ const AppInner = () => {
               <InputArea
                 value={input} onChange={setInput} onSubmit={send}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}
-                model={model} usage={usage} cost={cost} turns={msgCount}
+                status={status} model={model} usage={usage} cost={cost} turns={msgCount}
                 popover={pop.popover} popCursor={pop.cursor}
                 onPopCursor={pop.setCursor} onPopSelect={slash}
                 ghost={pop.ghost}

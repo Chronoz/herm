@@ -1,6 +1,6 @@
 // Singleton GatewayClient exposed via React context.
 
-import { createContext, useContext, useEffect, useRef, useState } from "react"
+import { createContext, useContext, useEffect, useRef, useState, useMemo } from "react"
 import type { ReactNode } from "react"
 import { GatewayClient } from "../utils/gateway-client"
 import type { GatewayEvent } from "../utils/gateway-types"
@@ -20,12 +20,10 @@ export const GatewayProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const c = ref.current!
     const onEvent = (ev: GatewayEvent) => {
-      if (ev.type === "gateway.ready") setReady(true)
-      if (ev.type === "session.info") setReady(true)
+      if (ev.type === "gateway.ready" || ev.type === "session.info") setReady(true)
     }
     c.on("event", onEvent)
     c.start()
-    c.drain()
     return () => {
       c.off("event", onEvent)
       c.removeAllListeners()
@@ -33,7 +31,8 @@ export const GatewayProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
-  return <Gw.Provider value={{ client: ref.current, ready }}>{children}</Gw.Provider>
+  const value = useMemo<Ctx>(() => ({ client: ref.current!, ready }), [ready])
+  return <Gw.Provider value={value}>{children}</Gw.Provider>
 }
 
 export function useGateway(): GatewayClient {
@@ -42,14 +41,23 @@ export function useGateway(): GatewayClient {
   return ctx.client
 }
 
-/** Subscribe to all gateway events. Handler is re-bound on change. */
+/**
+ * Subscribe to all gateway events. The first subscription drains any
+ * events buffered before React mounted, so nothing is lost between
+ * `client.start()` and component wiring.
+ */
 export function useGatewayEvent(handler: (ev: GatewayEvent) => void): void {
   const ctx = useContext(Gw)
   if (!ctx) throw new Error("useGatewayEvent() must be inside <GatewayProvider>")
+  const ref = useRef(handler)
+  ref.current = handler
   useEffect(() => {
-    ctx.client.on("event", handler)
-    return () => { ctx.client.off("event", handler) }
-  }, [ctx.client, handler])
+    const c = ctx.client
+    const fn = (ev: GatewayEvent) => ref.current(ev)
+    c.on("event", fn)
+    c.drain()
+    return () => { c.off("event", fn) }
+  }, [ctx.client])
 }
 
 /** True once gateway.ready or session.info has fired. */

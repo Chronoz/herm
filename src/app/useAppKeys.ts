@@ -1,16 +1,19 @@
 // Global keyboard routing for the chat shell.
 
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { useRef, useCallback } from "react"
+import { useRef } from "react"
 import { copySelection } from "../utils/clipboard"
 
-const INTERRUPT_WINDOW = 5000
+const INTERRUPT_MS = 5000
+
+type Region = "input" | "content"
 
 type Opts = {
   tab: number
+  tabMax: number
   setTab: (fn: (t: number) => number) => void
-  focusRegion: "input" | "content"
-  setFocusRegion: (r: "input" | "content" | ((r: "input" | "content") => "input" | "content")) => void
+  focusRegion: Region
+  setFocusRegion: (r: Region | ((r: Region) => Region)) => void
   streaming: boolean
   popOpen: boolean
   onPopNavigate: (d: -1 | 1) => void
@@ -24,10 +27,9 @@ type Opts = {
   input: string
 }
 
-export function useAppKeys(opts: Opts) {
+export function useAppKeys(o: Opts) {
   const renderer = useRenderer()
   const lastEsc = useRef(0)
-  const onCopy = useCallback(() => copySelection(renderer), [renderer])
 
   useKeyboard((key) => {
     if (key.ctrl && key.name === "c") {
@@ -37,56 +39,60 @@ export function useAppKeys(opts: Opts) {
     }
 
     if (key.ctrl && key.name === "left") {
-      opts.setTab(t => Math.max(0, t - 1))
-      opts.setFocusRegion("input")
+      o.setTab(t => Math.max(0, t - 1))
+      o.setFocusRegion("input")
       return
     }
     if (key.ctrl && key.name === "right") {
-      opts.setTab(t => Math.min(10, t + 1))
-      opts.setFocusRegion("input")
+      o.setTab(t => Math.min(o.tabMax, t + 1))
+      o.setFocusRegion("input")
       return
     }
 
-    if (opts.popOpen) {
-      if (key.name === "escape") return opts.onPopCancel()
-      if (key.name === "up") return opts.onPopNavigate(-1)
-      if (key.name === "down") return opts.onPopNavigate(1)
-      if (key.name === "tab") return opts.onPopAccept()
+    if (o.popOpen) {
+      if (key.name === "escape") return o.onPopCancel()
+      if (key.name === "up") return o.onPopNavigate(-1)
+      if (key.name === "down") return o.onPopNavigate(1)
+      if (key.name === "tab") return o.onPopAccept()
       return
     }
 
-    if (key.name === "tab" && !opts.streaming) {
-      opts.setFocusRegion(r => r === "input" ? "content" : "input")
+    if (key.name === "tab" && !o.streaming) {
+      o.setFocusRegion(r => r === "input" ? "content" : "input")
       return
     }
 
     if (key.name === "escape") {
-      if (opts.streaming) {
+      if (o.streaming) {
         const now = Date.now()
-        if (now - lastEsc.current < INTERRUPT_WINDOW) {
-          opts.onInterrupt()
+        if (now - lastEsc.current < INTERRUPT_MS) {
+          o.onInterrupt()
           lastEsc.current = 0
         } else {
           lastEsc.current = now
-          opts.onInterruptNotice()
+          o.onInterruptNotice()
         }
-      } else if (opts.focusRegion === "content") {
-        opts.setFocusRegion("input")
+      } else if (o.focusRegion === "content") {
+        o.setFocusRegion("input")
       }
       return
     }
 
-    if (key.ctrl && key.name === "y") return opts.onCopyLast()
+    if (key.ctrl && key.name === "y") return o.onCopyLast()
 
-    if (opts.focusRegion === "input" && !opts.streaming) {
-      if (key.name === "up") return opts.onHistoryUp()
-      if (key.name === "down") return opts.onHistoryDown()
+    if (o.focusRegion === "input" && !o.streaming) {
+      if (key.name === "up") return o.onHistoryUp()
+      if (key.name === "down") return o.onHistoryDown()
     }
 
-    if (opts.focusRegion === "content" && !opts.streaming && !key.ctrl && !key.meta) {
-      if (key.name.length === 1 && key.name !== " ") opts.setFocusRegion("input")
+    // Printable char while content has focus → bounce to input. Stop
+    // propagation so tab-level handlers (d=delete, /=search, etc.) don't
+    // also fire on the same keystroke.
+    if (o.focusRegion === "content" && !o.streaming && !key.ctrl && !key.meta) {
+      if (key.name.length === 1 && key.name !== " ") {
+        o.setFocusRegion("input")
+        key.stopPropagation()
+      }
     }
   })
-
-  return { onCopy }
 }

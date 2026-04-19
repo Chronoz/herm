@@ -9,7 +9,7 @@
  *   dialog.clear()
  */
 
-import { createContext, useContext, useState, useCallback } from "react"
+import { createContext, useContext, useState, useCallback, useMemo } from "react"
 import type { ReactNode } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import { RGBA } from "@opentui/core"
@@ -51,7 +51,7 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
     clear()
   })
 
-  const value: DialogContext = { replace, clear, stack }
+  const value = useMemo<DialogContext>(() => ({ replace, clear, stack }), [replace, clear, stack])
   const top = stack.length > 0 ? stack[stack.length - 1] : undefined
 
   return (

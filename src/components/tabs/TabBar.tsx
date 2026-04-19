@@ -7,7 +7,7 @@ type Tab = {
 }
 
 type TabBarProps = {
-  tabs: Tab[]
+  tabs: ReadonlyArray<Tab>
   activeTab: number
   onTabChange: (index: number) => void
 }

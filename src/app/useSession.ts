@@ -1,6 +1,6 @@
 // Session lifecycle: create, resume, switch, interrupt, branch, compress, undo.
 
-import { useCallback } from "react"
+import { useMemo, useCallback } from "react"
 import * as preferences from "../utils/preferences"
 import { useGateway } from "./gateway"
 import { transcriptToMessages } from "./turnReducer"
@@ -64,5 +64,8 @@ export function useSession(): SessionOps {
     try { await gw.request("session.undo") } catch {}
   }, [gw])
 
-  return { boot, create, resume, interrupt, branch, compress, undo }
+  return useMemo(
+    () => ({ boot, create, resume, interrupt, branch, compress, undo }),
+    [boot, create, resume, interrupt, branch, compress, undo],
+  )
 }

@@ -122,7 +122,7 @@ const EmptyState = memo((props: { searching: boolean }) => {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Skills = memo(() => {
+export const Skills = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const gw = useGateway();
   const [skills, setSkills] = useState<SkillInfo[]>([]);

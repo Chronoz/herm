@@ -212,7 +212,7 @@ const CreateDialog = (props: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Cron = memo(() => {
+export const Cron = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const gw = useGateway();
   const dialog = useDialog();

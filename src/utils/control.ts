@@ -21,9 +21,12 @@
  */
 
 import * as perf from "./perf"
+import { TABS, TAB_MAX } from "../app/tabs"
 
 const PORT = Number(process.env.CONTROL_PORT) || 7777
 export const enabled = process.env.CONTROL === "1"
+
+const TAB_NAMES: readonly string[] = TABS.map(t => t.name)
 
 export type Bridge = {
   tab: () => number
@@ -57,13 +60,6 @@ const json = (data: unknown, status = 200) =>
     status,
     headers: { "Content-Type": "application/json" },
   })
-
-// ─── Tab safety metadata ─────────────────────────────────────────────
-
-const TAB_NAMES = [
-  "Overview", "Chat", "Context", "Sessions", "Analytics",
-  "Skills", "Cron", "Toolsets", "Config", "Env", "Memory",
-]
 
 // Keys that can mutate state on specific tabs
 const DANGEROUS_KEYS: Record<number, Set<string>> = {
@@ -242,7 +238,7 @@ async function handle(req: Request): Promise<Response> {
   const tabMatch = path.match(/^\/tab\/(\d+)$/)
   if (tabMatch) {
     const n = Number(tabMatch[1])
-    if (n < 0 || n > 10) return json({ error: "tab 0-10" }, 400)
+    if (n < 0 || n > TAB_MAX) return json({ error: `tab 0-${TAB_MAX}` }, 400)
 
     const renderer = bridge.renderer()
     if (renderer) {
@@ -407,12 +403,12 @@ async function handle(req: Request): Promise<Response> {
   // GET /tabs — cycle through all tabs with a delay
   if (path === "/tabs") {
     const ms = Number(url.searchParams.get("delay") || "500")
-    for (let i = 0; i <= 10; i++) {
+    for (let i = 0; i <= TAB_MAX; i++) {
       bridge.setTab(i)
       await new Promise(r => setTimeout(r, ms))
     }
     bridge.setTab(1)
-    return json({ cycled: 11, delay: ms })
+    return json({ cycled: TAB_MAX + 1, delay: ms })
   }
 
   // GET /mem — memory snapshot

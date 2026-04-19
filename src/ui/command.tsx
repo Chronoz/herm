@@ -10,7 +10,7 @@
  *   ]), [])
  */
 
-import { createContext, useContext, useState, useCallback, useRef } from "react"
+import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react"
 import type { ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useDialog } from "./dialog"
@@ -100,7 +100,7 @@ export const CommandProvider = ({ children }: { children: ReactNode }) => {
     })
   })
 
-  const value: CommandContext = { register, setEnabled }
+  const value = useMemo<CommandContext>(() => ({ register, setEnabled }), [register, setEnabled])
 
   return (
     <Ctx.Provider value={value}>

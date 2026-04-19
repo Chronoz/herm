@@ -147,7 +147,7 @@ const FieldRow = memo((props: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Config = memo(() => {
+export const Config = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const gw = useGateway();
   const toast = useToast();
