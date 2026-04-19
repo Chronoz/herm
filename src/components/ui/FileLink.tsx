@@ -17,7 +17,7 @@ interface FileLinkProps {
 }
 
 export const FileLink = memo(({ source, children }: FileLinkProps) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const [hovered, setHovered] = useState(false);
 
   return (

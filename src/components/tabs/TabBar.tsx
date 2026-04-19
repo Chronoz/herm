@@ -13,7 +13,7 @@ type TabBarProps = {
 }
 
 export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   return (
     <box width="100%" flexDirection="column" height={2}>

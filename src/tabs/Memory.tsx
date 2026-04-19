@@ -39,8 +39,8 @@ const ALL = ["builtin", "mem0", "honcho", "hindsight", "holographic", "openvikin
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Memory = memo(({ visible = true }: { visible?: boolean }) => {
-  const { theme } = useTheme()
+export const Memory = memo(() => {
+  const theme = useTheme().theme
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [providers, setProviders] = useState<MemoryProviderInfo[]>([])
   const [selected, setSelected] = useState(0)
@@ -59,11 +59,10 @@ export const Memory = memo(({ visible = true }: { visible?: boolean }) => {
   }, [])
 
   useEffect(() => {
-    if (!visible) return
     refresh()
     const id = setInterval(refresh, REFRESH)
     return () => clearInterval(id)
-  }, [refresh, visible])
+  }, [refresh])
 
   const cfg = home?.config?.memory
   const current = providers[selected]

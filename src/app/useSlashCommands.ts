@@ -8,12 +8,7 @@ import {
   sort,
   type SlashCommand,
 } from "../commands/slash"
-import type {
-  CommandsCatalogResponse,
-  CompletionResponse,
-} from "../utils/gateway-types"
-
-export type CompletionItem = { text: string; display: string; meta?: string }
+import type { CommandsCatalogResponse } from "../utils/gateway-types"
 
 export function useSlashCommands() {
   const gw = useGateway()
@@ -66,16 +61,5 @@ export function useSlashCommands() {
     if (ready) fetchCatalog()
   }, [ready, fetchCatalog])
 
-  /**
-   * Ask the gateway for rich completion (skills + plugins + args).
-   * Returns null on error — caller should fall back to local filter.
-   */
-  const complete = useCallback(async (text: string, cursor?: number): Promise<CompletionItem[] | null> => {
-    try {
-      const res = await gw.request<CompletionResponse>("complete.slash", { text, cursor })
-      return res.items ?? []
-    } catch { return null }
-  }, [gw])
-
-  return { cmds, refresh: fetchCatalog, complete }
+  return { cmds, refresh: fetchCatalog }
 }

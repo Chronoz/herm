@@ -64,7 +64,7 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
 
 const Overlay = ({ entry, onClose }: { entry: DialogEntry; onClose: () => void }) => {
   const dims = useTerminalDimensions()
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   return (
     <box

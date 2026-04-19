@@ -4,7 +4,7 @@ import { useTheme } from "../../theme";
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 export const TypingIndicator = memo(() => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const [frame, setFrame] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 

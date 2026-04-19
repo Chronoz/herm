@@ -31,7 +31,7 @@ const SECTIONS = [
 ] as const
 
 export const HelpDialog = () => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   return (
     <box flexDirection="column" width={56}>

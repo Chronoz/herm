@@ -5,7 +5,7 @@ import { useTheme } from "../../theme"
 import type { Message } from "../../types/message"
 
 export const MessageList = memo(({ messages, streaming }: { messages: Message[]; streaming: boolean }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   if (messages.length === 0) {
     return (

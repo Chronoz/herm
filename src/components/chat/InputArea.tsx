@@ -48,7 +48,7 @@ export const InputArea = memo(({
   onPopSelect,
   ghost,
 }: InputAreaProps) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   // Left status
   const label = !ready ? "Connecting..." : streaming ? (status || "Generating...") : "Ready"

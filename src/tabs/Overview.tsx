@@ -53,20 +53,19 @@ const truncate = (str: string, max: number): string => {
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Overview = memo(({ visible = true }: { visible?: boolean }) => {
+export const Overview = memo(() => {
   const [snap, setSnap] = useState<HermesHomeSnapshot | null>(null);
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
 
   const refresh = useCallback(async () => {
     setSnap(await snapshot());
   }, []);
 
   useEffect(() => {
-    if (!visible) return
     refresh();
     const timer = setInterval(refresh, REFRESH_INTERVAL);
     return () => clearInterval(timer);
-  }, [refresh, visible]);
+  }, [refresh]);
 
   if (!snap) {
     return (

@@ -37,7 +37,7 @@ const truncate = (s: string, max: number): string =>
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Analytics = memo(({ visible = true }: { visible?: boolean }) => {
+export const Analytics = memo(() => {
   const [period, setPeriod] = useState<7 | 30 | 90>(30);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const theme = useTheme().theme;
@@ -47,11 +47,10 @@ export const Analytics = memo(({ visible = true }: { visible?: boolean }) => {
   }, [period]);
 
   useEffect(() => {
-    if (!visible) return
     refresh();
     const timer = setInterval(refresh, REFRESH);
     return () => clearInterval(timer);
-  }, [refresh, visible]);
+  }, [refresh]);
 
   if (!data) {
     return (

@@ -33,7 +33,7 @@ const SELECTS: Record<string, string[]> = {
   "display.skin": ["default", "ares", "mono", "slate"],
   "approvals.mode": ["ask", "yolo", "deny"],
   "logging.level": ["DEBUG", "INFO", "WARNING", "ERROR"],
-  "agent.reasoning_effort": ["low", "medium", "high"],
+  "agent.reasoning_effort": ["none", "minimal", "low", "medium", "high", "xhigh"],
   "model.provider": ["auto", "openai", "anthropic", "openrouter", "local"],
   "memory.provider": ["", "sqlite", "file"],
   "display.personality": ["default", "minimal", "verbose"],
@@ -234,6 +234,7 @@ export const Config = memo((props: { focused?: boolean }) => {
   };
 
   useKeyboard((key) => {
+    if (!props.focused) return;
     if (key.name === "tab" && !editing && !searching) {
       setMode(m => m === "form" ? "yaml" : "form");
       return;

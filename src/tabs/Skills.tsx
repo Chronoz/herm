@@ -181,6 +181,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
   const current = skillRows[selected]?.type === "skill" ? skillRows[selected].skill : null;
 
   useKeyboard((key) => {
+    if (!props.focused) return;
     // Toggle search
     if (!searching && key.raw === "/") {
       setSearching(true);

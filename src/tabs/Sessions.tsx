@@ -435,6 +435,9 @@ export const Sessions = memo((props: SessionsProps) => {
       setResults(searchSessions(query, 30));
       setSelected(0);
     }, 200);
+    return () => {
+      if (debounce.current) clearTimeout(debounce.current);
+    };
   }, [query, searching]);
 
   const activate = useCallback(() => {
@@ -476,6 +479,7 @@ export const Sessions = memo((props: SessionsProps) => {
   const count = searching ? results.length : sessions.length;
 
   useKeyboard((key) => {
+    if (!props.focused) return;
     // Toggle search with /
     if (!searching && key.raw === "/") {
       setSearching(true);

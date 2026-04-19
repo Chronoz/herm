@@ -10,7 +10,7 @@ export const Chat = memo(({
   messages: Message[]
   streaming: boolean
 }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   return (
     <box
       flexGrow={1}

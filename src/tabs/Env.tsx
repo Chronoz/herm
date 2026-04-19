@@ -206,6 +206,7 @@ export const Env = memo((props: { focused?: boolean }) => {
   }, [dialog, load, toast]);
 
   useKeyboard((key) => {
+    if (!props.focused) return;
     // Search toggle
     if (!searching && key.raw === "/") {
       setSearching(true);

@@ -38,7 +38,7 @@ export const MessageItem = memo(({ message, streaming }: { message: Message; str
 })
 
 const SystemMessage = memo(({ message }: { message: Message }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   const content = extract(message)
 
   return (
@@ -52,7 +52,7 @@ const SystemMessage = memo(({ message }: { message: Message }) => {
 })
 
 const UserMessage = memo(({ message }: { message: Message }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   const [hover, setHover] = useState(false)
   const content = extract(message)
 
@@ -80,7 +80,9 @@ const UserMessage = memo(({ message }: { message: Message }) => {
 })
 
 const AssistantMessage = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
-  const { theme, syntaxStyle } = useTheme()
+  const ctx = useTheme()
+  const theme = ctx.theme
+  const syntaxStyle = ctx.syntaxStyle
   const parts = message.parts
   const content = extract(message)
   const toolParts = parts.filter(p => p.type === "tool")

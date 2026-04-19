@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, memo } from "react";
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar";
 import { useTheme } from "../../theme";
 import type { AvatarState } from "../avatar/states";
@@ -10,7 +10,7 @@ export const Sidebar = memo(({
 }: {
   agentState?: AvatarState;
 }) => {
-  const { theme } = useTheme();
+  const theme = useTheme().theme;
   const [override, setOverride] = useState<AvatarState | null>(null);
   const active = override ?? agentState;
 

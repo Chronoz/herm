@@ -2,6 +2,7 @@
 // process and speaks newline-delimited JSON on stdin/stdout.
 
 import { EventEmitter } from "events"
+import { homedir } from "os"
 import { resolve, delimiter } from "path"
 import { existsSync } from "fs"
 import type { GatewayEvent } from "./gateway-types"
@@ -74,7 +75,7 @@ export class GatewayClient extends EventEmitter {
   // Resolve hermes-agent root
   private root(): string {
     if (process.env.HERMES_AGENT_ROOT) return process.env.HERMES_AGENT_ROOT
-    const home = process.env.HOME || "/home/kaio"
+    const home = process.env.HOME || homedir()
     const paths = [
       `${home}/.hermes/hermes-agent`,
       `${home}/Dev/hermes-agent`,

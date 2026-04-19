@@ -2,7 +2,7 @@
  * Theme picker dialog — live preview with DialogSelect.
  */
 
-import { useRef, useCallback } from "react"
+import { useCallback } from "react"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"

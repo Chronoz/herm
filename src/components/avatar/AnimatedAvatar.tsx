@@ -15,7 +15,7 @@ import * as perf from "../../utils/perf"
  */
 
 export const AnimatedAvatar = memo(({ state = "idle" }: { state?: AvatarState }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   const [frame, setFrame] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

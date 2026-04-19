@@ -64,7 +64,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 }
 
 const ToastOverlay = ({ items }: { items: ReadonlyArray<ToastEntry> }) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   const color = (variant: ToastVariant): RGBA => {
     switch (variant) {

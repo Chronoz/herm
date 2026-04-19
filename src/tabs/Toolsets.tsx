@@ -194,6 +194,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
   }, []);
 
   useKeyboard((key) => {
+    if (!props.focused) return;
     if (!searching && key.raw === "/") {
       setSearching(true);
       setQuery("");

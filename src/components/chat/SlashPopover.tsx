@@ -37,7 +37,7 @@ function badge(source: SlashSource, theme: Theme): RGBA | null {
 }
 
 export const SlashPopover = memo(({ commands: cmds, cursor, onCursor, onSelect }: Props) => {
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   if (cmds.length === 0) {
     return (

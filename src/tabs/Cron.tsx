@@ -232,6 +232,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
   const current = jobs[selected] ?? null;
 
   useKeyboard((key) => {
+    if (!props.focused) return;
     if (key.name === "up") { setSelected(s => Math.max(0, s - 1)); return; }
     if (key.name === "down") { setSelected(s => Math.min(jobs.length - 1, s + 1)); return; }
     if (key.name === "r") { load(); return; }

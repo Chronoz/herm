@@ -71,7 +71,9 @@ function summary(name: string, raw: string): string {
 }
 
 export const ToolCallItem = memo(({ tool }: { tool: ToolPart }) => {
-  const { theme, syntaxStyle } = useTheme()
+  const ctx = useTheme()
+  const theme = ctx.theme
+  const syntaxStyle = ctx.syntaxStyle
   const [expanded, setExpanded] = useState(false)
 
   const running = tool.status === "running"

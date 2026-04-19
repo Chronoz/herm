@@ -9,12 +9,13 @@
  */
 
 import { Database } from "bun:sqlite";
+import { homedir } from "os";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import * as perf from "./perf";
 
 // ─── Path Resolution ─────────────────────────────────────────────────
 
-const HOME = process.env.HOME || "/home/kaio";
+const HOME = process.env.HOME || homedir();
 const HERMES_HOME = process.env.HERMES_HOME || `${HOME}/.hermes`;
 
 /** Resolve a path relative to ~/.hermes/ */
@@ -472,35 +473,6 @@ export async function readMemoryProviders(
   return providers;
 }
 
-/** Message row from state.db */
-export interface MessageRow {
-  id: number;
-  role: string;
-  content: string | null;
-  tool_calls: string | null;
-  tool_name: string | null;
-  timestamp: number;
-}
-
-/** Load all messages for a session from state.db */
-export function querySessionMessages(sid: string): MessageRow[] {
-  try {
-    const db = new Database(hermesPath("state.db"), { readonly: true });
-    const rows = db
-      .query(
-        `SELECT id, role, content, tool_calls, tool_name, timestamp
-         FROM messages
-         WHERE session_id = ?
-         ORDER BY timestamp ASC, id ASC`,
-      )
-      .all(sid) as MessageRow[];
-    db.close();
-    return rows;
-  } catch {
-    return [];
-  }
-}
-
 // ─── Analytics ────────────────────────────────────────────────────────
 
 export interface DailyRow {
@@ -521,7 +493,7 @@ export interface ModelRow {
   sessions: number;
 }
 
-export interface TotalsRow {
+interface TotalsRow {
   input: number;
   output: number;
   cache: number;
@@ -772,7 +744,8 @@ export async function readToolsFromLatestSession(): Promise<ToolsInfo | null> {
     const relative = `sessions/${latestPath}`;
     const file = Bun.file(hermesPath(relative));
     const data = await file.json();
-    const tools: ToolInfo[] = (data.tools || []).map((t: any) => ({
+    type RawTool = { function?: { name?: string; description?: string; parameters?: unknown } };
+    const tools: ToolInfo[] = (data.tools || []).map((t: RawTool) => ({
       name: t?.function?.name ?? "unknown",
       descriptionLength: (t?.function?.description ?? "").length,
       paramsLength: JSON.stringify(t?.function?.parameters ?? {}).length,
@@ -787,7 +760,7 @@ export async function readToolsFromLatestSession(): Promise<ToolsInfo | null> {
 }
 
 /** Read system prompt from the most recent state.db session that has a full one */
-export function readSystemPromptInfo(): SystemPromptInfo | null {
+function readSystemPromptInfo(): SystemPromptInfo | null {
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
     // Short prompts (~700 chars) are the generic fallback without SOUL/memory/skills.
@@ -884,8 +857,8 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
   // Read config first — other reads depend on limits from it
   try {
     snapshot.config = await readConfig();
-  } catch (e: any) {
-    errors.push(`config: ${e.message}`);
+  } catch (e: unknown) {
+    errors.push(`config: ${(e as Error).message}`);
   }
 
   const memLimit = snapshot.config?.memory?.memory_char_limit ?? 2200;
@@ -929,14 +902,14 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
   // SQLite is sync in bun:sqlite, run separately
   try {
     snapshot.recentSessions = queryRecentSessions();
-  } catch (e: any) {
-    errors.push(`stateDb: ${e.message}`);
+  } catch (e: unknown) {
+    errors.push(`stateDb: ${(e as Error).message}`);
   }
 
   try {
     snapshot.systemPrompt = readSystemPromptInfo();
-  } catch (e: any) {
-    errors.push(`systemPrompt: ${e.message}`);
+  } catch (e: unknown) {
+    errors.push(`systemPrompt: ${(e as Error).message}`);
   }
 
   end()

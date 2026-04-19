@@ -13,7 +13,7 @@
 
 import { homedir } from "os"
 import { join } from "path"
-import { existsSync, mkdirSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 
 // ─── Schema ──────────────────────────────────────────────────────────
 
@@ -42,9 +42,6 @@ const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {
 const CONFIG_DIR = join(homedir(), ".config", "herm")
 const CONFIG_FILE = join(CONFIG_DIR, "tui.json")
 
-export function configDir() { return CONFIG_DIR }
-export function configFile() { return CONFIG_FILE }
-
 // ─── Load ────────────────────────────────────────────────────────────
 
 let cached: TuiPreferences | null = null
@@ -58,24 +55,19 @@ export function load(): TuiPreferences {
 
   try {
     if (!existsSync(CONFIG_FILE)) {
-      cached = { ...DEFAULTS }
-      return cached
+      const prefs = { ...DEFAULTS }
+      cached = prefs
+      return prefs
     }
-    const raw = JSON.parse(require("fs").readFileSync(CONFIG_FILE, "utf-8"))
-    cached = { ...DEFAULTS, ...raw }
-    return cached
+    const raw = JSON.parse(readFileSync(CONFIG_FILE, "utf-8"))
+    const prefs = { ...DEFAULTS, ...raw }
+    cached = prefs
+    return prefs
   } catch {
-    cached = { ...DEFAULTS }
-    return cached
+    const prefs = { ...DEFAULTS }
+    cached = prefs
+    return prefs
   }
-}
-
-/**
- * Force reload from disk (bypasses cache).
- */
-export function reload(): TuiPreferences {
-  cached = null
-  return load()
 }
 
 // ─── Save ────────────────────────────────────────────────────────────
@@ -95,7 +87,7 @@ export function save(partial?: Partial<TuiPreferences>): void {
     }
     // Write with sorted keys for stable diffs
     const json = JSON.stringify(current, null, 2) + "\n"
-    require("fs").writeFileSync(CONFIG_FILE, json, "utf-8")
+    writeFileSync(CONFIG_FILE, json, "utf-8")
   } catch (err) {
     // Silently fail — preferences are non-critical
     if (process.env.PERF) {

@@ -29,7 +29,7 @@ type Props = {
 export const DialogSelect = (props: Props) => {
   const [filter, setFilter] = useState("")
   const [cursor, setCursor] = useState(0)
-  const { theme } = useTheme()
+  const theme = useTheme().theme
 
   const filtered = useMemo(() => {
     const lower = filter.toLowerCase()
@@ -79,7 +79,6 @@ export const DialogSelect = (props: Props) => {
   })
 
   // Build flat list with index tracking
-  const rows: { type: "header"; cat: string }[] | { type: "item"; option: SelectOption; idx: number }[] = []
   let idx = 0
   const entries = Array.from(groups.entries())
 
@@ -91,7 +90,7 @@ export const DialogSelect = (props: Props) => {
       <box height={1} />
       <input
         value={filter}
-        onChange={setFilter}
+        onInput={setFilter}
         placeholder={props.placeholder ?? "Type to filter..."}
         focused={true}
         textColor={theme.text}

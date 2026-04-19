@@ -38,7 +38,6 @@ type Props = {
   description?: string
   messages?: Message[]
   sessionStart?: number
-  visible?: boolean
 }
 
 type Wire = { input: number; output: number; total: number; calls: number }
@@ -284,11 +283,11 @@ const FreePanel = memo(({ seg, theme, ctxLen, home }: {
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = memo(({ messages = [], visible = true }: Props) => {
+export const Context = memo(({ messages = [] }: Props) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
   const wireRef = useRef(wire)
-  const { theme } = useTheme()
+  const theme = useTheme().theme
   const [hovered, setHovered] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [drilled, setDrilled] = useState<string | null>(null)
@@ -299,11 +298,10 @@ export const Context = memo(({ messages = [], visible = true }: Props) => {
   }, [])
 
   useEffect(() => {
-    if (!visible) return
     refresh()
     const iv = setInterval(refresh, 10_000)
     return () => clearInterval(iv)
-  }, [refresh, visible])
+  }, [refresh])
 
   // Track wire usage from messages
   useEffect(() => {
