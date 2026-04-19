@@ -172,4 +172,23 @@ describe("composer", () => {
     expect(sent).toEqual(["review @file:README.md and @"])
     t.destroy()
   })
+
+  test("paste: short multi-line flattens inline; ≥5 lines → paste.collapse placeholder", async () => {
+    const { t, ref } = await setup()
+
+    await act(async () => { await t.keys.pasteBracketedText("a\nb\nc") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("a b c")
+    expect(t.gw.last("paste.collapse")).toBeUndefined()
+
+    act(() => ref.current?.set(""))
+    await t.settle()
+
+    const big = Array.from({ length: 7 }, (_, i) => `line${i}`).join("\n")
+    await act(async () => { await t.keys.pasteBracketedText(big) })
+    await until(t, () => (ref.current?.value() ?? "").includes("[Pasted text #1"))
+    expect(t.gw.last("paste.collapse")?.params.text).toBe(big)
+    expect(ref.current?.value()).toContain("7 lines")
+    t.destroy()
+  })
 })

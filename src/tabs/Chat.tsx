@@ -6,9 +6,11 @@ import type { Message } from "../types/message"
 export const Chat = memo(({
   messages,
   streaming,
+  onRewind,
 }: {
   messages: Message[]
   streaming: boolean
+  onRewind?: (m: Message) => void
 }) => {
   const theme = useTheme().theme
   return (
@@ -17,7 +19,7 @@ export const Chat = memo(({
       flexDirection="column"
       backgroundColor={theme.background}
     >
-      <MessageList messages={messages} streaming={streaming} />
+      <MessageList messages={messages} streaming={streaming} onRewind={onRewind} />
     </box>
   )
 })

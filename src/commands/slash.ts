@@ -28,7 +28,7 @@ export type SlashCommand = {
  * Names of purely client-side commands — intercepted before gateway dispatch.
  * These are always treated as local regardless of what the gateway returns.
  */
-export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs", "eikon", "title", "rollback"])
+export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs", "eikon", "title", "rollback", "save"])
 
 /**
  * Descriptions for locally-handled commands. Used to render them in the

@@ -43,8 +43,15 @@ export class MockGateway extends EventEmitter implements Gateway {
     this.on$("session.delete", () => ({ deleted: true }))
     this.on$("agents.list", () => ({ processes: [] }))
     this.on$("complete.path", () => ({ items: [] }))
+    this.on$("paste.collapse", p => ({
+      placeholder: `[Pasted text #1: ${String(p.text).split("\n").length} lines → /tmp/p.txt]`,
+      path: "/tmp/p.txt",
+    }))
     this.on$("config.get", p => p.key === "full" ? { config: {} } : {})
     this.on$("session.title", p => ({ title: p.title ?? "" }))
+    this.on$("session.undo", () => ({ removed: 2 }))
+    this.on$("session.history", () => ({ count: 0, messages: [] }))
+    this.on$("session.save", () => ({ file: "/tmp/conv.json" }))
     this.on$("session.usage", () => ({}))
     this.on$("commands.catalog", () => ({ pairs: [] }))
     this.on$("cron.manage", () => ({ jobs: [] }))

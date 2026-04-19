@@ -2,9 +2,11 @@
 // and prompt history. The shell (app.tsx) drives keyboard routing through
 // the imperative handle so there is exactly one global useKeyboard.
 
-import { forwardRef, memo, useImperativeHandle, useRef, useState } from "react"
-import type { SubmitEvent } from "@opentui/core"
+import { forwardRef, memo, useImperativeHandle, useRef, useState, useCallback } from "react"
+import type { SubmitEvent, PasteEvent } from "@opentui/core"
+import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
+import { useGateway } from "../../app/gateway"
 import type { Usage } from "../../types/message"
 import type { SlashCommand } from "../../commands/slash"
 import { useSlashCommands } from "../../app/useSlashCommands"
@@ -47,6 +49,7 @@ function fmt(n: number): string {
 
 export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   const theme = useTheme().theme
+  const gw = useGateway()
   const [input, setInput] = useState("")
 
   const cmds = useSlashCommands().cmds
@@ -70,6 +73,21 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     const next = live.current.at.accept(live.current.input, idx)
     if (next !== null) setInput(next)
   }
+
+  // Multi-line paste: ≥5 lines → gateway writes a temp file and hands
+  // back a `[Pasted #N …]` placeholder (hermes CLI convention; expanded
+  // server-side in prompt.submit). Shorter pastes insert inline with
+  // newlines flattened to spaces (single-line <input>).
+  const paste = useCallback((e: PasteEvent) => {
+    const text = decodePasteBytes(e.bytes)
+    if (!text.includes("\n")) return // let Input.handlePaste do it
+    e.preventDefault()
+    const lines = text.split("\n").length
+    if (lines < 5) return setInput(v => v + text.replace(/\s*\n\s*/g, " "))
+    gw.request<{ placeholder: string }>("paste.collapse", { text })
+      .then(r => setInput(v => v + r.placeholder + " "))
+      .catch(() => setInput(v => v + text.replace(/\s*\n\s*/g, " ")))
+  }, [gw])
 
   const submit = () => {
     const a = live.current.at
@@ -169,6 +187,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           value={input}
           onInput={setInput}
           onSubmit={submit as unknown as (e: SubmitEvent) => void}
+          onPaste={paste}
           placeholder={props.streaming ? "Waiting for response..." : "Message Hermes... (/ for commands)"}
           focused={active}
           textColor={theme.text}

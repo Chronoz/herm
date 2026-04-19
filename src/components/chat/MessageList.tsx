@@ -4,7 +4,13 @@ import { TypingIndicator } from "./TypingIndicator"
 import { useTheme } from "../../theme"
 import type { Message } from "../../types/message"
 
-export const MessageList = memo(({ messages, streaming }: { messages: Message[]; streaming: boolean }) => {
+type Props = {
+  messages: Message[]
+  streaming: boolean
+  onRewind?: (m: Message) => void
+}
+
+export const MessageList = memo(({ messages, streaming, onRewind }: Props) => {
   const theme = useTheme().theme
 
   if (messages.length === 0) {
@@ -72,6 +78,7 @@ export const MessageList = memo(({ messages, streaming }: { messages: Message[];
             key={msg.id}
             message={msg}
             streaming={lastStreaming && i === messages.length - 1}
+            onRewind={onRewind}
           />
         ))}
         {streaming && last?.role !== "assistant" && <TypingIndicator />}

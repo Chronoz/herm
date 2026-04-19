@@ -3,7 +3,8 @@ import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "
 import * as perf from "./utils/perf"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
-import type { GatewayEvent, SessionInfo, SessionUsageResponse } from "./utils/gateway-types"
+import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage } from "./utils/gateway-types"
+import type { Message } from "./types/message"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
@@ -30,13 +31,14 @@ import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
 import { openEikonPicker } from "./dialogs/eikon-picker"
 import { openTextPrompt } from "./dialogs/text-prompt"
+import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
 import { Composer, type ComposerHandle } from "./components/chat/Composer"
 import * as preferences from "./utils/preferences"
-import { turnReducer, initialTurn } from "./app/turnReducer"
+import { turnReducer, initialTurn, transcriptToMessages } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
 import { useAppKeys } from "./app/useAppKeys"
@@ -155,6 +157,35 @@ const AppInner = () => {
       .then(v => { if (v) applyTitle(v) })
   }, [dialog, title, applyTitle])
 
+  // ── Rewind to a prior user turn ───────────────────────────────────
+  // Counts user messages at-or-after the clicked one, calls session.undo
+  // that many times (each undo pops one user+assistant turn server-side),
+  // then reloads authoritative history and seeds the composer with the
+  // clicked text for editing.
+  const rewind = useCallback(async (m: Message) => {
+    if (turn.streaming) return
+    const msgs = turn.messages
+    const at = msgs.findIndex(x => x.id === m.id)
+    if (at < 0) return
+    const turns = msgs.slice(at).filter(x => x.role === "user").length
+    if (turns === 0) return
+    const text = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
+
+    const ok = await openConfirm(dialog, {
+      title: "Rewind?",
+      body: `Undo ${turns} turn${turns > 1 ? "s" : ""} back to "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}". Server history will be rolled back.`,
+      yes: "rewind", danger: true,
+    })
+    if (!ok) return
+
+    for (let i = 0; i < turns; i++) await gw.request("session.undo").catch(() => {})
+    const r = await gw.request<{ messages: TranscriptMessage[] }>("session.history").catch(() => null)
+    dispatch({ kind: "load", messages: r ? transcriptToMessages(r.messages ?? []) : msgs.slice(0, at) })
+    setMsgCount(c => Math.max(0, c - turns))
+    composer.current?.set(text)
+    setFocusRegion("input")
+  }, [turn.streaming, turn.messages, gw, dialog])
+
   // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
     if (c.target === "local") {
@@ -167,6 +198,11 @@ const AppInner = () => {
         case "eikon": pickEikon(); return
         case "title": editTitle(); return
         case "rollback": openRollback(dialog, gw, toast); return
+        case "save":
+          gw.request<{ file: string }>("session.save")
+            .then(r => toast.show({ variant: "success", message: `Saved → ${r.file}` }))
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
       }
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
@@ -306,7 +342,7 @@ const AppInner = () => {
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} />
+        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} onRewind={rewind} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} />
         case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />

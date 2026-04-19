@@ -246,6 +246,68 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("/save toasts the file path via session.save RPC", async () => {
+    const gw = new MockGateway({
+      "commands.catalog": () => ({ pairs: [["/save", "Save conversation"]] }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/save") })
+    await t.settle()
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Saved → /tmp/conv.json"))
+    expect(t.gw.last("session.save")).toBeDefined()
+    expect(t.gw.last("slash.exec")).toBeUndefined()
+    t.destroy()
+  })
+
+  test("click user message → confirm → N×session.undo → composer seeded", async () => {
+    // History after rewind: server-authoritative via session.history.
+    const hist = (n: number) => Array.from({ length: n }, (_, i) => ({
+      role: i % 2 ? "assistant" : "user", text: `turn${Math.floor(i / 2)}`,
+    }))
+    let left = 4
+    const gw = new MockGateway({
+      "session.undo": () => { left = Math.max(0, left - 2); return { removed: 2 } },
+      "session.history": () => ({ count: left, messages: hist(left) }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Two full turns in the transcript.
+    for (const msg of ["first q", "second q"]) {
+      await act(async () => { await t.keys.typeText(msg) })
+      act(() => t.keys.pressEnter())
+      await t.settle()
+      act(() => {
+        gw.push({ type: "message.start" })
+        gw.push({ type: "message.complete", payload: { text: `re: ${msg}`, usage: { input: 1, output: 1, total: 2 } } })
+      })
+      await until(t, () => t.frame().includes(`re: ${msg}`))
+    }
+
+    // Click the first user message → Rewind dialog (2 turns).
+    const rows = t.frame().split("\n")
+    const y = rows.findIndex(l => l.includes("first q") && !l.includes("re:"))
+    expect(y).toBeGreaterThan(0)
+    await act(async () => { await t.mouse.pressDown(4, y) })
+    await until(t, () => t.frame().includes("Rewind?"))
+    expect(t.frame()).toContain("Undo 2 turns")
+
+    await act(async () => { await t.keys.typeText("y") })
+    // rewind() is async (N×undo + history fetch) — poll for the seed
+    await until(t, () => t.frame().includes("> first q"))
+
+    const undos = t.gw.calls.filter(c => c.method === "session.undo").length
+    expect(undos).toBe(2)
+    expect(t.gw.last("session.history")).toBeDefined()
+    // Second turn is gone from transcript (history now empty).
+    expect(t.frame()).not.toContain("second q")
+    expect(t.frame()).not.toContain("Rewind?")
+    t.destroy()
+  })
+
   test("failed turn (status=error, text=null) renders error in transcript", async () => {
     // Reproduces the wire trace from a model 404: message.start →
     // lifecycle status.update → message.complete {status:error, text:null}.

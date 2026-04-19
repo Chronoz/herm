@@ -50,9 +50,13 @@ const Gutter = memo(({ color, glyph = "│", children }: {
   </box>
 ))
 
-export const MessageItem = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
+export const MessageItem = memo(({ message, streaming, onRewind }: {
+  message: Message
+  streaming: boolean
+  onRewind?: (m: Message) => void
+}) => {
   if (message.role === "system") return <SystemMessage message={message} />
-  if (message.role === "user") return <UserMessage message={message} />
+  if (message.role === "user") return <UserMessage message={message} onRewind={onRewind} />
   return <AssistantMessage message={message} streaming={streaming} />
 })
 
@@ -69,7 +73,7 @@ const SystemMessage = memo(({ message }: { message: Message }) => {
   )
 })
 
-const UserMessage = memo(({ message }: { message: Message }) => {
+const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: (m: Message) => void }) => {
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)
   return (
@@ -79,11 +83,15 @@ const UserMessage = memo(({ message }: { message: Message }) => {
       backgroundColor={hover ? theme.backgroundElement : undefined}
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
+      onMouseDown={onRewind ? () => onRewind(message) : undefined}
     >
-      <box height={1}>
-        <text>
-          <span fg={theme.accent}>▸ you</span>
-        </text>
+      <box height={1} flexDirection="row">
+        <box flexGrow={1}>
+          <text><span fg={theme.accent}>▸ you</span></text>
+        </box>
+        {hover && onRewind ? (
+          <box><text fg={theme.textMuted}>click to rewind ↶</text></box>
+        ) : null}
       </box>
       <box paddingLeft={2}>
         <text fg={theme.text}>{extract(message)}</text>
