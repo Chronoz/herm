@@ -319,7 +319,7 @@ const AppInner = () => {
                                sessionStart={sessionStart.current} />
         case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />
         case 3: return <Agents focused={contentFocused} />
-        case 4: return <Analytics />
+        case 4: return <Analytics focused={contentFocused} />
         case 5: return <Skills focused={contentFocused} />
         case 6: return <Cron focused={contentFocused} />
         case 7: return <Toolsets focused={contentFocused} />
