@@ -50,6 +50,13 @@ export class MockGateway extends EventEmitter implements Gateway {
     this.on$("cron.manage", () => ({ jobs: [] }))
     this.on$("toolsets.list", () => ({ toolsets: [] }))
     this.on$("tools.configure", () => ({ changed: [], enabled_toolsets: [], unknown: [] }))
+    this.on$("rollback.list", () => ({ enabled: true, checkpoints: [] }))
+    this.on$("rollback.diff", () => ({ stat: "", diff: "" }))
+    this.on$("rollback.restore", () => ({ success: true }))
+    this.on$("skills.manage", p => p.action === "search" ? { results: [] }
+      : p.action === "inspect" ? { info: {} }
+      : p.action === "install" ? { ok: true }
+      : { skills: {} })
     for (const [m, h] of Object.entries(handlers)) this.on$(m, h)
   }
 
