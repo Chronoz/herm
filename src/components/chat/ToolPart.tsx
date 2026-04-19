@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react"
 import type { ToolPart as Part } from "../../types/message"
+import { DiffBlock, isDiff } from "./DiffBlock"
 import { useTheme } from "../../theme"
 
 /** First non-empty string value in an args object, truncated. */
@@ -46,6 +47,10 @@ export const ToolPart = memo(({ tool }: { tool: Part }) => {
 
   const sum = useMemo(() => brief(tool.args) || tool.preview || "", [tool.args, tool.preview])
   const pairs = useMemo(() => kv(tool.args), [tool.args])
+  const diff = useMemo(
+    () => tool.diff ?? (isDiff(tool.result) ? tool.result : undefined),
+    [tool.diff, tool.result],
+  )
   const lines = useMemo(
     () => (tool.result ?? "").split("\n").filter(l => l.length > 0).slice(0, 5),
     [tool.result],
@@ -58,6 +63,7 @@ export const ToolPart = memo(({ tool }: { tool: Part }) => {
           <span fg={tint}>{glyph} </span>
           <span fg={theme.text}>{tool.name}</span>
           {sum ? <span fg={theme.textMuted}>  {sum}</span> : null}
+          {diff && !open ? <span fg={theme.accent}>  ±</span> : null}
           {tool.duration != null ? <span fg={theme.textMuted}>  {ms(tool.duration)}</span> : null}
           {running ? <span fg={theme.warning}>  ◌</span> : null}
         </text>
@@ -72,7 +78,11 @@ export const ToolPart = memo(({ tool }: { tool: Part }) => {
               </text>
             </box>
           ))}
-          {lines.length ? (
+          {diff ? (
+            <box marginTop={pairs.length ? 1 : 0}>
+              <DiffBlock text={diff} />
+            </box>
+          ) : lines.length ? (
             <box flexDirection="column" marginTop={pairs.length ? 1 : 0}>
               {lines.map((l, i) => (
                 <box key={i} height={1}>

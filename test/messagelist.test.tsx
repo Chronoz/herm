@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { act } from "react"
 import { mountNode, until, type Harness } from "./harness"
 import { MessageList } from "../src/components/chat/MessageList"
+import { isDiff } from "../src/components/chat/DiffBlock"
 import type { Message } from "../src/types/message"
 
 const turn: Message[] = [
@@ -85,6 +86,57 @@ describe("MessageList", () => {
     await act(async () => { await t.mouse.pressDown(q.x, q.y) })
     await until(t, () => t.frame().includes("▸ terminal"))
     expect(t.frame()).not.toContain("workdir")
+    t.destroy()
+  })
+})
+
+const UDIFF = [
+  "--- a/foo.ts",
+  "+++ b/foo.ts",
+  "@@ -1,3 +1,3 @@",
+  " keep",
+  "-old line",
+  "+new line",
+].join("\n")
+
+describe("diff detection", () => {
+  test("isDiff matches unified headers and hunk markers", () => {
+    expect(isDiff(UDIFF)).toBe(true)
+    expect(isDiff("@@ -1 +1 @@\n-a\n+b")).toBe(true)
+    expect(isDiff("diff --git a/x b/x\n@@ -1 +1 @@")).toBe(true)
+    expect(isDiff("plain text\nno markers")).toBe(false)
+    expect(isDiff("prefix --- a/not-at-line-start")).toBe(false)
+    expect(isDiff(undefined)).toBe(false)
+  })
+
+  test("tool result that looks like a diff renders as DiffBlock on expand", async () => {
+    const msgs: Message[] = [{
+      id: "a2", role: "assistant", timestamp: 0,
+      parts: [{
+        type: "tool", id: "t2", name: "patch", args: "",
+        status: "done", duration: 42, result: UDIFF,
+      }],
+    }]
+    const t = await mountNode(
+      <box flexDirection="column" width="100%" height="100%">
+        <MessageList messages={msgs} streaming={false} />
+      </box>,
+      { width: 100, height: 30 },
+    )
+    await t.settle()
+    await until(t, () => t.frame().includes("▸ patch"))
+
+    // collapsed row shows ± hint
+    expect(t.frame()).toContain("±")
+
+    const p = locate(t, "▸ patch")
+    await act(async () => { await t.mouse.pressDown(p.x, p.y) })
+    await until(t, () => t.frame().includes("@@ -1,3 +1,3 @@"))
+
+    const f = t.frame()
+    expect(f).toContain("--- a/foo.ts")
+    expect(f).toContain("+new line")
+    expect(f).toContain("-old line")
     t.destroy()
   })
 })
