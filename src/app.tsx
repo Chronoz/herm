@@ -28,6 +28,8 @@ import { HelpDialog } from "./dialogs/help"
 import { openLogs } from "./dialogs/logs"
 import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
+import { openEikonPicker } from "./dialogs/eikon-picker"
+import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
 import { Composer, type ComposerHandle } from "./components/chat/Composer"
@@ -72,6 +74,7 @@ const AppInner = () => {
   const [info, setInfo] = useState<SessionInfo | null>(null)
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const [status, setStatus] = useState("")
+  const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
 
@@ -116,6 +119,25 @@ const AppInner = () => {
       .catch(() => {})
   }, [gw])
 
+  // ── Eikon avatar ──────────────────────────────────────────────────
+  const loadEikon = useCallback((path: string) => {
+    Bun.file(path).text()
+      .then(t => setEikon(parseEikon(t)))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const path = preferences.get("eikonPath")
+    if (path) loadEikon(path)
+  }, [loadEikon])
+
+  const pickEikon = useCallback(() => {
+    openEikonPicker(dialog, (path) => {
+      preferences.set("eikonPath", path)
+      loadEikon(path)
+    })
+  }, [dialog, loadEikon])
+
   // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
     if (c.target === "local") {
@@ -125,6 +147,7 @@ const AppInner = () => {
         case "theme": openThemePicker(dialog, themeCtx); return
         case "help": dialog.replace(<HelpDialog />); return
         case "logs": openLogs(dialog); return
+        case "eikon": pickEikon(); return
       }
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
@@ -132,7 +155,7 @@ const AppInner = () => {
     gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
       .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw])
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback((text: string) => {
@@ -196,6 +219,8 @@ const AppInner = () => {
       onSelect: () => openThemePicker(dialog, themeCtx) },
     { title: "Switch Model", value: "model", description: "Pick provider and model", category: "General",
       onSelect: () => openModelPicker(dialog, gw) },
+    { title: "Pick Avatar", value: "eikon", description: "Choose sidebar .eikon avatar", category: "General",
+      onSelect: () => pickEikon() },
     { title: "New Session", value: "new-session", description: "Start a new chat session", category: "Session",
       onSelect: () => newSession() },
     { title: "Compress Session", value: "compress", description: "Compress conversation history", category: "Session",
@@ -204,7 +229,7 @@ const AppInner = () => {
       onSelect: () => session.undo() },
     { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
       onSelect: () => session.branch() },
-  ]), [cmd, dialog, themeCtx, session, gw, newSession])
+  ]), [cmd, dialog, themeCtx, session, gw, newSession, pickEikon])
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({
@@ -291,7 +316,7 @@ const AppInner = () => {
           </box>
           {dims.width >= 120 ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
-              <Sidebar agentState={agentState} info={info} />
+              <Sidebar agentState={agentState} info={info} eikon={eikon} />
             </Profiler>
           ) : null}
         </box>

@@ -30,6 +30,8 @@ export interface TuiPreferences {
   // ─── Herm extensions ─────────────────────────────────────────────
   /** Last active session ID — used for auto-resume on startup */
   lastSessionId?: string
+  /** Path to a .eikon avatar file for the sidebar */
+  eikonPath?: string
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {

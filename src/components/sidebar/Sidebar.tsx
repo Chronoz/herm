@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, memo, type ReactNode } from "react"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
+import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
 import type { SessionInfo } from "../../utils/gateway-types"
@@ -106,6 +107,7 @@ const Gauge = (props: { label: string; info: MemoryFileInfo }) => {
 export const Sidebar = memo((props: {
   agentState?: AvatarState
   info?: SessionInfo | null
+  eikon?: ParsedEikon
 }) => {
   const theme = useTheme().theme
   const state = props.agentState ?? "idle"
@@ -143,7 +145,7 @@ export const Sidebar = memo((props: {
     <box width={WIDTH} flexDirection="column">
       {/* Avatar (bust) */}
       <box flexDirection="column" height={24} overflow="hidden">
-        <AnimatedAvatar state={state} />
+        <AnimatedAvatar state={state} eikon={props.eikon} />
       </box>
 
       {/* Body (pillar) */}
