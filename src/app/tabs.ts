@@ -14,3 +14,9 @@ export const TABS = [
 
 export const TAB_MAX = TABS.length - 1
 export const CHAT_TAB = 0
+
+/** Slash-command names that jump to a tab (F5.3). */
+export const TAB_SLASH: Record<string, number> = Object.fromEntries(
+  TABS.map((t, i) => [t.name.toLowerCase(), i]),
+)
+TAB_SLASH.insights = TAB_SLASH.analytics

@@ -108,6 +108,7 @@ export const Sidebar = memo((props: {
   agentState?: AvatarState
   info?: SessionInfo | null
   eikon?: ParsedEikon
+  profile?: string
 }) => {
   const theme = useTheme().theme
   const state = props.agentState ?? "idle"
@@ -154,6 +155,8 @@ export const Sidebar = memo((props: {
 
         <Section id="identity" title="Identity" open={open.has("identity")} onToggle={toggle}>
           <Row label="Agent" value="Hermes" strong />
+          <Row label="Profile" value={props.profile ?? "default"}
+               strong={!!props.profile && props.profile !== "default"} />
           <Row label="Model" value={info?.model ?? snap?.config?.model.default ?? "—"} />
           <Row label="Provider" value={snap?.config?.model.provider ?? "—"} />
           {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}

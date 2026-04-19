@@ -238,5 +238,10 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
 - [x] P3 D3.1-4 chat-polish merged — gutter/ToolPart/DiffBlock/code fg
 - [x] P6 eikon-slot merged — parser/avatar/picker/slash
 - [x] b4a26a9 fix: opencode.json gitignore trap (broke fresh worktrees)
-- [ ] P4, P5, P3 D3.5-8 — next session
-Tests: 61→91 passing, 5× stable.
+- [x] P4 merged to overnight/p4-main:
+      E4.1 /rollback dialog · E4.2 Skills hub search/install/inspect
+      E4.3 Cron CRUD · E4.4 Toolsets toggle · E4.5 Analytics breakdowns
+      E4.7 Env mask+CRUD. E4.6 Config validation deferred.
+- [x] F5.3 slash→tab jump (TAB_SLASH) · F5.6 Profile in sidebar
+- [ ] P3 D3.5-8, F5.1/2/4/5, B1.4/6, P2 remaining migrations + DataList
+Tests: 61→112 passing, 5× stable.

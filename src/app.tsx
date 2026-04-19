@@ -40,7 +40,8 @@ import { turnReducer, initialTurn } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
 import { useAppKeys } from "./app/useAppKeys"
-import { TABS, TAB_MAX, CHAT_TAB } from "./app/tabs"
+import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
+import { activeProfileName } from "./utils/hermes-profiles"
 
 export const App = (props: { initialTheme?: string; gateway?: Gateway }) => (
   <ThemeProvider initial={props.initialTheme}>
@@ -184,6 +185,8 @@ const AppInner = () => {
       }
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
+    const jump = TAB_SLASH[c.name]
+    if (jump !== undefined) { setTab(jump); setFocusRegion("content"); return }
     dispatch({ kind: "user", text: `/${c.name}` })
     gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
@@ -360,7 +363,7 @@ const AppInner = () => {
           </box>
           {dims.width >= 120 ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
-              <Sidebar agentState={agentState} info={info} eikon={eikon} />
+              <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()} />
             </Profiler>
           ) : null}
         </box>

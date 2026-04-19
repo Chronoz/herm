@@ -198,6 +198,31 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("gateway slash matching a tab name jumps to that tab", async () => {
+    const gw = new MockGateway({
+      "commands.catalog": () => ({ pairs: [["skills", "Manage skills"], ["model", "Switch model"]] }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/skills") })
+    await t.settle()
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Skills ("))
+    // intercepted as tab jump — never hit the slash worker
+    expect(t.gw.last("slash.exec")).toBeUndefined()
+    expect(t.gw.last("prompt.submit")).toBeUndefined()
+    t.destroy()
+  })
+
+  test("sidebar Identity shows Profile row", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Identity"))
+    // preload.ts sets HERMES_HOME to a sandbox that isn't under profiles/
+    expect(t.frame()).toMatch(/Profile\s+default/)
+    t.destroy()
+  })
+
   test("failed turn (status=error, text=null) renders error in transcript", async () => {
     // Reproduces the wire trace from a model 404: message.start →
     // lifecycle status.update → message.complete {status:error, text:null}.
