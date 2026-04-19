@@ -15,6 +15,8 @@ export type ToolPart = {
   startedAt?: number
   duration?: number
   preview?: string
+  result?: string
+  diff?: string
 }
 
 export type ThinkingPart = {

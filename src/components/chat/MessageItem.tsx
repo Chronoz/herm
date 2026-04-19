@@ -1,7 +1,7 @@
 import { memo, useState } from "react"
 import type { RGBA } from "@opentui/core"
 import type { Message, Part, TextPart, ThinkingPart } from "../../types/message"
-import { ToolCallItem } from "./ToolCallItem"
+import { ToolPart } from "./ToolPart"
 import { useTheme } from "../../theme"
 
 export type { Message }
@@ -116,7 +116,7 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
 
   const part = (p: Part, i: number) => {
     if (p.type === "thinking") return <Thinking key={`t-${i}`} part={p} />
-    if (p.type === "tool") return <ToolCallItem key={p.id || `tool-${i}`} tool={p} />
+    if (p.type === "tool") return <ToolPart key={p.id || `tool-${i}`} tool={p} />
     if (!p.content) return null
     return (
       <box key={`x-${i}`}>
