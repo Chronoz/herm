@@ -227,6 +227,16 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
   `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-- [x] P0 Agents tab — 82ac163 + e… (fs-based rework, no gateway edits)
-- [x] B1.1 @-refs popover — uses existing complete.path; expansion server-side
-- [~] B1.2 quick_commands next
+- [x] P0 Agents tab — 82ac163 + 2e795f0 (fs-based, no gateway edits)
+- [x] B1.1 @-refs popover — existing complete.path; expansion server-side
+- [x] B1.2 quick_commands — config.get(full).quick_commands → target:shell → shell.exec
+- [x] B1.3 MCP status — session.info.mcp_servers → sidebar section + fail line
+- [x] B1.5 /title — session.title RPC, TextPrompt dialog, status bar
+- [~] B1.4/B1.6 skipped: no paste plumbing in app yet (D3.7 prereq);
+      attachments (B1.4) deferred — image.attach event isn't wired
+- [x] P2 visual-lang merged — src/ui/{fmt,kv,shell}, 5 tabs migrated
+- [x] P3 D3.1-4 chat-polish merged — gutter/ToolPart/DiffBlock/code fg
+- [x] P6 eikon-slot merged — parser/avatar/picker/slash
+- [x] b4a26a9 fix: opencode.json gitignore trap (broke fresh worktrees)
+- [ ] P4, P5, P3 D3.5-8 — next session
+Tests: 61→91 passing, 5× stable.

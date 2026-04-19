@@ -20,7 +20,7 @@ type DialogEntry = {
   readonly onClose?: () => void
 }
 
-type DialogContext = {
+export type DialogContext = {
   readonly replace: (element: ReactNode, onClose?: () => void) => void
   readonly clear: () => void
   readonly stack: ReadonlyArray<DialogEntry>

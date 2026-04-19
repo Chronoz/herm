@@ -29,6 +29,7 @@ import { openLogs } from "./dialogs/logs"
 import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
 import { openEikonPicker } from "./dialogs/eikon-picker"
+import { openTextPrompt } from "./dialogs/text-prompt"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
@@ -72,6 +73,7 @@ const AppInner = () => {
   const [cost, setCost] = useState(0)
   const [msgCount, setMsgCount] = useState(0)
   const [info, setInfo] = useState<SessionInfo | null>(null)
+  const [title, setTitle] = useState("")
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const [status, setStatus] = useState("")
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
@@ -93,6 +95,7 @@ const AppInner = () => {
     setUsage(undefined)
     setReady(false)
     setStatus("")
+    setTitle("")
   }, [])
 
   const newSession = useCallback(async () => {
@@ -138,8 +141,35 @@ const AppInner = () => {
     })
   }, [dialog, loadEikon])
 
+  // ── Title ─────────────────────────────────────────────────────────
+  const applyTitle = useCallback((t: string) => {
+    gw.request<{ title: string }>("session.title", { title: t })
+      .then(r => { setTitle(r.title); dispatch({ kind: "system", text: `Title: ${r.title}` }) })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+  }, [gw, toast])
+
+  const editTitle = useCallback(() => {
+    openTextPrompt(dialog, { title: "Session Title", initial: title })
+      .then(v => { if (v) applyTitle(v) })
+  }, [dialog, title, applyTitle])
+
+  // ── Shell quick-commands ──────────────────────────────────────────
+  const runShell = useCallback((c: SlashCommand) => {
+    if (!c.shell) return
+    dispatch({ kind: "system", text: `$ ${c.shell}` })
+    gw.request<{ stdout: string; stderr: string; code: number }>("shell.exec", { command: c.shell })
+      .then(r => {
+        const out = (r.stdout || "").trimEnd()
+        const err = (r.stderr || "").trimEnd()
+        const body = [out, err && `stderr:\n${err}`].filter(Boolean).join("\n") || "(no output)"
+        dispatch({ kind: "system", text: r.code === 0 ? body : `exit ${r.code}\n${body}` })
+      })
+      .catch((e: Error) => dispatch({ kind: "system", text: `shell.exec failed: ${e.message}` }))
+  }, [gw])
+
   // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
+    if (c.target === "shell") return runShell(c)
     if (c.target === "local") {
       switch (c.name) {
         case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
@@ -148,6 +178,7 @@ const AppInner = () => {
         case "help": dialog.replace(<HelpDialog />); return
         case "logs": openLogs(dialog); return
         case "eikon": pickEikon(); return
+        case "title": editTitle(); return
       }
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
@@ -155,15 +186,18 @@ const AppInner = () => {
     gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
       .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon])
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, runShell])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback((text: string) => {
+    // Arg-bearing local slashes bypass the popover (it closes on space).
+    const m = text.match(/^\/title\s+(.+)$/)
+    if (m) return applyTitle(m[1].trim())
     dispatch({ kind: "user", text })
     preferences.set("lastSessionId", sid)
     gw.request("prompt.submit", { text }).catch(() => {})
     setTab(CHAT_TAB)
-  }, [sid, gw])
+  }, [sid, gw, applyTitle])
 
   // ── Copy last assistant ───────────────────────────────────────────
   const copyLast = useCallback(() => {
@@ -193,6 +227,12 @@ const AppInner = () => {
         setInfo(si)
         setReady(true)
         if (si.session_id) setSid(si.session_id)
+        const bad = (si.mcp_servers ?? []).filter(s => !s.connected)
+        if (bad.length) dispatch({
+          kind: "system",
+          text: `MCP: ${bad.length} server(s) failed to connect — ${bad.map(s => s.name + (s.error ? ` (${s.error})` : "")).join(", ")}`,
+        })
+        gw.request<{ title: string }>("session.title").then(r => setTitle(r.title ?? "")).catch(() => {})
       },
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => { setMsgCount(c => c + 1); setStatus(""); pollUsage() },
@@ -205,7 +245,7 @@ const AppInner = () => {
       onStatus: (text) => setStatus(text),
     })
     if (action) dispatch(action)
-  }, [session, dialog, toast, pollUsage])
+  }, [session, dialog, toast, pollUsage, gw])
 
   useGatewayEvent(handle)
 
@@ -309,7 +349,7 @@ const AppInner = () => {
               <Composer
                 ref={composer}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}
-                status={status} model={model} usage={usage} cost={cost} turns={msgCount}
+                status={status} model={model} title={title} usage={usage} cost={cost} turns={msgCount}
                 onSend={send} onSlash={slash}
               />
             </box>

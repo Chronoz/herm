@@ -13,7 +13,7 @@ import { snapshot } from "../../utils/cache"
 // ~/.hermes snapshot. Snapshot is re-read on section toggle — no
 // polling timer.
 
-type SectionId = "identity" | "stats" | "memory" | "recent" | "warnings"
+type SectionId = "identity" | "stats" | "memory" | "recent" | "warnings" | "mcp"
 
 const WIDTH = 48
 const PAD_L = 12
@@ -160,6 +160,30 @@ export const Sidebar = memo((props: {
           <Row label="Tools" value={String(countToolsets(info?.tools))} />
           <Row label="Skills" value={String(countToolsets(info?.skills) || (snap?.skills.length ?? 0))} />
         </Section>
+
+        {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
+          const srv = info!.mcp_servers!
+          const ok = srv.filter(s => s.connected).length
+          return (
+            <Section id="mcp" title="MCP"
+                     hint={`${ok}/${srv.length} up`}
+                     open={open.has("mcp")} onToggle={toggle}>
+              {srv.map(s => (
+                <box key={s.name} height={1}>
+                  <text>
+                    <span fg={theme.hermBodyTextMuted}>{"  "}</span>
+                    <span fg={s.connected ? theme.hermBodyText : theme.hermBodyTextMuted}>
+                      {(s.connected ? "● " : "○ ") + trunc(s.name, 16).padEnd(16)}
+                    </span>
+                    <span fg={theme.hermBodyTextMuted}>
+                      {s.connected ? ` ${s.transport} · ${s.tools}t` : " failed"}
+                    </span>
+                  </text>
+                </box>
+              ))}
+            </Section>
+          )
+        })() : null}
 
         <Section id="stats" title="Stats"
                  hint={snap ? `${sessions.length} sessions` : undefined}

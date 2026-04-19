@@ -31,6 +31,7 @@ type Props = {
   streaming: boolean
   status?: string
   model?: string
+  title?: string
   usage?: Usage
   cost?: number
   turns?: number
@@ -119,6 +120,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   const dot = props.ready ? (props.streaming ? theme.warning : theme.success) : theme.error
 
   const stats: string[] = []
+  if (props.title) stats.push(`"${props.title}"`)
   if (props.model) stats.push(props.model)
   if (props.turns) stats.push(`${props.turns} turns`)
   if (props.usage) stats.push(`${fmt(props.usage.input)}→${fmt(props.usage.output)}`)

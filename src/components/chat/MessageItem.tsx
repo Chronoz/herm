@@ -61,8 +61,8 @@ const SystemMessage = memo(({ message }: { message: Message }) => {
   return (
     <box marginBottom={1}>
       <Gutter color={theme.textMuted} glyph="·">
-        <box height={1}>
-          <text fg={theme.textMuted}>{extract(message)}</text>
+        <box minHeight={1}>
+          <text fg={theme.textMuted} wrapMode="word">{extract(message)}</text>
         </box>
       </Gutter>
     </box>

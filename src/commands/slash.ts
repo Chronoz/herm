@@ -11,6 +11,7 @@
  */
 
 export type SlashSource = "command" | "skill" | "plugin" | "mcp" | "local"
+export type SlashTarget = "local" | "gateway" | "shell"
 
 export type SlashCommand = {
   readonly name: string
@@ -20,15 +21,17 @@ export type SlashCommand = {
   readonly argsHint: string
   readonly subcommands: ReadonlyArray<string>
   readonly source: SlashSource
-  readonly target: "local" | "gateway"
+  readonly target: SlashTarget
   readonly keybind?: string
+  /** Shell command template for target="shell" (quick_commands). */
+  readonly shell?: string
 }
 
 /**
  * Names of purely client-side commands — intercepted before gateway dispatch.
  * These are always treated as local regardless of what the gateway returns.
  */
-export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs", "eikon"])
+export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs", "eikon", "title"])
 
 /**
  * Descriptions for locally-handled commands. Used to render them in the
@@ -42,6 +45,7 @@ export const LOCAL_COMMANDS: ReadonlyArray<SlashCommand> = [
   { name: "help",  description: "Show keyboard shortcuts",    category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "logs",  description: "Show gateway stderr log",    category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "eikon", description: "Pick sidebar avatar",        category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
+  { name: "title", description: "Set session title",          category: "Client", aliases: [],       argsHint: "[text]", subcommands: [], source: "local", target: "local" },
 ]
 
 /** Filter commands by prefix (text after `/`). Searches names + aliases. */

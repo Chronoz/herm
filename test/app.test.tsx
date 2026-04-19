@@ -136,6 +136,68 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("/title <arg> sets via session.title RPC and shows in status bar", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/title my overnight run") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes('"my overnight run"'))
+
+    expect(t.gw.last("session.title")?.params.title).toBe("my overnight run")
+    expect(t.gw.last("prompt.submit")).toBeUndefined() // intercepted
+    expect(t.frame()).toContain("Title: my overnight run") // system line
+    t.destroy()
+  })
+
+  test("quick_commands appear in popover and dispatch via shell.exec", async () => {
+    const gw = new MockGateway({
+      "commands.catalog": () => ({ pairs: [] }),
+      "config.get": p => p.key === "full"
+        ? { config: { quick_commands: { gs: "git status -sb" } } }
+        : {},
+      "shell.exec": () => ({ stdout: "on branch main\nnothing to commit", stderr: "", code: 0 }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/gs") })
+    // popover row shows the command description = `$ <shell>`
+    await until(t, () => t.frame().includes("/gs") && t.frame().includes("$ git status -sb"))
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("nothing to commit"))
+
+    expect(t.gw.last("shell.exec")?.params.command).toBe("git status -sb")
+    expect(t.gw.last("slash.exec")).toBeUndefined()
+    expect(t.gw.last("prompt.submit")).toBeUndefined()
+    t.destroy()
+  })
+
+  test("failed MCP servers surface as system line on ready", async () => {
+    const gw = new MockGateway()
+    const t = await mount({ gw })
+    // gateway.ready already fired in start(); push a session.info with servers
+    act(() => gw.push({
+      type: "session.info",
+      payload: {
+        model: "test-model", session_id: "test-sid", tools: {}, skills: {},
+        mcp_servers: [
+          { name: "goodsrv", transport: "stdio", tools: 5, connected: true },
+          { name: "badsrv", transport: "http", tools: 0, connected: false, error: "ECONNREFUSED" },
+        ],
+      },
+    }))
+    await until(t, () => t.frame().includes("MCP:"))
+    const f = t.frame()
+    expect(f).toContain("1 server(s) failed")
+    expect(f).toContain("badsrv (ECONNREFUSED)")
+    expect(f).not.toContain("goodsrv (") // good one not listed in failure line
+    // sidebar MCP section appears (collapsed) with hint
+    expect(f).toContain("▸ MCP")
+    expect(f).toContain("1/2 up")
+    t.destroy()
+  })
+
   test("failed turn (status=error, text=null) renders error in transcript", async () => {
     // Reproduces the wire trace from a model 404: message.start →
     // lifecycle status.update → message.complete {status:error, text:null}.

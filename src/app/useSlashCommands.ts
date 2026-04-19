@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useGateway, useGatewayReady } from "./gateway"
 import {
   LOCAL_COMMANDS,
+  LOCAL_NAMES,
   sort,
   type SlashCommand,
 } from "../commands/slash"
@@ -51,7 +52,24 @@ export function useSlashCommands() {
 
       const names = new Set(remote.map(c => c.name))
       const locals = LOCAL_COMMANDS.filter(c => !names.has(c.name))
-      setCmds(sort([...locals, ...remote]))
+
+      // quick_commands: user-defined shell shortcuts from config.yaml.
+      // Rendered in the popover but dispatched via shell.exec, not the
+      // slash worker — they're raw shell, not hermes commands.
+      let quick: SlashCommand[] = []
+      try {
+        const full = await gw.request<{ config: Record<string, unknown> }>("config.get", { key: "full" })
+        const qc = (full.config?.quick_commands ?? {}) as Record<string, string>
+        quick = Object.entries(qc)
+          .filter(([n]) => !names.has(n) && !LOCAL_NAMES.has(n))
+          .map(([n, sh]) => ({
+            name: n, description: `$ ${sh}`, category: "Quick", aliases: [],
+            argsHint: "", subcommands: [], source: "local" as const,
+            target: "shell" as const, shell: sh,
+          }))
+      } catch { /* config.get optional */ }
+
+      setCmds(sort([...locals, ...quick, ...remote]))
     } catch {
       setCmds(LOCAL_COMMANDS)
     }

@@ -56,6 +56,14 @@ export type GatewaySkin = {
   help_header?: string
 }
 
+export type McpServer = {
+  name: string
+  transport: string
+  tools: number
+  connected: boolean
+  error?: string
+}
+
 export type SessionInfo = {
   model?: string
   cwd?: string
@@ -67,6 +75,7 @@ export type SessionInfo = {
   context_max?: number
   context_used?: number
   credential_warning?: string
+  mcp_servers?: McpServer[]
 }
 
 // ── RPC responses ───────────────────────────────────────────────────
