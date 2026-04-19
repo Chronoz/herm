@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import type { RGBA } from "@opentui/core"
 import { useGateway } from "../app/gateway"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
+import { TabShell } from "../ui/shell"
+import { KV } from "../ui/kv"
+import { dur } from "../ui/fmt"
 import {
   listProfiles, createProfile, validateName,
   type ProfileInfo,
@@ -21,25 +23,6 @@ import type { AgentProcess, AgentsListResponse } from "../utils/gateway-types"
 //     authoritative CLI handles gateway stop + wrapper cleanup.
 //   Running (right)  — agents.list RPC: background processes + subagent
 //     tasks. Kill via process.stop.
-
-// ─── Shared ──────────────────────────────────────────────────────────
-
-const KV = (props: { label: string; value: string; fg?: RGBA }) => {
-  const theme = useTheme().theme
-  return (
-    <box height={1} flexDirection="row">
-      <box width={11} flexShrink={0}><text fg={theme.textMuted}>{props.label}</text></box>
-      <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-        <text fg={props.fg ?? theme.text}>{props.value}</text>
-      </box>
-    </box>
-  )
-}
-
-const dur = (s: number) =>
-  s >= 3600 ? `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m`
-  : s >= 60 ? `${Math.floor(s / 60)}m${Math.floor(s % 60)}s`
-  : `${Math.floor(s)}s`
 
 // ─── Profiles pane ───────────────────────────────────────────────────
 
@@ -335,21 +318,10 @@ export const Agents = memo((props: Props) => {
     <box flexDirection="row" flexGrow={1}>
       {/* ── Profiles ── */}
       {showProfiles ? (
-      <box flexDirection="column" flexGrow={3} flexBasis={0} minWidth={0}
-           border borderColor={pane === "profiles" ? theme.primary : theme.border}
-           backgroundColor={theme.backgroundPanel} padding={1}>
-        <box height={1} flexDirection="row" overflow="hidden">
-          <box flexShrink={0}>
-            <text fg={theme.primary}><strong>{`Profiles (${profiles.length})`}</strong></text>
-          </box>
-          <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-            <text fg={theme.textMuted}>
-              {`  ↑↓ nav  n new  d delete  r refresh  Tab ${wide ? "→" : "↔"} running`}
-            </text>
-          </box>
-        </box>
-        {err ? <box height={1}><text fg={theme.error}>{`⚠ ${err}`}</text></box> : null}
-        <box height={1} />
+      <TabShell title={`Profiles (${profiles.length})`}
+                hint={`↑↓ nav  n new  d delete  r refresh  Tab ${wide ? "→" : "↔"} running`}
+                error={err || null}
+                focus={pane === "profiles"} grow={3}>
         <box flexDirection="row" flexGrow={1} minWidth={0}>
           <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={14}>
             <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
@@ -365,25 +337,14 @@ export const Agents = memo((props: Props) => {
               : <box height={1}><text fg={theme.textMuted}>No profiles</text></box>}
           </box>
         </box>
-      </box>
+      </TabShell>
       ) : null}
 
       {/* ── Running ── */}
       {showRunning ? (
-      <box flexDirection="column" flexGrow={2} flexBasis={0} minWidth={0}
-           border borderColor={pane === "running" ? theme.primary : theme.border}
-           backgroundColor={theme.backgroundPanel} padding={1}>
-        <box height={1} flexDirection="row" overflow="hidden">
-          <box flexShrink={0}>
-            <text fg={theme.primary}><strong>{`Running (${procs.length})`}</strong></text>
-          </box>
-          <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-            <text fg={theme.textMuted}>
-              {`  ↑↓ nav  k kill  r refresh  Tab ${wide ? "→" : "↔"} profiles`}
-            </text>
-          </box>
-        </box>
-        <box height={1} />
+      <TabShell title={`Running (${procs.length})`}
+                hint={`↑↓ nav  k kill  r refresh  Tab ${wide ? "→" : "↔"} profiles`}
+                focus={pane === "running"} grow={2}>
         {procs.length === 0 ? (
           <box key="empty" flexGrow={1}>
             <text fg={theme.textMuted}>No background processes or subagents</text>
@@ -396,7 +357,7 @@ export const Agents = memo((props: Props) => {
             ))}
           </scrollbox>
         )}
-      </box>
+      </TabShell>
       ) : null}
     </box>
   )
