@@ -23,11 +23,15 @@ export const LogsDialog = () => {
         <box height={1}><text fg={theme.textMuted}>No log output captured.</text></box>
       ) : (
         <scrollbox scrollY stickyScroll stickyStart="bottom" flexGrow={1}>
-          {lines.map((l, i) => (
-            <box key={i} minHeight={1}>
-              <text fg={ERRLIKE.test(l) ? theme.error : theme.textMuted} wrapMode="word">{l}</text>
-            </box>
-          ))}
+          <box flexDirection="column">
+            {lines.map((l, i) => (
+              <box key={i} height={1}>
+                <text fg={ERRLIKE.test(l) ? theme.error : theme.textMuted}>
+                  {l.length > 106 ? l.slice(0, 105) + "…" : l}
+                </text>
+              </box>
+            ))}
+          </box>
         </scrollbox>
       )}
     </box>

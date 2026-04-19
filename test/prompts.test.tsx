@@ -125,6 +125,9 @@ describe("diagnostics", () => {
     await act(async () => { await t.keys.typeText("/logs") })
     await t.settle()
     act(() => t.keys.pressEnter())
+    // stickyStart="bottom" scrollbox: pass 1 measures scrollHeight,
+    // pass 2 applies the offset. Two settles, not until() polling.
+    await t.settle()
     await t.settle()
 
     const f = t.frame()

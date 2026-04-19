@@ -38,6 +38,7 @@ export class MockGateway extends EventEmitter implements Gateway {
     // Sane defaults so <App> boots without hanging.
     this.on$("session.create", () => ({ session_id: "test-sid" }))
     this.on$("session.resume", p => ({ session_id: p.session_id ?? "test-sid", messages: [] }))
+    this.on$("session.list", () => ({ sessions: [] }))
     this.on$("session.usage", () => ({}))
     this.on$("commands.catalog", () => ({ pairs: [] }))
     for (const [m, h] of Object.entries(handlers)) this.on$(m, h)
