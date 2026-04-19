@@ -15,6 +15,7 @@ export interface Gateway extends EventEmitter {
   start(): void
   drain(): void
   kill(): void
+  tail(n?: number): string
   readonly ready: boolean
 }
 

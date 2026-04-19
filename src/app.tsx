@@ -25,6 +25,7 @@ import { DialogProvider, useDialog } from "./ui/dialog"
 import { ToastProvider, useToast } from "./ui/toast"
 import { CommandProvider, useCommand } from "./ui/command"
 import { HelpDialog } from "./dialogs/help"
+import { openLogs } from "./dialogs/logs"
 import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
@@ -122,6 +123,7 @@ const AppInner = () => {
         case "new": newSession(); return
         case "theme": openThemePicker(dialog, themeCtx); return
         case "help": dialog.replace(<HelpDialog />); return
+        case "logs": openLogs(dialog); return
       }
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
@@ -187,6 +189,8 @@ const AppInner = () => {
   useEffect(() => cmd.register([
     { title: "Help", value: "help", keybind: "f1", description: "Keyboard shortcuts", category: "General",
       onSelect: () => dialog.replace(<HelpDialog />) },
+    { title: "Gateway Logs", value: "logs", description: "Show gateway stderr", category: "General",
+      onSelect: () => openLogs(dialog) },
     { title: "Switch Theme", value: "theme", description: "Change color theme", category: "General",
       onSelect: () => openThemePicker(dialog, themeCtx) },
     { title: "Switch Model", value: "model", description: "Pick provider and model", category: "General",
@@ -234,6 +238,7 @@ const AppInner = () => {
       focusRegion: () => state.current.focusRegion,
       setFocusRegion,
       renderer: () => renderer,
+      logs: (n?: number) => gw.tail(n),
     })
   }, [gw, renderer])
 

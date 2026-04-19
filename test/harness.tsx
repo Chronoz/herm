@@ -28,6 +28,7 @@ export class MockGateway extends EventEmitter implements Gateway {
   readonly calls: Array<{ method: string; params: Record<string, unknown> }> = []
   private handlers = new Map<string, Handler>()
   private buf: GatewayEvent[] = []
+  private logs: string[] = []
   private sub = false
   private sid = ""
   ok = false
@@ -62,6 +63,8 @@ export class MockGateway extends EventEmitter implements Gateway {
 
   kill() {}
 
+  tail(n = 200) { return this.logs.slice(-n).join("\n") }
+
   async request<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     const merged = this.sid && params.session_id === undefined ? { session_id: this.sid, ...params } : params
     this.calls.push({ method, params: merged })
@@ -71,6 +74,7 @@ export class MockGateway extends EventEmitter implements Gateway {
 
   /** Push an event; buffers until drained, then emits live. */
   push(ev: GatewayEvent) {
+    if (ev.type === "gateway.stderr") this.logs.push(ev.payload.line)
     if (this.sub) return void this.emit("event", ev)
     this.buf.push(ev)
   }

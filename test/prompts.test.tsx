@@ -1,0 +1,137 @@
+import { describe, expect, test } from "bun:test"
+import { act } from "react"
+import { mount, until } from "./harness"
+import type { GatewayEvent } from "../src/utils/gateway-types"
+
+describe("prompts", () => {
+  test("approval: digit quick-pick sends matching choice", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.gw.push({ type: "approval.request", payload: { command: "ls", description: "list" } }))
+    await t.settle()
+    expect(t.frame()).toContain("Approval required")
+
+    act(() => t.keys.pressKey("2"))
+    await t.settle()
+    expect(t.gw.last("approval.respond")?.params.choice).toBe("session")
+    expect(t.frame()).not.toContain("Approval required")
+    t.destroy()
+  })
+
+  test("clarify: choice list, Enter sends selected choice", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.gw.push({
+      type: "clarify.request",
+      payload: { request_id: "q1", question: "pick one", choices: ["alpha", "beta"] },
+    }))
+    await t.settle()
+    expect(t.frame()).toContain("pick one")
+    expect(t.frame()).toContain("alpha")
+
+    act(() => t.keys.pressArrow("down"))
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.gw.last("clarify.respond")?.params).toMatchObject({ request_id: "q1", answer: "beta" })
+    t.destroy()
+  })
+
+  test("clarify: open-ended (no choices) free-text input", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.gw.push({
+      type: "clarify.request",
+      payload: { request_id: "q2", question: "explain?", choices: null },
+    }))
+    await t.settle()
+    expect(t.frame()).toContain("explain?")
+
+    await act(async () => { await t.keys.typeText("my custom answer") })
+    await t.settle()
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.gw.last("clarify.respond")?.params.answer).toBe("my custom answer")
+    t.destroy()
+  })
+
+  test("secret: value masked in frame, submitted on Enter, empty on Escape", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.gw.push({
+      type: "secret.request",
+      payload: { request_id: "s1", prompt: "api key?", env_var: "X_KEY" },
+    }))
+    await t.settle()
+    expect(t.frame()).toContain("X_KEY")
+
+    await act(async () => { await t.keys.typeText("hunter2") })
+    await t.settle()
+    // value must NOT appear in the rendered frame
+    expect(t.frame()).not.toContain("hunter2")
+    // bullets overlay present
+    expect(t.frame()).toContain("•".repeat(7))
+
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.gw.last("secret.respond")?.params).toMatchObject({ request_id: "s1", value: "hunter2" })
+    t.destroy()
+  })
+
+  test("sudo: escape cancels with empty password", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.gw.push({ type: "sudo.request", payload: { request_id: "su1" } }))
+    await t.settle()
+    expect(t.frame()).toContain("Sudo required")
+
+    act(() => t.keys.pressEscape())
+    await t.settle()
+    expect(t.gw.last("sudo.respond")?.params).toMatchObject({ request_id: "su1", password: "" })
+    expect(t.frame()).not.toContain("Sudo required")
+    t.destroy()
+  })
+})
+
+describe("diagnostics", () => {
+  test("errorish gateway.stderr surfaces in transcript", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    const feed: GatewayEvent[] = [
+      { type: "gateway.stderr", payload: { line: "DEBUG loaded tools" } },           // benign → hidden
+      { type: "gateway.stderr", payload: { line: "Traceback (most recent call last):" } },
+      { type: "gateway.stderr", payload: { line: "⚠️  API call failed (HTTP 404)" } },
+    ]
+    act(() => { for (const ev of feed) t.gw.push(ev) })
+    await t.settle()
+
+    const f = t.frame()
+    expect(f).toContain("Traceback")
+    expect(f).toContain("API call failed")
+    expect(f).not.toContain("DEBUG loaded tools")
+    t.destroy()
+  })
+
+  test("/logs opens dialog showing full stderr tail", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => {
+      t.gw.push({ type: "gateway.stderr", payload: { line: "line one benign" } })
+      t.gw.push({ type: "gateway.stderr", payload: { line: "line two ERROR: boom" } })
+    })
+    await t.settle()
+
+    await act(async () => { await t.keys.typeText("/logs") })
+    await t.settle()
+    act(() => t.keys.pressEnter())
+    await t.settle()
+
+    const f = t.frame()
+    expect(f).toContain("Gateway Logs")
+    // benign line NOT in transcript but IS in logs dialog
+    expect(f).toContain("line one benign")
+    expect(f).toContain("line two ERROR: boom")
+    t.destroy()
+  })
+})

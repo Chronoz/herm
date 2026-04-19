@@ -41,6 +41,7 @@ export type Bridge = {
   focusRegion: () => "input" | "content"
   setFocusRegion: (r: "input" | "content") => void
   renderer: () => unknown // OpenTUI renderer instance
+  logs: (n?: number) => string
 }
 
 let bridge: Bridge | null = null
@@ -413,6 +414,12 @@ async function handle(req: Request): Promise<Response> {
     return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8" } })
   }
 
+  // GET /logs?n=N — gateway stderr ring buffer (same source as /logs dialog)
+  if (path === "/logs") {
+    const n = Number(url.searchParams.get("n")) || 200
+    return new Response(bridge.logs(n), { headers: { "Content-Type": "text/plain; charset=utf-8" } })
+  }
+
   // GET /perf — return all profiling data as JSON
   if (path === "/perf") {
     const d = perf.data()
@@ -453,6 +460,7 @@ async function handle(req: Request): Promise<Response> {
       "POST /keys   {keys: [{name, ...}], delay?, safe?}",
       "POST /type   {text, safe?}",
       "GET  /frame  ?grep=pat&json=1",
+      "GET  /logs   ?n=200",
       "GET  /focus",
       "GET  /perf",
       "GET  /tabs",

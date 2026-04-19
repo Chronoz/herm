@@ -12,7 +12,8 @@ describe("app", () => {
     expect(f).toContain("Chat")            // tab bar
     expect(f).toContain("test-model")      // status bar from session.info
     expect(f).toContain("Message Hermes")  // composer placeholder
-    expect(t.gw.last("session.create")).toBeDefined()
+    // boot() resumes lastSessionId if set by an earlier test, else creates
+    expect(t.gw.last("session.create") ?? t.gw.last("session.resume")).toBeDefined()
 
     t.destroy()
   })

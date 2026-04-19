@@ -141,7 +141,15 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
       side.onBtw?.(ev.payload.text)
       return null
 
-    case "gateway.stderr":
+    case "gateway.stderr": {
+      // Error-ish stderr lines (tracebacks, HTTP 4xx/5xx, auth failures)
+      // surface inline; benign chatter stays in gw.tail() only (/logs).
+      const line = ev.payload.line
+      if (/error|fail|traceback|exception|\b[45]\d\d\b|refused|denied|unauthori/i.test(line))
+        return { kind: "system", text: line.slice(0, 200) }
+      return null
+    }
+
     case "skin.changed":
       return null
 

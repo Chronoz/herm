@@ -28,7 +28,7 @@ export type SlashCommand = {
  * Names of purely client-side commands — intercepted before gateway dispatch.
  * These are always treated as local regardless of what the gateway returns.
  */
-export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help"])
+export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs"])
 
 /**
  * Descriptions for locally-handled commands. Used to render them in the
@@ -40,6 +40,7 @@ export const LOCAL_COMMANDS: ReadonlyArray<SlashCommand> = [
   { name: "new",   description: "Start a new session",        category: "Client", aliases: ["reset"], argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "theme", description: "Switch color theme",         category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "help",  description: "Show keyboard shortcuts",    category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
+  { name: "logs",  description: "Show gateway stderr log",    category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
 ]
 
 /** Filter commands by prefix (text after `/`). Searches names + aliases. */
