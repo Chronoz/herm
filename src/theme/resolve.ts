@@ -67,8 +67,8 @@ export function resolveTheme(
     thinkingOpacity: theme.theme.thinkingOpacity ?? 0.6,
   };
 
-  // Compute herm-specific tokens
-  const herm = resolveHermTokens(base as any);
+  // Compute herm-specific tokens (accent is a required token)
+  const herm = resolveHermTokens(resolved.accent!);
 
   return { ...base, ...herm } as Theme;
 }
@@ -78,13 +78,11 @@ export function resolveTheme(
  * hermAvatar and hermBody default to accent.
  * hermBodyText is auto-computed for legibility against hermBody.
  */
-function resolveHermTokens(theme: { accent: RGBA }): HermTokens {
-  const avatar = theme.accent;
-  const body = theme.accent;
+function resolveHermTokens(accent: RGBA): HermTokens {
   return {
-    hermAvatar: avatar,
-    hermBody: body,
-    hermBodyText: contrastText(body),
+    hermAvatar: accent,
+    hermBody: accent,
+    hermBodyText: contrastText(accent),
   };
 }
 

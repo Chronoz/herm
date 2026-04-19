@@ -1,8 +1,11 @@
-// Global keyboard routing for the chat shell.
+// Shell-level keyboard routing. Input-scoped keys (popover nav, prompt
+// history) are delegated to the Composer via its imperative handle so
+// there is exactly one global useKeyboard.
 
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { useRef } from "react"
+import { useRef, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
+import type { ComposerHandle } from "../components/chat/Composer"
 
 const INTERRUPT_MS = 5000
 
@@ -15,16 +18,10 @@ type Opts = {
   focusRegion: Region
   setFocusRegion: (r: Region | ((r: Region) => Region)) => void
   streaming: boolean
-  popOpen: boolean
-  onPopNavigate: (d: -1 | 1) => void
-  onPopAccept: () => void
-  onPopCancel: () => void
-  onHistoryUp: () => void
-  onHistoryDown: () => void
+  composer: RefObject<ComposerHandle | null>
   onInterrupt: () => void
   onInterruptNotice: () => void
   onCopyLast: () => void
-  input: string
 }
 
 export function useAppKeys(o: Opts) {
@@ -32,6 +29,8 @@ export function useAppKeys(o: Opts) {
   const lastEsc = useRef(0)
 
   useKeyboard((key) => {
+    const c = o.composer.current
+
     if (key.ctrl && key.name === "c") {
       if (copySelection(renderer)) return
       renderer.destroy()
@@ -49,11 +48,13 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    if (o.popOpen) {
-      if (key.name === "escape") return o.onPopCancel()
-      if (key.name === "up") return o.onPopNavigate(-1)
-      if (key.name === "down") return o.onPopNavigate(1)
-      if (key.name === "tab") return o.onPopAccept()
+    // Popover owns up/down/tab/escape while open; other keys fall through
+    // to the <input> renderable for continued filtering.
+    if (c?.popOpen()) {
+      if (key.name === "escape") return c.popCancel()
+      if (key.name === "up") return c.popNav(-1)
+      if (key.name === "down") return c.popNav(1)
+      if (key.name === "tab") return c.popAccept()
       return
     }
 
@@ -68,21 +69,21 @@ export function useAppKeys(o: Opts) {
         if (now - lastEsc.current < INTERRUPT_MS) {
           o.onInterrupt()
           lastEsc.current = 0
-        } else {
-          lastEsc.current = now
-          o.onInterruptNotice()
+          return
         }
-      } else if (o.focusRegion === "content") {
-        o.setFocusRegion("input")
+        lastEsc.current = now
+        o.onInterruptNotice()
+        return
       }
+      if (o.focusRegion === "content") o.setFocusRegion("input")
       return
     }
 
     if (key.ctrl && key.name === "y") return o.onCopyLast()
 
     if (o.focusRegion === "input" && !o.streaming) {
-      if (key.name === "up") return o.onHistoryUp()
-      if (key.name === "down") return o.onHistoryDown()
+      if (key.name === "up") return c?.historyUp()
+      if (key.name === "down") return c?.historyDown()
     }
 
     // Printable char while content has focus → bounce to input. Stop

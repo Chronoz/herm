@@ -29,14 +29,11 @@ import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
-import { InputArea } from "./components/chat/InputArea"
+import { Composer, type ComposerHandle } from "./components/chat/Composer"
 import * as preferences from "./utils/preferences"
 import { turnReducer, initialTurn } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
-import { useSlashCommands } from "./app/useSlashCommands"
-import { useInputHistory } from "./app/useInputHistory"
-import { useSlashPopover } from "./app/useSlashPopover"
 import { useAppKeys } from "./app/useAppKeys"
 import { TABS, TAB_MAX } from "./app/tabs"
 
@@ -62,10 +59,8 @@ const AppInner = () => {
   const toast = useToast()
   const renderer = useRenderer()
   const session = useSession()
-  const cmds = useSlashCommands().cmds
 
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
-  const [input, setInput] = useState("")
   const [ready, setReady] = useState(false)
   const [sid, setSid] = useState("")
   const [tab, setTab] = useState(1)
@@ -76,9 +71,7 @@ const AppInner = () => {
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const [status, setStatus] = useState("")
   const sessionStart = useRef(Date.now())
-
-  const history = useInputHistory(input, setInput)
-  const pop = useSlashPopover(input, cmds)
+  const composer = useRef<ComposerHandle>(null)
 
   const agentState: AvatarState = !ready
     ? "error"
@@ -87,7 +80,7 @@ const AppInner = () => {
     : turn.streaming ? "thinking"
     : "idle"
 
-  // ── Session reset ─────────────────────────────────────────────────
+  // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
     dispatch({ kind: "reset" })
     setMsgCount(0)
@@ -115,18 +108,14 @@ const AppInner = () => {
     }
   }, [reset, session])
 
-  // ── Usage poll (authoritative cost from gateway) ──────────────────
   const pollUsage = useCallback(() => {
     gw.request<SessionUsageResponse>("session.usage")
       .then(r => { if (r.cost_usd != null) setCost(r.cost_usd) })
       .catch(() => {})
   }, [gw])
 
-  // ── Slash dispatch (declared before send; send uses it via ref) ──
-  const slashRef = useRef<(c: SlashCommand) => void>(() => {})
+  // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
-    if (c.name.includes(" ")) { setInput(`/${c.name} `); return }
-    setInput("")
     if (c.target === "local") {
       switch (c.name) {
         case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
@@ -141,20 +130,14 @@ const AppInner = () => {
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
       .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
   }, [ready, turn.streaming, dialog, themeCtx, newSession, gw])
-  slashRef.current = slash
 
   // ── Send ──────────────────────────────────────────────────────────
-  const send = useCallback((val?: string) => {
-    if (pop.open) { slashRef.current(pop.popover![pop.cursor]); return }
-    const msg = (val ?? input).trim()
-    if (!msg || !ready || turn.streaming) return
-    history.push(msg)
-    dispatch({ kind: "user", text: msg })
+  const send = useCallback((text: string) => {
+    dispatch({ kind: "user", text })
     preferences.set("lastSessionId", sid)
-    gw.request("prompt.submit", { text: msg }).catch(() => {})
-    setInput("")
+    gw.request("prompt.submit", { text }).catch(() => {})
     setTab(1)
-  }, [input, ready, turn.streaming, pop.open, pop.popover, pop.cursor, sid, gw, history])
+  }, [sid, gw])
 
   // ── Copy last assistant ───────────────────────────────────────────
   const copyLast = useCallback(() => {
@@ -222,25 +205,15 @@ const AppInner = () => {
   useAppKeys({
     tab, tabMax: TAB_MAX, setTab, focusRegion, setFocusRegion,
     streaming: turn.streaming,
-    popOpen: pop.open,
-    onPopNavigate: (d) => pop.setCursor(c => Math.max(0, Math.min((pop.popover?.length ?? 1) - 1, c + d))),
-    onPopAccept: () => {
-      const item = pop.popover?.[pop.cursor]
-      if (!item) return
-      setInput(item.name.includes(" ") ? `/${item.name} ` : `/${item.name}`)
-    },
-    onPopCancel: () => setInput(""),
-    onHistoryUp: history.up,
-    onHistoryDown: history.down,
+    composer,
     onInterrupt: () => session.interrupt(),
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
-    input,
   })
 
   // ── Control bridge ────────────────────────────────────────────────
-  const state = useRef({ tab, ready, streaming: turn.streaming, messages: turn.messages, sid, input, focusRegion })
-  state.current = { tab, ready, streaming: turn.streaming, messages: turn.messages, sid, input, focusRegion }
+  const state = useRef({ tab, ready, streaming: turn.streaming, messages: turn.messages, sid, focusRegion })
+  state.current = { tab, ready, streaming: turn.streaming, messages: turn.messages, sid, focusRegion }
   useEffect(() => {
     if (!controlEnabled) return
     setBridge({
@@ -256,8 +229,8 @@ const AppInner = () => {
       streaming: () => state.current.streaming,
       messages: () => state.current.messages.length,
       session: () => state.current.sid,
-      input: () => state.current.input,
-      setInput,
+      input: () => composer.current?.value() ?? "",
+      setInput: (v: string) => composer.current?.set(v),
       focusRegion: () => state.current.focusRegion,
       setFocusRegion,
       renderer: () => renderer,
@@ -302,13 +275,11 @@ const AppInner = () => {
           <box flexGrow={1} flexDirection="column">
             {content()}
             <box flexShrink={0}>
-              <InputArea
-                value={input} onChange={setInput} onSubmit={send}
+              <Composer
+                ref={composer}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}
                 status={status} model={model} usage={usage} cost={cost} turns={msgCount}
-                popover={pop.popover} popCursor={pop.cursor}
-                onPopCursor={pop.setCursor} onPopSelect={slash}
-                ghost={pop.ghost}
+                onSend={send} onSlash={slash}
               />
             </box>
           </box>
