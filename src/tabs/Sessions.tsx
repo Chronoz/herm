@@ -11,6 +11,9 @@ import { useGateway } from "../app/gateway"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
+import { TabShell } from "../ui/shell"
+import { KVBlock } from "../ui/kv"
+import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
 import { invalidate } from "../utils/cache"
 
 // All reads/writes go through the gateway (session.list / .search /
@@ -22,14 +25,6 @@ type Row = SessionListItem & { detail?: SessionRow }
 
 // ─── Formatting ──────────────────────────────────────────────────────
 
-const fmt = (n: number): string =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M`
-  : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k`
-  : String(n)
-
-const cost = (c: number | null | undefined): string =>
-  c == null ? "—" : `$${c.toFixed(2)}`
-
 const badge = (src: string): string => ({
   cli: "CLI", tui: "TUI", api_server: "API", discord: "Discord",
   telegram: "Telegram", slack: "Slack", whatsapp: "WhatsApp", signal: "Signal",
@@ -37,30 +32,6 @@ const badge = (src: string): string => ({
 
 const stamp = (ts: number): string =>
   new Date(ts * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-
-const when = (ts: number): string => {
-  const d = new Date(ts * 1000)
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`
-}
-
-const span = (start: number, end: number): string => {
-  const s = Math.round(end - start)
-  if (s < 0) return "—"
-  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
-  if (s >= 60) return `${Math.floor(s / 60)}m`
-  return `${s}s`
-}
-
-const ago = (ts: number): string => {
-  const s = Math.floor(Date.now() / 1000 - ts)
-  if (s < 60) return "just now"
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
-
-const trunc = (s: string, max: number): string =>
-  s.length <= max ? s : s.slice(0, max - 1) + "…"
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 //
@@ -77,20 +48,6 @@ const trunc = (s: string, max: number): string =>
 // accurate, and only show the ended_at/end_reason pair when it's
 // actually populated.
 
-const DLine = (props: { label: string; value: string; fg?: RGBA }) => {
-  const theme = useTheme().theme
-  return (
-    <box height={1} flexDirection="row">
-      <box width={13} flexShrink={0}>
-        <text fg={theme.textMuted}>{props.label}</text>
-      </box>
-      <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-        <text fg={props.fg ?? theme.text}>{props.value}</text>
-      </box>
-    </box>
-  )
-}
-
 const Detail = memo((props: { row: Row }) => {
   const theme = useTheme().theme
   const r = props.row
@@ -98,48 +55,45 @@ const Detail = memo((props: { row: Row }) => {
   const lastActive = d?.last_active ?? d?.ended_at ?? null
 
   return (
-    <box flexDirection="column" padding={1} border borderColor={theme.border}
-         backgroundColor={theme.backgroundPanel} width="40%">
-      <box height={1}><text fg={theme.primary}><strong>Session Detail</strong></text></box>
-      <box height={1} />
+    <TabShell title="Session Detail" hint="" grow={2}>
       <scrollbox scrollY flexGrow={1}>
         <box flexDirection="column" width="100%">
           <box minHeight={1}>
             <text wrapMode="word"><span fg={theme.accent}><strong>{r.title || "Untitled"}</strong></span></text>
           </box>
           <box height={1} />
-
-          <DLine label="ID" value={r.id} />
-          <DLine label="Source" value={badge(r.source ?? "")} />
-          <DLine label="Model" value={d?.model ?? "—"} />
-          <DLine label="Started" value={when(r.started_at)} />
-          <DLine label="Last active" value={lastActive ? `${when(lastActive)}  (${ago(lastActive)})` : "—"} />
-          <DLine label="Duration" value={lastActive ? span(r.started_at, lastActive) : "—"} />
-          {d?.ended_at ? <DLine label="Ended" value={`${when(d.ended_at)}  ·  ${d.end_reason ?? "—"}`} /> : null}
+          <KVBlock rows={[
+            ["ID", r.id],
+            ["Source", badge(r.source ?? "")],
+            ["Model", d?.model ?? "—"],
+            ["Started", when(r.started_at)],
+            ["Last active", lastActive ? `${when(lastActive)}  (${ago(lastActive)})` : "—"],
+            ["Duration", lastActive ? span(r.started_at, lastActive) : "—"],
+            ["Ended", d?.ended_at ? `${when(d.ended_at)}  ·  ${d.end_reason ?? "—"}` : undefined],
+          ]} />
           <box height={1} />
-
-          <DLine label="Messages" value={String(r.message_count)} />
-          {d ? <>
-            <DLine label="Tool calls" value={String(d.tool_call_count)} />
-            <DLine label="Input" value={`${fmt(d.input_tokens)} tok`} />
-            <DLine label="Output" value={`${fmt(d.output_tokens)} tok`} />
-            <DLine label="Cache" value={`${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w`} />
-            <DLine label="Reasoning" value={`${fmt(d.reasoning_tokens)} tok`} />
-            <DLine label="Cost" value={cost(d.estimated_cost_usd)} fg={theme.success} />
-            {d.parent_session_id ? <DLine label="Parent" value={d.parent_session_id} /> : null}
-          </> : null}
+          <KVBlock rows={[
+            ["Messages", String(r.message_count)],
+            ["Tool calls", d ? String(d.tool_call_count) : undefined],
+            ["Input", d ? `${fmt(d.input_tokens)} tok` : undefined],
+            ["Output", d ? `${fmt(d.output_tokens)} tok` : undefined],
+            ["Cache", d ? `${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w` : undefined],
+            ["Reasoning", d ? `${fmt(d.reasoning_tokens)} tok` : undefined],
+            ["Cost", d ? cost(d.estimated_cost_usd) : undefined, theme.success],
+            ["Parent", d?.parent_session_id || undefined],
+          ]} />
           <box height={1} />
-
-          <DLine label="First msg" value={r.preview || "—"} fg={theme.textMuted} />
-          <DLine label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} />
-
+          <KVBlock rows={[
+            ["First msg", r.preview || "—", theme.textMuted],
+            ["Last msg", d?.lastMessage || "—", theme.textMuted],
+          ]} />
           {!d ? <>
             <box height={1} />
             <box height={1}><text fg={theme.textMuted}>(no local detail — state.db mismatch)</text></box>
           </> : null}
         </box>
       </scrollbox>
-    </box>
+    </TabShell>
   )
 })
 
@@ -163,19 +117,18 @@ const SearchDetail = memo((props: { result: SessionSearchHit }) => {
   }
 
   return (
-    <box flexDirection="column" padding={1} border borderColor={theme.border}
-         backgroundColor={theme.backgroundPanel} width="40%">
-      <box height={1}><text fg={theme.primary}><strong>Search Match</strong></text></box>
-      <box height={1} />
+    <TabShell title="Search Match" hint="" grow={2}>
       <scrollbox scrollY flexGrow={1}>
         <box flexDirection="column" width="100%">
           <box minHeight={1}>
             <text wrapMode="word"><span fg={theme.accent}><strong>{r.title ?? "Untitled"}</strong></span></text>
           </box>
           <box height={1} />
-          <DLine label="Source" value={badge(r.source)} />
-          <DLine label="Model" value={r.model ?? "—"} />
-          <DLine label="Time" value={when(r.started_at)} />
+          <KVBlock rows={[
+            ["Source", badge(r.source)],
+            ["Model", r.model ?? "—"],
+            ["Time", when(r.started_at)],
+          ]} />
           <box height={1} />
           <box height={1}><text fg={theme.textMuted}>Snippet</text></box>
           <box minHeight={1}>
@@ -188,7 +141,7 @@ const SearchDetail = memo((props: { result: SessionSearchHit }) => {
           </box>
         </box>
       </scrollbox>
-    </box>
+    </TabShell>
   )
 })
 
@@ -515,37 +468,23 @@ export const Sessions = memo((props: Props) => {
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <box flexDirection="column" flexGrow={1} minWidth={0}
-           border borderColor={theme.border}
-           backgroundColor={theme.backgroundPanel} padding={1}>
-        <box height={1} flexDirection="row" overflow="hidden">
-          <box flexShrink={0}>
-            <text><span fg={theme.primary}><strong>
-              {searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
-            </strong></span></text>
-          </box>
-          <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-            <text fg={theme.textMuted}>
-              {searching
-                ? "  ↑↓ navigate  Enter/click switch  Esc cancel"
-                : "  ↑↓ navigate  Enter/click switch  / search  d delete  r refresh"}
-            </text>
-          </box>
-        </box>
-
-        {warn ? <text fg={theme.warning}>⚠ {warn}</text> : null}
-
+      <TabShell
+        title={searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
+        hint={searching
+          ? "↑↓ navigate  Enter/click switch  Esc cancel"
+          : "↑↓ navigate  Enter/click switch  / search  d delete  r refresh"}
+        error={warn || null}
+        grow={3}
+      >
         {searching ? (
-          <box>
+          <box height={1} marginBottom={1}>
             <text>
-              <span fg={theme.accent}>{"/ "}</span>
+              <span fg={theme.accent}>/ </span>
               <span fg={theme.text}>{query}</span>
-              <span fg={theme.accent}>{"█"}</span>
+              <span fg={theme.accent}>█</span>
             </text>
           </box>
         ) : null}
-
-        <box height={1} />
 
         {empty ? (
           // key prevents OpenTUI reconciler reusing this <box> for the
@@ -576,7 +515,7 @@ export const Sessions = memo((props: Props) => {
             </scrollbox>
           </box>
         )}
-      </box>
+      </TabShell>
 
       {showDetailPanel && searching && results[sel]
         ? <SearchDetail result={results[sel]} />
