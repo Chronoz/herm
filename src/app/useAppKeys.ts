@@ -24,6 +24,8 @@ type Opts = {
   onInterruptNotice: () => void
   onCopyLast: () => void
   onNotice: (text: string) => void
+  /** Pop last queued prompt into the composer; returns whether one existed. */
+  onQueuePop: () => boolean
 }
 
 export function useAppKeys(o: Opts) {
@@ -75,8 +77,9 @@ export function useAppKeys(o: Opts) {
     }
 
     // Popover owns up/down/tab/escape while open; other keys fall through
-    // to the <input> renderable for continued filtering.
-    if (c?.popOpen()) {
+    // to the <input> renderable for continued filtering. Popovers are
+    // suppressed during streaming (composer input queues instead).
+    if (!o.streaming && c?.popOpen()) {
       if (key.name === "escape") return c.popCancel()
       if (key.name === "up") return c.popNav(-1)
       if (key.name === "down") return c.popNav(1)
@@ -106,6 +109,13 @@ export function useAppKeys(o: Opts) {
     }
 
     if (key.ctrl && key.name === "y") return o.onCopyLast()
+    // Ctrl+U (readline kill-to-start) repurposed: if there's a queued
+    // prompt, pop it back into the input instead. Only stop propagation
+    // on success so the readline binding still works on an empty queue.
+    if (key.ctrl && key.name === "u") {
+      if (o.onQueuePop()) key.stopPropagation()
+      return
+    }
 
     if (o.focusRegion === "input" && !o.streaming) {
       if (key.name === "up") return c?.historyUp()

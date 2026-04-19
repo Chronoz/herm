@@ -81,6 +81,8 @@ const AppInner = () => {
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const [status, setStatus] = useState("")
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
+  const [queue, setQueue] = useState<string[]>([])
+  const inflight = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
 
@@ -217,13 +219,40 @@ const AppInner = () => {
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback((text: string) => {
     // Arg-bearing local slashes bypass the popover (it closes on space).
-    const m = text.match(/^\/title\s+(.+)$/)
-    if (m) return applyTitle(m[1].trim())
+    const m = text.match(/^\/(title|queue|q)\s+(.+)$/)
+    if (m) {
+      const arg = m[2].trim()
+      if (m[1] === "title") return applyTitle(arg)
+      return setQueue(q => [...q, arg])
+    }
     dispatch({ kind: "user", text })
     preferences.set("lastSessionId", sid)
-    gw.request("prompt.submit", { text }).catch(() => {})
+    gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
   }, [sid, gw, applyTitle])
+
+  // ── Queue drain ───────────────────────────────────────────────────
+  // Purely client-side: prompts typed while streaming accumulate in
+  // `queue`; on idle the head auto-submits. turnReducer doesn't flip
+  // `streaming` until the gateway emits message.start (async), so a
+  // naive effect would fire repeatedly and drain the whole queue in
+  // one tick. `inflight` bridges the dispatch→message.start gap.
+  useEffect(() => { if (turn.streaming) inflight.current = false }, [turn.streaming])
+  useEffect(() => {
+    if (turn.streaming || inflight.current || !ready || queue.length === 0) return
+    const [head, ...rest] = queue
+    inflight.current = true
+    setQueue(rest)
+    send(head)
+  }, [turn.streaming, ready, queue, send])
+
+  const dequeue = useCallback((i: number) => {
+    const item = queue[i]
+    if (item === undefined) return
+    setQueue(q => q.filter((_, j) => j !== i))
+    composer.current?.set(item)
+    setFocusRegion("input")
+  }, [queue])
 
   // ── Copy last assistant ───────────────────────────────────────────
   const copyLast = useCallback(() => {
@@ -308,6 +337,11 @@ const AppInner = () => {
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onNotice: (text) => dispatch({ kind: "system", text }),
+    onQueuePop: () => {
+      if (!queue.length) return false
+      dequeue(queue.length - 1)
+      return true
+    },
   })
 
   // ── Control bridge ────────────────────────────────────────────────
@@ -364,7 +398,7 @@ const AppInner = () => {
 
   const theme = themeCtx.theme
   const onMouseUp = useCallback(() => copySelection(renderer), [renderer])
-  const inputFocused = focusRegion === "input" && !turn.streaming
+  const inputFocused = focusRegion === "input"
 
   return (
     <Profiler id="shell" onRender={perf.onRender}>
@@ -379,7 +413,10 @@ const AppInner = () => {
                 ref={composer}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}
                 status={status} model={model} title={title} usage={usage} cost={cost} turns={msgCount}
+                queue={queue}
                 onSend={send} onSlash={slash}
+                onEnqueue={(t) => setQueue(q => [...q, t])}
+                onDequeue={dequeue}
               />
             </box>
           </box>

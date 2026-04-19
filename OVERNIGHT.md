@@ -157,11 +157,15 @@ Reference: `~/Dev/clones/opencode/.../tui/routes/session/` +
       `↳ <last user msg>` chip at top of viewport (opencode has this).
 - [ ] D3.6 **Queue UI** — `/queue` already RPC'd. Show queued prompts as
       dim chips below composer; ↑↓ edit, Ctrl+K dequeue, Enter submits head.
-- [ ] D3.7 **Ctrl+G editor handoff** — suspend renderer, spawn $EDITOR on
+- [x] D3.7 **Ctrl+G editor handoff** — suspend renderer, spawn $EDITOR on
       a tmpfile seeded with composer value, on exit read back + resume.
-      Pattern is in opentui-component-patterns skill.
-- [ ] D3.8 **Tips on empty transcript** — import `hermes_cli/tips.py` list
+      → impl: multi-line result collapses via paste.collapse (same path
+        as bracketed paste). editor.ts owns suspend/spawn/resume/clear.
+- [x] D3.8 **Tips on empty transcript** — import `hermes_cli/tips.py` list
       via a one-time gateway RPC `tips.list`, rotate one on empty chat.
+      → impl deviated: no RPC; loadTips() scrapes tips.py string
+        literals directly (hermesAgentRoot()). splitTip() highlights
+        tokens. Click cycles.
 - [x] (ad hoc added by kaio) click on your message and revert to that state
       → impl: hover shows 'click to rewind ↶'; click → openConfirm →
         N× session.undo → session.history reload → composer seeded.

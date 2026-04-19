@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { act, createRef } from "react"
+import { act, createRef, useState } from "react"
 import { mountNode, until, MockGateway, type Harness } from "./harness"
 import { Composer, type ComposerHandle } from "../src/components/chat/Composer"
 import type { SlashCommand } from "../src/commands/slash"
@@ -170,6 +170,53 @@ describe("composer", () => {
     act(() => t.keys.pressEnter())
     await t.settle()
     expect(sent).toEqual(["review @file:README.md and @"])
+    t.destroy()
+  })
+
+  test("Enter while streaming → onEnqueue; chips render; click chip → onDequeue", async () => {
+    const ref = createRef<ComposerHandle>()
+    const sent: string[] = []
+    const dequeued: number[] = []
+    // Host owns the queue so Composer re-renders with chips as items
+    // are enqueued — mirrors app.tsx wiring minus the drain effect.
+    const Host = () => {
+      const [q, setQ] = useState<string[]>([])
+      return (
+        <box flexDirection="column" flexGrow={1} width="100%" height="100%">
+          <box flexGrow={1} />
+          <Composer
+            ref={ref} focused ready streaming model="test" queue={q}
+            onSend={m => sent.push(m)} onSlash={() => {}}
+            onEnqueue={m => setQ(v => [...v, m])}
+            onDequeue={i => { dequeued.push(i); setQ(v => v.filter((_, j) => j !== i)) }}
+          />
+        </box>
+      )
+    }
+    const t: Harness = await mountNode(<Host />, { width: 120, height: 30 })
+    await until(t, () => t.frame().includes("Type to queue"))
+
+    // Input stays focused while streaming; typing + Enter enqueues.
+    await act(async () => { await t.keys.typeText("follow-up one") })
+    await t.settle()
+    expect(t.frame()).toContain("Enter: Queue")
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("⏸ 1. follow-up one"))
+    expect(sent).toEqual([])
+    expect(ref.current?.value()).toBe("")
+    expect(t.frame()).toContain("Ctrl+U: Pop queued")
+
+    await act(async () => { await t.keys.typeText("two") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("⏸ 2. two"))
+
+    // Click second chip → onDequeue(1); chip row disappears.
+    const rows = t.frame().split("\n")
+    const y = rows.findIndex(l => l.includes("⏸ 2."))
+    await act(async () => { await t.mouse.pressDown(rows[y].indexOf("⏸"), y) })
+    await until(t, () => !t.frame().includes("⏸ 2."))
+    expect(dequeued).toEqual([1])
+    expect(t.frame()).toContain("⏸ 1. follow-up one")
     t.destroy()
   })
 

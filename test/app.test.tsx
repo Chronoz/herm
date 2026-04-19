@@ -308,6 +308,48 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("queue: Enter while streaming stacks; drains one per idle; Ctrl+U pops", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Turn 1 starts.
+    await act(async () => { await t.keys.typeText("first") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    act(() => t.gw.push({ type: "message.start" }))
+    await until(t, () => t.frame().includes("Type to queue"))
+
+    // Queue two follow-ups while streaming.
+    for (const msg of ["follow up a", "follow up b"]) {
+      await act(async () => { await t.keys.typeText(msg) })
+      act(() => t.keys.pressEnter())
+      await t.settle()
+    }
+    await until(t, () => t.frame().includes("⏸ 2. follow up b"))
+    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(1)
+
+    // Turn 1 completes → exactly one queued item drains.
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "r1", usage: { input: 1, output: 1, total: 2 } } }))
+    await until(t, () => t.gw.calls.filter(c => c.method === "prompt.submit").length === 2)
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("follow up a")
+    act(() => t.gw.push({ type: "message.start" }))
+    await until(t, () => t.frame().includes("⏸ 1. follow up b"))
+    expect(t.frame()).not.toContain("⏸ 2.")        // one chip left
+    // still just the one extra submit
+    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
+
+    // Ctrl+U pops tail into composer (removes chip, seeds input).
+    act(() => t.keys.pressKey("u", { ctrl: true }))
+    await until(t, () => !t.frame().includes("⏸ 1."))
+    expect(t.frame()).toContain("> follow up b")
+
+    // Turn 2 completes with empty queue → no further submit.
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "r2", usage: { input: 1, output: 1, total: 2 } } }))
+    await until(t, () => t.frame().includes("Ready"))
+    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
+    t.destroy()
+  })
+
   test("failed turn (status=error, text=null) renders error in transcript", async () => {
     // Reproduces the wire trace from a model 404: message.start →
     // lifecycle status.update → message.complete {status:error, text:null}.

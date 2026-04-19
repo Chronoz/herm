@@ -15,6 +15,7 @@ import { useAtRefPopover } from "../../app/useAtRefPopover"
 import { useInputHistory } from "../../app/useInputHistory"
 import { SlashPopover } from "./SlashPopover"
 import { AtRefPopover } from "./AtRefPopover"
+import { trunc } from "../../ui/fmt"
 
 export type ComposerHandle = {
   value: () => string
@@ -39,8 +40,11 @@ type Props = {
   usage?: Usage
   cost?: number
   turns?: number
+  queue?: ReadonlyArray<string>
   onSend: (text: string) => void
   onSlash: (cmd: SlashCommand) => void
+  onEnqueue?: (text: string) => void
+  onDequeue?: (i: number) => void
 }
 
 function fmt(n: number): string {
@@ -97,6 +101,16 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   }, [insert])
 
   const submit = () => {
+    // While streaming, slash/at popovers are suppressed; anything
+    // typed is a plain prompt to enqueue.
+    if (live.current.props.streaming) {
+      const text = live.current.input.trim()
+      if (!text || !live.current.props.ready) return
+      hist.push(text)
+      setInput("")
+      live.current.props.onEnqueue?.(text)
+      return
+    }
     const a = live.current.at
     if (a.open) return atAccept()
     const p = live.current.pop
@@ -106,7 +120,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       return
     }
     const text = live.current.input.trim()
-    if (!text || !live.current.props.ready || live.current.props.streaming) return
+    if (!text || !live.current.props.ready) return
     hist.push(text)
     setInput("")
     live.current.props.onSend(text)
@@ -152,7 +166,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   if (props.usage) stats.push(`${fmt(props.usage.input)}→${fmt(props.usage.output)}`)
   if (props.cost != null && props.cost > 0) stats.push(`$${props.cost.toFixed(2)}`)
 
-  const hint = props.streaming ? "Esc×2: Interrupt"
+  const hint = props.streaming
+    ? (input ? "Enter: Queue · " : "") + "Esc×2: Interrupt" + ((props.queue?.length ?? 0) > 0 ? " · Ctrl+U: Pop queued" : "")
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
     : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
     : props.focused ? "Enter: Send · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor"
@@ -160,7 +175,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
 
   return (
     <box flexDirection="column" position="relative">
-      {pop.open ? (
+      {active && pop.open ? (
         <box position="absolute" bottom={4} left={0} right={0}>
           <SlashPopover
             commands={pop.popover!}
@@ -169,7 +184,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
             onSelect={select}
           />
         </box>
-      ) : at.open ? (
+      ) : active && at.open ? (
         <box position="absolute" bottom={4} left={0} right={0}>
           <AtRefPopover
             items={at.items}
@@ -177,6 +192,19 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
             onCursor={at.setCursor}
             onSelect={atAccept}
           />
+        </box>
+      ) : null}
+
+      {(props.queue?.length ?? 0) > 0 ? (
+        <box flexDirection="column" paddingX={1} paddingBottom={1}>
+          {props.queue!.map((q, i) => (
+            <box key={i} height={1} onMouseDown={() => props.onDequeue?.(i)}>
+              <text>
+                <span fg={theme.borderSubtle}>{i === 0 ? "╭" : "│"} </span>
+                <span fg={theme.textMuted}>⏸ {i + 1}. {trunc(q, 60)}</span>
+              </text>
+            </box>
+          ))}
         </box>
       ) : null}
 
@@ -196,8 +224,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           onInput={setInput}
           onSubmit={submit as unknown as (e: SubmitEvent) => void}
           onPaste={paste}
-          placeholder={props.streaming ? "Waiting for response..." : "Message Hermes... (/ for commands)"}
-          focused={active}
+          placeholder={props.streaming ? "Type to queue... (Enter queues, Ctrl+U pops)" : "Message Hermes... (/ for commands)"}
+          focused={props.focused}
           textColor={theme.text}
           placeholderColor={theme.textMuted}
           backgroundColor="transparent"
