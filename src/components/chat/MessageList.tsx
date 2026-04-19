@@ -1,7 +1,8 @@
-import { memo } from "react"
+import { memo, useState } from "react"
 import { MessageItem } from "./MessageItem"
 import { TypingIndicator } from "./TypingIndicator"
 import { useTheme } from "../../theme"
+import { randomTip, splitTip } from "../../utils/tips"
 import type { Message } from "../../types/message"
 
 type Props = {
@@ -48,6 +49,7 @@ export const MessageList = memo(({ messages, streaming, onRewind }: Props) => {
             <span fg={theme.textMuted}>  ↑ / ↓  </span>
             <span fg={theme.borderSubtle}>Prompt history</span>
           </text>
+          <Tip />
         </box>
       </box>
     )
@@ -84,5 +86,23 @@ export const MessageList = memo(({ messages, streaming, onRewind }: Props) => {
         {streaming && last?.role !== "assistant" && <TypingIndicator />}
       </box>
     </scrollbox>
+  )
+})
+
+// One random Hermes CLI tip; click to cycle. Width-capped so it
+// doesn't blow out the centered empty-state column.
+const Tip = memo(() => {
+  const theme = useTheme().theme
+  const [tip, setTip] = useState(() => randomTip())
+  return (
+    <box flexDirection="column" alignItems="center" maxWidth={64} marginTop={1}
+         onMouseDown={() => setTip(t => randomTip(t))}>
+      <text fg={theme.borderSubtle}>─── tip ───</text>
+      <text wrapMode="word">
+        {splitTip(tip).map((p, i) =>
+          <span key={i} fg={p.hl ? theme.accent : theme.textMuted}>{p.t}</span>,
+        )}
+      </text>
+    </box>
   )
 })

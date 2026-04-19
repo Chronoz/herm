@@ -12,6 +12,17 @@ const LOG_PREVIEW = 240
 const STARTUP_MS = 15_000
 const REQUEST_MS = 120_000
 
+/** Locate the hermes-agent source tree (gateway + hermes_cli live here). */
+export function hermesAgentRoot(): string {
+  if (process.env.HERMES_AGENT_ROOT) return process.env.HERMES_AGENT_ROOT
+  const home = process.env.HOME || homedir()
+  const paths = [
+    `${home}/.hermes/hermes-agent`,
+    `${home}/Dev/hermes-agent`,
+  ]
+  return paths.find(p => existsSync(resolve(p, "tui_gateway"))) || paths[0]
+}
+
 type Pending = {
   resolve: (v: unknown) => void
   reject: (e: Error) => void
@@ -72,16 +83,7 @@ export class GatewayClient extends EventEmitter {
   private timer: ReturnType<typeof setTimeout> | null = null
   private sub = false
 
-  // Resolve hermes-agent root
-  private root(): string {
-    if (process.env.HERMES_AGENT_ROOT) return process.env.HERMES_AGENT_ROOT
-    const home = process.env.HOME || homedir()
-    const paths = [
-      `${home}/.hermes/hermes-agent`,
-      `${home}/Dev/hermes-agent`,
-    ]
-    return paths.find(p => existsSync(resolve(p, "tui_gateway"))) || paths[0]
-  }
+  private root(): string { return hermesAgentRoot() }
 
   private push(ev: GatewayEvent) {
     if (ev.type === "gateway.ready") {
