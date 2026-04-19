@@ -115,6 +115,36 @@ export type SessionDeleteResponse = {
   deleted: boolean
 }
 
+export type ProfileInfo = {
+  name: string
+  path: string
+  is_default: boolean
+  is_active: boolean
+  gateway_running: boolean
+  model: string | null
+  provider: string | null
+  has_env: boolean
+  skill_count: number
+  has_alias: boolean
+  soul_preview: string
+}
+
+export type ProfileListResponse = {
+  profiles: ProfileInfo[]
+  active: string
+}
+
+export type AgentProcess = {
+  session_id: string
+  command: string
+  status: string
+  uptime: number
+}
+
+export type AgentsListResponse = {
+  processes: AgentProcess[]
+}
+
 export type SessionUsageResponse = {
   model?: string
   calls?: number

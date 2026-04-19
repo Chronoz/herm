@@ -10,6 +10,7 @@ import { Sidebar } from "./components/sidebar/Sidebar"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
+import { Agents } from "./tabs/Agents"
 import { Analytics } from "./tabs/Analytics"
 import { Memory } from "./tabs/Memory"
 import { Skills } from "./tabs/Skills"
@@ -252,13 +253,14 @@ const AppInner = () => {
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} />
         case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />
-        case 3: return <Analytics />
-        case 4: return <Skills focused={contentFocused} />
-        case 5: return <Cron focused={contentFocused} />
-        case 6: return <Toolsets focused={contentFocused} />
-        case 7: return <Config focused={contentFocused} />
-        case 8: return <Env focused={contentFocused} />
-        case 9: return <Memory />
+        case 3: return <Agents focused={contentFocused} />
+        case 4: return <Analytics />
+        case 5: return <Skills focused={contentFocused} />
+        case 6: return <Cron focused={contentFocused} />
+        case 7: return <Toolsets focused={contentFocused} />
+        case 8: return <Config focused={contentFocused} />
+        case 9: return <Env focused={contentFocused} />
+        case 10: return <Memory />
         default: return null
       }
     })()

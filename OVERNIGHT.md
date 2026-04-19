@@ -216,5 +216,10 @@ serially. Update this file's checkboxes as commits land.
 If budget hits or stuck >3 attempts on one task: mark `[~]` with a note,
 commit this file, write a clean summary, stop. Never leave tree dirty.
 
+## Late additions
+- opencode-style diffing in chat → already D3.4 (opentui `<diff>` renderable).
+  Bumping D3.4 priority to run alongside D3.1-2 in first chat-polish batch.
+
 ## Status
-- [ ] not started — awaiting go
+- [x] P0 Agents tab — profiles + running split view (commit pending)
+- [~] P1 next
