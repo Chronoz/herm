@@ -1,176 +1,90 @@
-import { useState, useEffect, useCallback, memo } from "react";
-import {
-  queryAnalytics,
-  type AnalyticsData,
-  type DailyRow,
-  type ModelRow,
-} from "../utils/hermes-home";
-import { useTheme } from "../theme";
+import { useState, useEffect, useCallback, memo } from "react"
+import { useKeyboard } from "@opentui/react"
+import { analytics, type Analytics as Data } from "../utils/hermes-analytics"
+import { useTheme } from "../theme"
+import { TabShell } from "../ui/shell"
+import { KVBlock } from "../ui/kv"
+import { fmt, cost, trunc } from "../ui/fmt"
 
-// ─── Helpers ──────────────────────────────────────────────────────────
+const SPARK = "▁▂▃▄▅▆▇█"
 
-const REFRESH = 60_000;
-const PERIODS = [7, 30, 90] as const;
+const bar = (val: number, max: number) =>
+  "▆".repeat(max > 0 ? Math.round(20 * val / max) : 0)
 
-const fmt = (n: number): string => {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-};
+const spark = (vals: number[]) => {
+  const max = Math.max(1, ...vals)
+  return vals.map(v => SPARK[Math.min(7, Math.floor(8 * v / max))]).join("")
+}
 
-const fmtCost = (usd: number): string => {
-  if (usd < 0.01) return `$${usd.toFixed(4)}`;
-  return `$${usd.toFixed(2)}`;
-};
+export const Analytics = memo((props: { focused?: boolean }) => {
+  const theme = useTheme().theme
+  const [days, setDays] = useState(7)
+  const [data, setData] = useState<Data>(() => analytics(7))
 
-const pad = (s: string, w: number): string =>
-  s.length >= w ? s.slice(0, w) : s + " ".repeat(w - s.length);
+  const load = useCallback(() => setData(analytics(days)), [days])
+  useEffect(load, [load])
 
-const rpad = (s: string, w: number): string =>
-  s.length >= w ? s.slice(0, w) : " ".repeat(w - s.length) + s;
+  useKeyboard((key) => {
+    if (!props.focused) return
+    if (key.raw === "1") return setDays(1)
+    if (key.raw === "7") return setDays(7)
+    if (key.raw === "3") return setDays(30)
+    if (key.raw === "r") return load()
+  })
 
-const barLen = (value: number, max: number, width: number): number =>
-  max > 0 ? Math.round((value / max) * width) : 0;
-
-const truncate = (s: string, max: number): string =>
-  s.length <= max ? s : s.slice(0, max - 1) + "…";
-
-// ─── Component ────────────────────────────────────────────────────────
-
-export const Analytics = memo(() => {
-  const [period, setPeriod] = useState<7 | 30 | 90>(30);
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const theme = useTheme().theme;
-
-  const refresh = useCallback(() => {
-    setData(queryAnalytics(period));
-  }, [period]);
-
-  useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, REFRESH);
-    return () => clearInterval(timer);
-  }, [refresh]);
-
-  if (!data) {
-    return (
-      <box flexGrow={1} justifyContent="center" alignItems="center">
-        <text fg={theme.textMuted}>{"Loading analytics…"}</text>
-      </box>
-    );
-  }
-
-  const totals = data.totals;
-  const daily = data.daily;
-  const peak = daily.reduce((m, d) => Math.max(m, d.input + d.output), 0);
-  const width = 40;
+  const peak = Math.max(1, ...data.byModel.map(m => m.tokens))
 
   return (
-    <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
-      {/* Period selector */}
-      <box height={1} flexDirection="row" gap={1}>
-        <text fg={theme.textMuted}>{"Period: "}</text>
-        {PERIODS.map((p) => (
-          <box key={p} height={1} onMouseDown={() => setPeriod(p)}>
-            <text fg={p === period ? theme.primary : theme.textMuted}>
-              {p === period ? `[${p}d]` : ` ${p}d `}
-            </text>
-          </box>
-        ))}
-      </box>
+    <TabShell
+      title={`Analytics · ${days}d`}
+      hint="1/7/3 period  r reload"
+    >
+      <KVBlock rows={[
+        ["Sessions", String(data.total.sessions)],
+        ["Messages", String(data.total.messages)],
+        ["Tokens", fmt(data.total.tokens)],
+        ["Cost", cost(data.total.cost), theme.accent],
+      ]} />
 
       <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>By model</text></box>
 
-      {/* Summary cards */}
-      <box height={1} flexDirection="row">
-        <text>
-          <span fg={theme.info}>{"  Tokens "}</span>
-          <span fg={theme.text}>{fmt(totals.input + totals.output)}</span>
-          <span fg={theme.textMuted}>{"  (in:"}</span>
-          <span fg={theme.success}>{fmt(totals.input)}</span>
-          <span fg={theme.textMuted}>{" out:"}</span>
-          <span fg={theme.warning}>{fmt(totals.output)}</span>
-          <span fg={theme.textMuted}>{")"}</span>
-          <span fg={theme.info}>{"   Sessions "}</span>
-          <span fg={theme.text}>{String(totals.sessions)}</span>
-          <span fg={theme.info}>{"   Cost "}</span>
-          <span fg={theme.accent}>{fmtCost(totals.estimated)}</span>
-          {totals.actual > 0 ? (
-            <span fg={theme.textMuted}>{` (actual: ${fmtCost(totals.actual)})`}</span>
-          ) : (
-            <span>{""}</span>
-          )}
-        </text>
-      </box>
-
-      <box height={1} />
-
-      {/* Bar chart */}
-      <text fg={theme.info}>{"  Daily Token Usage"}</text>
-      <box height={1} />
-      {daily.slice(-14).map((d) => {
-        const inp = barLen(d.input, peak, width);
-        const out = barLen(d.output, peak, width);
-        const label = d.day.slice(5);
-        return (
-          <box key={d.day} height={1} flexDirection="row">
-            <text>
-              <span fg={theme.textMuted}>{pad(label, 7)}</span>
-              <span fg={theme.success}>{"━".repeat(inp)}</span>
-              <span fg={theme.warning}>{"━".repeat(out)}</span>
-              <span fg={theme.textMuted}>{" " + fmt(d.input + d.output)}</span>
-            </text>
-          </box>
-        );
-      })}
-
-      <box height={1} />
-
-      {/* Daily breakdown */}
-      <text fg={theme.info}>{"  Daily Breakdown"}</text>
-      <box height={1}>
-        <text>
-          <span fg={theme.textMuted}>
-            {pad("Day", 12) + rpad("Input", 10) + rpad("Output", 10) + rpad("Cache", 10) + rpad("Cost", 10) + rpad("Sessions", 8)}
-          </span>
-        </text>
-      </box>
       <scrollbox scrollY flexGrow={1}>
-        {daily.map((d: DailyRow) => (
-          <box key={d.day} height={1}>
-            <text>
-              <span fg={theme.text}>{pad(d.day.slice(5), 12)}</span>
-              <span fg={theme.success}>{rpad(fmt(d.input), 10)}</span>
-              <span fg={theme.warning}>{rpad(fmt(d.output), 10)}</span>
-              <span fg={theme.textMuted}>{rpad(fmt(d.cache), 10)}</span>
-              <span fg={theme.accent}>{rpad(fmtCost(d.cost), 10)}</span>
-              <span fg={theme.text}>{rpad(String(d.sessions), 8)}</span>
-            </text>
-          </box>
-        ))}
-
-        <box height={1} />
-
-        {/* Model breakdown */}
-        <text fg={theme.info}>{"  Model Breakdown"}</text>
-        <box height={1}>
-          <text>
-            <span fg={theme.textMuted}>
-              {pad("Model", 32) + rpad("Tokens", 12) + rpad("Cost", 10) + rpad("Sessions", 8)}
-            </span>
-          </text>
+        <box flexDirection="column" width="100%">
+          {data.byModel.length === 0
+            ? <box key="none" height={1}><text fg={theme.textMuted}>no sessions in range</text></box>
+            : data.byModel.map(m => (
+                <box key={m.model} height={1} flexDirection="row">
+                  <box width={28} flexShrink={0}>
+                    <text fg={theme.text}>{trunc(m.model, 27)}</text>
+                  </box>
+                  <box width={22} flexShrink={0}>
+                    <text fg={theme.primary}>{bar(m.tokens, peak)}</text>
+                  </box>
+                  <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+                    <text>
+                      <span fg={theme.text}>{fmt(m.tokens).padStart(8)}</span>
+                      <span fg={theme.accent}>{cost(m.cost).padStart(9)}</span>
+                      <span fg={theme.textMuted}>{`  ${m.sessions} sess`}</span>
+                    </text>
+                  </box>
+                </box>
+              ))}
         </box>
-        {data.models.map((m: ModelRow) => (
-          <box key={m.model} height={1}>
-            <text>
-              <span fg={theme.text}>{pad(truncate(m.model, 30), 32)}</span>
-              <span fg={theme.success}>{rpad(fmt(m.input + m.output), 12)}</span>
-              <span fg={theme.accent}>{rpad(fmtCost(m.cost), 10)}</span>
-              <span fg={theme.text}>{rpad(String(m.sessions), 8)}</span>
-            </text>
-          </box>
-        ))}
       </scrollbox>
-    </box>
-  );
-});
+
+      <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>{`By day (${data.byDay.length})`}</text></box>
+      <box height={1}>
+        <text fg={theme.success}>{spark(data.byDay.map(d => d.tokens))}</text>
+      </box>
+      <box height={1}>
+        <text fg={theme.textMuted}>
+          {data.byDay.length > 0
+            ? `${data.byDay[0].date} → ${data.byDay[data.byDay.length - 1].date}`
+            : "—"}
+        </text>
+      </box>
+    </TabShell>
+  )
+})
