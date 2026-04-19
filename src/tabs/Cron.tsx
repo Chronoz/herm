@@ -4,6 +4,7 @@ import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
+import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { openTextPrompt } from "../dialogs/text-prompt";
@@ -116,32 +117,6 @@ const DetailPanel = memo((props: { job: CronJob }) => {
   );
 });
 
-// ─── Confirm Dialog ──────────────────────────────────────────────────
-
-const Confirm = (props: {
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) => {
-  const theme = useTheme().theme;
-
-  useKeyboard((key) => {
-    if (key.name === "y") props.onConfirm();
-    if (key.name === "n" || key.name === "escape") props.onCancel();
-  });
-
-  return (
-    <box flexDirection="column" width={50}>
-      <box height={1}><text fg={theme.warning}><strong>{props.title}</strong></text></box>
-      <box height={1} />
-      <box minHeight={1}><text wrapMode="word" fg={theme.text}>{props.message}</text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>[y] delete   [n] cancel</text></box>
-    </box>
-  );
-};
-
 // ─── Main Component ──────────────────────────────────────────────────
 
 export const Cron = memo((props: { focused?: boolean }) => {
@@ -189,26 +164,22 @@ export const Cron = memo((props: { focused?: boolean }) => {
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
   }, [gw, toast, load]);
 
-  const remove = useCallback(() => {
+  const remove = useCallback(async () => {
     const j = live.current.jobs[live.current.sel];
     if (!j) return;
-    dialog.replace(
-      <Confirm
-        title="Delete Job?"
-        message={`Delete "${j.name || j.id}"? This cannot be undone.`}
-        onConfirm={() => {
-          dialog.clear();
-          gw.request("cron.manage", { action: "remove", name: j.id })
-            .then(() => {
-              toast.show({ variant: "success", message: "Deleted" });
-              setSel(s => Math.max(0, Math.min(s, live.current.jobs.length - 2)));
-              load();
-            })
-            .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
-        }}
-        onCancel={() => dialog.clear()}
-      />,
-    );
+    const ok = await openConfirm(dialog, {
+      title: "Delete Job?",
+      body: `Delete "${j.name || j.id}"? This cannot be undone.`,
+      yes: "delete", danger: true,
+    });
+    if (!ok) return;
+    gw.request("cron.manage", { action: "remove", name: j.id })
+      .then(() => {
+        toast.show({ variant: "success", message: "Deleted" });
+        setSel(s => Math.max(0, Math.min(s, live.current.jobs.length - 2)));
+        load();
+      })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
   }, [gw, dialog, toast, load]);
 
   useKeyboard((key) => {

@@ -8,6 +8,7 @@ import { useTheme } from "../theme";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { trunc } from "../ui/fmt";
+import { openConfirm } from "../dialogs/confirm";
 
 type Hit = { name: string; description?: string }
 
@@ -99,25 +100,6 @@ const DetailPanel = memo((props: { skill: SkillInfo }) => {
   );
 });
 
-// ─── Confirm Install ─────────────────────────────────────────────────
-
-const Confirm = (props: { name: string; onYes: () => void; onNo: () => void }) => {
-  const theme = useTheme().theme;
-  useKeyboard((key) => {
-    if (key.name === "y" || key.name === "return") return props.onYes();
-    if (key.name === "n" || key.name === "escape") return props.onNo();
-  });
-  return (
-    <box flexDirection="column" width={50}>
-      <box height={1}><text fg={theme.primary}><strong>Install skill?</strong></text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.accent}>{trunc(props.name, 46)}</text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>[y] install  ·  [n] cancel</text></box>
-    </box>
-  );
-};
-
 // ─── Empty State ─────────────────────────────────────────────────────
 
 const EmptyState = memo((props: { searching: boolean }) => {
@@ -203,23 +185,21 @@ export const Skills = memo((props: { focused?: boolean }) => {
     setSearching(false); setQuery(""); setHits([]); setSelected(0);
   }, []);
 
-  const install = useCallback((name: string) => {
-    dialog.replace(
-      <Confirm name={name}
-        onYes={() => {
-          dialog.clear();
-          gw.request("skills.manage", { action: "install", query: name })
-            .then(() => {
-              toast.show({ variant: "success", message: `Installed ${name}` });
-              exit();
-              load();
-            })
-            .catch((e: Error) =>
-              toast.show({ variant: "error", message: `Install failed: ${e.message}` }));
-        }}
-        onNo={() => dialog.clear()}
-      />,
-    );
+  const install = useCallback(async (name: string) => {
+    const ok = await openConfirm(dialog, {
+      title: "Install skill?",
+      body: name,
+      yes: "install",
+    });
+    if (!ok) return;
+    gw.request("skills.manage", { action: "install", query: name })
+      .then(() => {
+        toast.show({ variant: "success", message: `Installed ${name}` });
+        exit();
+        load();
+      })
+      .catch((e: Error) =>
+        toast.show({ variant: "error", message: `Install failed: ${e.message}` }));
   }, [dialog, gw, toast, exit, load]);
 
   const inspect = useCallback((name: string) => {

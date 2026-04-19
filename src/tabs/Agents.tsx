@@ -4,6 +4,7 @@ import { useGateway } from "../app/gateway"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
+import { openConfirm } from "../dialogs/confirm"
 import { TabShell } from "../ui/shell"
 import { KV } from "../ui/kv"
 import { dur } from "../ui/fmt"
@@ -146,25 +147,6 @@ const CreateProfile = (props: {
   )
 }
 
-const ConfirmDeleteProfile = (props: { name: string; onConfirm: () => void; onCancel: () => void }) => {
-  const theme = useTheme().theme
-  useKeyboard((key) => {
-    if (key.name === "y") props.onConfirm()
-    if (key.name === "n" || key.name === "escape") props.onCancel()
-  })
-  return (
-    <box flexDirection="column" width={54}>
-      <box height={1}><text fg={theme.warning}><strong>Delete Profile?</strong></text></box>
-      <box height={1} />
-      <box minHeight={1}><text wrapMode="word" fg={theme.text}>
-        {`'${props.name}' — config, env, memory, skills, and sessions will be removed. This cannot be undone.`}
-      </text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>[y] delete   [n] cancel</text></box>
-    </box>
-  )
-}
-
 // ─── Running pane ────────────────────────────────────────────────────
 
 const ProcRow = memo((props: {
@@ -243,26 +225,24 @@ export const Agents = memo((props: Props) => {
   const pHover = useCallback((i: number) => setPSel(i), [])
   const rHover = useCallback((i: number) => setRSel(i), [])
 
-  const pDelete = useCallback((i: number) => {
+  const pDelete = useCallback(async (i: number) => {
     const p = live.current.profiles[i]
     if (!p || p.is_default || p.is_active) return
-    dialog.replace(
-      <ConfirmDeleteProfile name={p.name}
-        onConfirm={() => {
-          dialog.clear()
-          gw.request<{ stdout: string; stderr: string; code: number }>(
-            "shell.exec", { command: `hermes profile delete ${p.name} -y` },
-          )
-            .then(r => {
-              if (r.code !== 0) throw new Error((r.stderr || r.stdout || "exit " + r.code).trim())
-              toast.show({ variant: "success", message: `Deleted '${p.name}'` })
-              load()
-            })
-            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-        }}
-        onCancel={() => dialog.clear()}
-      />,
+    const ok = await openConfirm(dialog, {
+      title: "Delete Profile?",
+      body: `'${p.name}' — config, env, memory, skills, and sessions will be removed. This cannot be undone.`,
+      yes: "delete", danger: true,
+    })
+    if (!ok) return
+    gw.request<{ stdout: string; stderr: string; code: number }>(
+      "shell.exec", { command: `hermes profile delete ${p.name} -y` },
     )
+      .then(r => {
+        if (r.code !== 0) throw new Error((r.stderr || r.stdout || "exit " + r.code).trim())
+        toast.show({ variant: "success", message: `Deleted '${p.name}'` })
+        load()
+      })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
   }, [gw, dialog, toast, load])
 
   const rKill = useCallback((i: number) => {

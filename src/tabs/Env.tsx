@@ -8,6 +8,7 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { openTextPrompt } from "../dialogs/text-prompt"
+import { openConfirm } from "../dialogs/confirm"
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -16,25 +17,6 @@ type Row =
   | { type: "var"; key: string; value: string | undefined }
 
 const mask = (val: string) => "•".repeat(Math.min(val.length, 12))
-
-// ─── Confirm Dialog ───────────────────────────────────────────────
-
-const Confirm = (props: { name: string; onYes: () => void; onNo: () => void }) => {
-  const theme = useTheme().theme
-  useKeyboard((key) => {
-    if (key.raw === "y" || key.raw === "Y") return props.onYes()
-    if (key.name === "escape" || key.raw === "n" || key.raw === "N") return props.onNo()
-  })
-  return (
-    <box flexDirection="column" width={50}>
-      <box height={1}><text fg={theme.warning}><strong>Delete Variable</strong></text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.text}>{`Remove ${props.name} from .env?`}</text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>y confirm  n/Esc cancel</text></box>
-    </box>
-  )
-}
 
 // ─── Var Row ──────────────────────────────────────────────────────
 
@@ -125,19 +107,16 @@ export const Env = memo((props: { focused?: boolean }) => {
     toast.show({ variant: "success", message: `${key} added` })
   }, [dialog, load, toast])
 
-  const del = useCallback((key: string) => {
-    dialog.replace(
-      <Confirm
-        name={key}
-        onYes={async () => {
-          dialog.clear()
-          await removeEnvVar(key)
-          await load()
-          toast.show({ variant: "success", message: `${key} removed` })
-        }}
-        onNo={() => dialog.clear()}
-      />,
-    )
+  const del = useCallback(async (key: string) => {
+    const ok = await openConfirm(dialog, {
+      title: "Delete Variable",
+      body: `Remove ${key} from .env?`,
+      yes: "delete", danger: true,
+    })
+    if (!ok) return
+    await removeEnvVar(key)
+    await load()
+    toast.show({ variant: "success", message: `${key} removed` })
   }, [dialog, load, toast])
 
   useKeyboard((key) => {

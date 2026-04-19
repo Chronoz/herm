@@ -37,6 +37,15 @@ export function useAppKeys(o: Opts) {
       return
     }
 
+    if (key.ctrl && key.name === "z") {
+      renderer.suspend()
+      process.kill(process.pid, "SIGTSTP")
+      // Resumes on SIGCONT; OpenTUI's suspend/resume cycle re-enables
+      // raw mode and redraws on the next frame.
+      process.once("SIGCONT", () => renderer.resume())
+      return
+    }
+
     if (key.ctrl && key.name === "left") {
       o.setTab(t => Math.max(0, t - 1))
       o.setFocusRegion("input")
