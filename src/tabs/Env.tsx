@@ -10,6 +10,7 @@ import {
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
+import { TabShell } from "../ui/shell";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -280,31 +281,15 @@ export const Env = memo((props: { focused?: boolean }) => {
   });
 
   return (
-    <box
-      flexDirection="column"
-      flexGrow={1}
-      border
-      borderColor={theme.border}
-      backgroundColor={theme.backgroundPanel}
-      padding={1}
+    <TabShell
+      title={searching ? "API Keys (searching)" : "API Keys / Env"}
+      hint={searching
+        ? "↑↓ navigate  Enter edit  Esc cancel"
+        : "↑↓ navigate  Enter edit/toggle  d clear  / search  r refresh"}
     >
-      {/* Header */}
-      <text>
-        <span fg={theme.primary}>
-          <strong>
-            {searching ? `API Keys (searching)` : "API Keys / Env"}
-          </strong>
-        </span>
-        <span fg={theme.textMuted}>
-          {searching
-            ? "  ↑↓ navigate  Enter edit  Esc cancel"
-            : "  ↑↓ navigate  Enter edit/toggle  d clear  / search  r refresh"}
-        </span>
-      </text>
-
       {/* Search bar */}
       {searching ? (
-        <box>
+        <box height={1}>
           <text>
             <span fg={theme.accent}>{"/ "}</span>
             <span fg={theme.text}>{query}</span>
@@ -314,30 +299,26 @@ export const Env = memo((props: { focused?: boolean }) => {
       ) : null}
 
       {/* Column headers */}
-      <box marginTop={1}>
-        <text>
-          <span fg={theme.textMuted}>
-            {"  "}{"Name".padEnd(28)}{"Status".padEnd(8)}{"Value"}
-          </span>
+      <box height={1}>
+        <text fg={theme.textMuted}>
+          {"  "}{"Name".padEnd(28)}{"Status".padEnd(8)}{"Value"}
         </text>
       </box>
-      <text>
-        <span fg={theme.borderSubtle}>
+      <box height={1}>
+        <text fg={theme.borderSubtle}>
           {"  "}{"─".repeat(26)}{"  "}{"─".repeat(6)}{"  "}{"─".repeat(30)}
-        </span>
-      </text>
+        </text>
+      </box>
 
       {/* List */}
       {count === 0 ? (
-        <box flexGrow={1} padding={2}>
-          <text>
-            <span fg={theme.textMuted}>
-              {searching ? "No matching variables" : "No variables configured"}
-            </span>
+        <box key="empty" flexGrow={1} padding={2}>
+          <text fg={theme.textMuted}>
+            {searching ? "No matching variables" : "No variables configured"}
           </text>
         </box>
       ) : (
-        <scrollbox scrollY>
+        <scrollbox key="list" scrollY flexGrow={1}>
           {rows.map((row, i) => {
             if (row.type === "header") {
               return (
@@ -347,10 +328,8 @@ export const Env = memo((props: { focused?: boolean }) => {
                   backgroundColor={i === selected ? theme.backgroundElement : undefined}
                   onMouseDown={() => setSelected(i)}
                 >
-                  <text>
-                    <span fg={theme.info}>
-                      <strong>{`${row.collapsed ? "▸" : "▾"} ${row.category}`}</strong>
-                    </span>
+                  <text fg={theme.info}>
+                    <strong>{`${row.collapsed ? "▸" : "▾"} ${row.category}`}</strong>
                   </text>
                 </box>
               );
@@ -368,6 +347,6 @@ export const Env = memo((props: { focused?: boolean }) => {
           })}
         </scrollbox>
       )}
-    </box>
+    </TabShell>
   );
 });
