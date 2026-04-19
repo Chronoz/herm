@@ -97,10 +97,11 @@ Remaining:
       → deferred: image.attach event isn't wired into herm yet.
 - [x] B1.5 **/title** native — session.title RPC exists. Local slash: bare
       → prompt dialog; with arg → set. Reflect in Sessions tab + status bar.
-- [ ] B1.6 **Paste-to-file** — `paste.collapse` RPC exists but herm never
+- [x] B1.6 **Paste-to-file** — `paste.collapse` RPC exists but herm never
       calls it. On bracketed paste ≥5 lines, POST to gateway, insert
       `[Pasted #N: L lines → path]` placeholder. Matches v1 CLI convention.
-      → deferred: no app-level paste handler yet (needs onPaste on root box).
+      → impl: onPaste on <input> (fires via _pasteListener when focused);
+        2-4 lines flatten \n→space inline, ≥5 → paste.collapse placeholder.
 
 ═══════════════════════════════════════════════════════════════════
 ## P2 — Visual language consolidation              [worktree: visual-lang]
@@ -161,7 +162,9 @@ Reference: `~/Dev/clones/opencode/.../tui/routes/session/` +
       Pattern is in opentui-component-patterns skill.
 - [ ] D3.8 **Tips on empty transcript** — import `hermes_cli/tips.py` list
       via a one-time gateway RPC `tips.list`, rotate one on empty chat.
-- [ ] (ad hoc added by kaio) click on your message and revert to that state
+- [x] (ad hoc added by kaio) click on your message and revert to that state
+      → impl: hover shows 'click to rewind ↶'; click → openConfirm →
+        N× session.undo → session.history reload → composer seeded.
 
 ═══════════════════════════════════════════════════════════════════
 ## P4 — #12130 Tier-2 overlays herm already has as tabs — finish them
@@ -205,14 +208,18 @@ tabs themselves are thin. Bring each to web-ui parity using its RPC.
 ═══════════════════════════════════════════════════════════════════
 - [ ] F5.1 `/status` `/profile` `/usage` `/platforms` as local slashes →
       each opens a small info dialog (reuse KV primitive). RPCs exist.
-- [ ] F5.2 `/save` `/history` native — session.save / session.history RPCs.
+- [~] F5.2 `/save` `/history` native — session.save / session.history RPCs.
+      → /save done (toast file path). /history used by rewind() for
+        authoritative reload; no standalone viewer yet.
 - [~] F5.3 `/rollback` `/snapshot` `/browser` `/plugins` `/insights` `/debug`
       slashes → jump to the relevant tab (setTab), or dialog if no tab.
       → impl: TAB_SLASH intercepts any gateway slash matching a tab name
         (lowercase); /insights→analytics alias. /rollback is a local dialog
         (E4.1). /snapshot /browser /plugins /debug still fall through to
         slash.exec (no tab/dialog for them).
-- [ ] F5.4 Ctrl+Z suspend (process.kill SIGTSTP self), Ctrl+V paste fallback.
+- [~] F5.4 Ctrl+Z suspend (process.kill SIGTSTP self), Ctrl+V paste fallback.
+      → Ctrl+Z done (renderer.suspend + SIGTSTP; resume on SIGCONT).
+        Ctrl+V fallback not done (bracketed paste covers it).
 - [ ] F5.5 Rate-limit line in status bar when session.usage returns limits.
 - [x] F5.6 Profile name in sidebar Identity when non-default.
 
@@ -264,11 +271,13 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
   `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-Tally: 27 done, 5 partial, 13 open. Tests 61→112, 5× stable, tsc clean.
+Tally: 31 done, 5 partial, 9 open. Tests 61→116, 10× stable, tsc clean.
 
 Tree state:
-  dev                      f6e7082  (P0+P1+P2+P3.1-4+P6 merged, 91 tests)
-  overnight/p4-main        7a0695f  ~/Dev/herm-wt (P4+F5.3/6, 112 tests,
+  dev                      75b87bb  (through P4 + slash-fix, 113 tests)
+  overnight/p5             89ee740  ~/Dev/herm-wt (B1.6, D3.rewind,
+                                     F5.2-save, F5.4, openConfirm
+                                     consolidation; 116 tests,
                                      awaiting review → dev)
 
 Bugs fixed along the way:
@@ -277,14 +286,17 @@ Bugs fixed along the way:
   f6e7082  SystemMessage clipped to height={1} (chat-polish regression)
   011ade2  DialogProvider Esc races component Esc (fixed via replace()+setState
            in same batch; should go into opentui-component-patterns skill)
+  75b87bb  commands.catalog parsed against wrong wire shape (slash-prefixed
+           names, {name,pairs} categories) → only local commands filtered;
+           composer popover overdrawn by remounted tab (per-parent zIndex)
 
 Open (prioritized):
   1. C2.4 tail — Sessions/Config/Memory/Context → TabShell
   2. C2.2 DataList extraction from Sessions
   3. D3.5-8 — sticky tracker, queue UI, Ctrl+G editor, tips
-  4. D3.ad-hoc — click user msg → revert to that state
-  5. B1.4/B1.6 — attachment chips, paste-to-file (need onPaste plumbing)
-  6. F5.1/2/4/5 — info dialogs, /save /history, Ctrl+Z, rate-limit line
+  4. B1.4 — attachment chips (image.attach event not yet wired)
+  5. F5.1/5 — info dialogs, rate-limit line
+  6. F5.2 /history — needs a transcript viewer dialog
   7. E4.6 — Config validation/diff-preview
   8. A0.2 — subagent rows in Running pane (blocked on gateway)
   9. G6.5 — eikon preview app parser alignment
