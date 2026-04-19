@@ -7,6 +7,8 @@ import {
 } from "../utils/hermes-home"
 import { snapshot } from "../utils/cache"
 import { useTheme, type Theme } from "../theme"
+import { TabShell } from "../ui/shell"
+import { KVBlock } from "../ui/kv"
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -43,19 +45,17 @@ export const Memory = memo(() => {
   const theme = useTheme().theme
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [providers, setProviders] = useState<MemoryProviderInfo[]>([])
-  const [selected, setSelected] = useState(0)
+  const [sel, setSel] = useState(0)
 
   const refresh = useCallback(async () => {
     const snap = await snapshot()
     setHome(snap)
     const active = snap.config?.memory?.provider || ""
     const found = await readMemoryProviders(active)
-    const merged: MemoryProviderInfo[] = ALL.map(name => {
-      const existing = found.find(p => p.name === name)
-      if (existing) return existing
-      return { name, active: name === "builtin" || name === active, config: {} }
-    })
-    setProviders(merged)
+    setProviders(ALL.map(name =>
+      found.find(p => p.name === name)
+        ?? { name, active: name === "builtin" || name === active, config: {} },
+    ))
   }, [])
 
   useEffect(() => {
@@ -65,74 +65,50 @@ export const Memory = memo(() => {
   }, [refresh])
 
   const cfg = home?.config?.memory
-  const current = providers[selected]
+  const cur = providers[sel]
   const active = cfg?.provider || ""
+  const on = !!cur && (cur.name === "builtin" || cur.name === active)
 
   return (
-    <box flexGrow={1} flexDirection="row" gap={1} padding={1}>
-      {/* Left: Provider list */}
-      <box
-        flexDirection="column"
-        width={40}
-        backgroundColor={theme.backgroundPanel}
-        border
-        borderColor={theme.borderSubtle}
-        padding={1}
-      >
-        <box height={1}>
-          <text fg={theme.primary}>
-            <strong>Memory Providers</strong>
-          </text>
-        </box>
-        <box height={1} />
+    <box flexDirection="row" flexGrow={1}>
+      <TabShell title="Memory Providers" hint="click to inspect" grow={1}>
         <scrollbox scrollY flexGrow={1}>
           {providers.map((p, i) => {
-            const sel = i === selected
-            const on = p.name === "builtin" || p.name === active
+            const pOn = p.name === "builtin" || p.name === active
             const has = Object.keys(p.config).length > 0
-            const dot = on ? "●" : has ? "◐" : "○"
-            const color = on ? theme.success : has ? theme.warning : theme.textMuted
-            const tag = on ? "active" : has ? "configured" : ""
+            const dot = pOn ? "●" : has ? "◐" : "○"
+            const fg = pOn ? theme.success : has ? theme.warning : theme.textMuted
+            const tag = pOn ? "active" : has ? "configured" : ""
             return (
               <box
                 key={p.name}
                 height={1}
-                backgroundColor={sel ? theme.backgroundElement : undefined}
-                onMouseDown={() => setSelected(i)}
-                onMouseOver={() => setSelected(i)}
+                backgroundColor={i === sel ? theme.backgroundElement : undefined}
+                onMouseDown={() => setSel(i)}
+                onMouseOver={() => setSel(i)}
               >
                 <text>
-                  <span fg={color}>{dot} </span>
-                  <span fg={sel ? theme.accent : theme.text}>{p.name}</span>
-                  {tag ? <span fg={color}> ({tag})</span> : null}
+                  <span fg={fg}>{dot} </span>
+                  <span fg={i === sel ? theme.accent : theme.text}>{p.name}</span>
+                  {tag ? <span fg={fg}> ({tag})</span> : null}
                 </text>
               </box>
             )
           })}
         </scrollbox>
-      </box>
+      </TabShell>
 
-      {/* Right: Selected provider detail */}
-      <box
-        flexDirection="column"
-        flexGrow={1}
-        backgroundColor={theme.backgroundPanel}
-        border
-        borderColor={theme.borderSubtle}
-        padding={1}
+      <TabShell
+        title={cur?.name ?? "Provider"}
+        hint={on ? "● active" : "○ inactive"}
+        grow={2}
       >
-        {current ? (
-          <ProviderDetail
-            provider={current}
-            active={active}
-            cfg={cfg}
-            home={home}
-            theme={theme}
-          />
+        {cur ? (
+          <ProviderDetail provider={cur} active={active} cfg={cfg} home={home} />
         ) : (
           <text fg={theme.textMuted}>Select a provider</text>
         )}
-      </box>
+      </TabShell>
     </box>
   )
 })
@@ -149,49 +125,60 @@ type MemoryCfg = {
   flush_min_turns: number
 }
 
-type DetailProps = {
+const ProviderDetail = memo((props: {
   provider: MemoryProviderInfo
   active: string
   cfg: MemoryCfg | undefined
   home: HermesHomeSnapshot | null
-  theme: Theme
-}
-
-const ProviderDetail = memo(({ provider, active, cfg, home, theme }: DetailProps) => {
-  const on = provider.name === "builtin" || provider.name === active
+}) => {
+  const theme = useTheme().theme
+  const p = props.provider
+  const on = p.name === "builtin" || p.name === props.active
 
   return (
     <scrollbox scrollY flexGrow={1}>
       <box flexDirection="column">
-        {/* Header */}
-        <box height={1}>
-          <text>
-            <span fg={theme.primary}><strong>{provider.name}</strong></span>
-            {on
-              ? <span fg={theme.success}> ● active</span>
-              : <span fg={theme.textMuted}> ○ inactive</span>}
-          </text>
-        </box>
-        <box height={1} />
-        <box height={1}>
-          <text fg={theme.textMuted}>{DESC[provider.name] || "Memory provider"}</text>
+        <box minHeight={1}>
+          <text wrapMode="word" fg={theme.textMuted}>{DESC[p.name] || "Memory provider"}</text>
         </box>
         <box height={1} />
 
-        {/* Builtin-specific: capacity bars */}
-        {provider.name === "builtin" ? (
-          <BuiltinDetail cfg={cfg} home={home} theme={theme} />
+        {p.name === "builtin" ? (
+          <box flexDirection="column">
+            {props.cfg ? (
+              <>
+                <KVBlock rows={[
+                  ["Notes", props.cfg.memory_enabled ? "enabled" : "disabled",
+                    props.cfg.memory_enabled ? theme.success : theme.error],
+                  ["Profile", props.cfg.user_profile_enabled ? "enabled" : "disabled",
+                    props.cfg.user_profile_enabled ? theme.success : theme.error],
+                ]} />
+                <box height={1} />
+              </>
+            ) : null}
+            <CapacityBar title="Notes (MEMORY.md)" info={props.home?.memory ?? null} />
+            <box height={1} />
+            <CapacityBar title="Profile (USER.md)" info={props.home?.userProfile ?? null} />
+          </box>
         ) : null}
 
-        {/* External provider config from local files */}
-        {provider.name !== "builtin" && on && cfg ? (
-          <ExternalActiveDetail cfg={cfg} theme={theme} />
+        {p.name !== "builtin" && on && props.cfg ? (
+          <>
+            <box height={1}><text fg={theme.accent}><strong>Agent Settings</strong></text></box>
+            <KVBlock rows={[
+              ["Nudge", `every ${props.cfg.nudge_interval} turns`],
+              ["Flush", `after ${props.cfg.flush_min_turns} turns`],
+            ]} />
+            <box height={1} />
+          </>
         ) : null}
 
-        {/* Config entries from JSON */}
-        {Object.keys(provider.config).length > 0 ? (
-          <ConfigSection config={provider.config} theme={theme} />
-        ) : provider.name !== "builtin" ? (
+        {Object.keys(p.config).length > 0 ? (
+          <>
+            <box height={1}><text fg={theme.accent}><strong>Local Configuration</strong></text></box>
+            <KVBlock rows={Object.entries(p.config).map(([k, v]) => [k, String(v)] as [string, string])} />
+          </>
+        ) : p.name !== "builtin" ? (
           <box height={1} marginTop={1}>
             <text fg={theme.textMuted}>No local config found. Run `hermes memory setup` to configure.</text>
           </box>
@@ -201,108 +188,26 @@ const ProviderDetail = memo(({ provider, active, cfg, home, theme }: DetailProps
   )
 })
 
-// ─── Builtin Detail ───────────────────────────────────────────────────
-
-type BuiltinProps = {
-  cfg: MemoryCfg | undefined
-  home: HermesHomeSnapshot | null
-  theme: Theme
-}
-
-const BuiltinDetail = memo(({ cfg, home, theme }: BuiltinProps) => (
-  <box flexDirection="column">
-    {cfg ? (
-      <>
-        <box height={1}>
-          <text>
-            <span fg={theme.textMuted}>Notes: </span>
-            <span fg={cfg.memory_enabled ? theme.success : theme.error}>{cfg.memory_enabled ? "enabled" : "disabled"}</span>
-            <span fg={theme.textMuted}> · Profile: </span>
-            <span fg={cfg.user_profile_enabled ? theme.success : theme.error}>{cfg.user_profile_enabled ? "enabled" : "disabled"}</span>
-          </text>
-        </box>
-        <box height={1} />
-      </>
-    ) : null}
-    <CapacityBar title="Notes (MEMORY.md)" info={home?.memory ?? null} theme={theme} />
-    <box height={1} />
-    <CapacityBar title="Profile (USER.md)" info={home?.userProfile ?? null} theme={theme} />
-  </box>
-))
-
-// ─── External Active Detail ───────────────────────────────────────────
-
-const ExternalActiveDetail = memo(({ cfg, theme }: { cfg: MemoryCfg; theme: Theme }) => (
-  <box flexDirection="column" marginBottom={1}>
-    <box height={1}>
-      <text fg={theme.accent}><strong>Agent Settings</strong></text>
-    </box>
-    <box height={1}>
-      <text>
-        <span fg={theme.textMuted}>Nudge interval: </span>
-        <span fg={theme.text}>every {cfg.nudge_interval} turns</span>
-      </text>
-    </box>
-    <box height={1}>
-      <text>
-        <span fg={theme.textMuted}>Flush threshold: </span>
-        <span fg={theme.text}>after {cfg.flush_min_turns} turns</span>
-      </text>
-    </box>
-    <box height={1} />
-  </box>
-))
-
-// ─── Config Section ───────────────────────────────────────────────────
-
-const ConfigSection = memo(({ config, theme }: { config: Record<string, string | number | boolean>; theme: Theme }) => (
-  <box flexDirection="column">
-    <box height={1}>
-      <text fg={theme.accent}><strong>Local Configuration</strong></text>
-    </box>
-    <box height={1} />
-    {Object.entries(config).map(([k, v]) => (
-      <box key={k} height={1}>
-        <text>
-          <span fg={theme.textMuted}>{k}: </span>
-          <span fg={theme.text}>{String(v)}</span>
-        </text>
-      </box>
-    ))}
-  </box>
-))
-
 // ─── Capacity Bar ─────────────────────────────────────────────────────
 
-type CapacityProps = {
-  title: string
-  info: MemoryFileInfo | null
-  theme: Theme
-}
-
-const CapacityBar = memo(({ title, info, theme }: CapacityProps) => {
-  if (!info) {
-    return (
-      <box height={1}>
-        <text fg={theme.textMuted}>{title}: unavailable</text>
-      </box>
-    )
+const CapacityBar = memo((props: { title: string; info: MemoryFileInfo | null }) => {
+  const theme = useTheme().theme
+  if (!props.info) {
+    return <box height={1}><text fg={theme.textMuted}>{props.title}: unavailable</text></box>
   }
-
-  const color = usageColor(info.usagePercent, theme)
-
+  const color = usageColor(props.info.usagePercent, theme)
   return (
     <box flexDirection="column">
       <box height={1}>
         <text>
-          <span fg={theme.text}>{title}</span>
-          <span fg={theme.textMuted}> · {info.entryCount} entries</span>
+          <span fg={theme.text}>{props.title}</span>
+          <span fg={theme.textMuted}> · {props.info.entryCount} entries</span>
         </text>
       </box>
       <box height={1}>
         <text>
-          <span fg={color}>{bar(info.usagePercent, 20)}</span>
-          <span fg={theme.textMuted}> {info.charCount}/{info.charLimit} ({info.usagePercent}%)</span>
+          <span fg={color}>{bar(props.info.usagePercent, 20)}</span>
+          <span fg={theme.textMuted}> {props.info.charCount}/{props.info.charLimit} ({props.info.usagePercent}%)</span>
         </text>
       </box>
     </box>
