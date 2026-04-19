@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
@@ -6,6 +6,7 @@ import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
+import { openTextPrompt } from "../dialogs/text-prompt";
 import { trunc, ago } from "../ui/fmt";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -65,23 +66,20 @@ const JobRow = memo((props: {
   const theme = useTheme().theme;
   const j = props.job;
   const bg = props.selected ? theme.backgroundElement : undefined;
-  const indicator = props.selected ? "▸ " : "  ";
-
-  const stateColor = j.state === "error" ? theme.error
-    : j.enabled ? theme.success : theme.warning;
-  const badge = j.state === "error" ? "ERR" : j.enabled ? "ACT" : "PAU";
+  const glyph = j.enabled ? "●" : "○";
 
   return (
     <box backgroundColor={bg} onMouseDown={props.onSelect} onMouseOver={props.onHover}>
       <text>
-        <span fg={props.selected ? theme.primary : theme.text}>{indicator}</span>
+        <span fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</span>
+        <span fg={j.enabled ? theme.success : theme.textMuted}>{glyph} </span>
         <span fg={props.selected ? theme.accent : theme.text}>
           {trunc(j.name || j.id, 20).padEnd(22)}
         </span>
-        <span fg={stateColor}>{` ${badge} `}</span>
         <span fg={theme.textMuted}>{(j.schedule?.display ?? j.schedule?.expr ?? "—").padEnd(18)}</span>
         <span fg={theme.textMuted}>{` last: ${rel(j.last_run).padEnd(10)}`}</span>
         <span fg={theme.textMuted}>{` next: ${rel(j.next_run).padEnd(10)}`}</span>
+        {j.state === "error" ? <span fg={theme.error}>{"  ERR"}</span> : null}
       </text>
     </box>
   );
@@ -135,69 +133,11 @@ const Confirm = (props: {
 
   return (
     <box flexDirection="column" width={50}>
-      <text><span fg={theme.warning}><strong>{props.title}</strong></span></text>
-      <text> </text>
-      <text wrapMode="word"><span fg={theme.text}>{props.message}</span></text>
-      <text> </text>
-      <text><span fg={theme.textMuted}>{"  [y] Confirm    [n] Cancel"}</span></text>
-    </box>
-  );
-};
-
-// ─── Create Dialog ───────────────────────────────────────────────────
-
-const CreateDialog = (props: {
-  onCreate: (name: string, prompt: string, schedule: string, deliver: string) => void;
-  onCancel: () => void;
-}) => {
-  const theme = useTheme().theme;
-  const [field, setField] = useState(0);
-  const [name, setName] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [schedule, setSchedule] = useState("");
-  const [deliver, setDeliver] = useState("local");
-
-  const fields = [
-    { label: "Name", value: name, set: setName },
-    { label: "Schedule", value: schedule, set: setSchedule },
-    { label: "Deliver", value: deliver, set: setDeliver },
-    { label: "Prompt", value: prompt, set: setPrompt },
-  ];
-
-  useKeyboard((key) => {
-    if (key.name === "escape") { props.onCancel(); return; }
-    if (key.name === "tab") { setField(f => (f + 1) % 4); return; }
-    if (key.name === "return" && prompt && schedule) {
-      props.onCreate(name, prompt, schedule, deliver);
-      return;
-    }
-    if (key.name === "backspace") {
-      fields[field].set(v => v.slice(0, -1));
-      return;
-    }
-    if (key.raw && key.raw.length === 1 && key.raw >= " ") {
-      fields[field].set(v => v + key.raw);
-    }
-  });
-
-  return (
-    <box flexDirection="column" width={60}>
-      <text><span fg={theme.primary}><strong>New Cron Job</strong></span></text>
-      <text> </text>
-      {fields.map((f, i) => (
-        <box key={f.label}>
-          <text>
-            <span fg={i === field ? theme.accent : theme.textMuted}>
-              {i === field ? "▸ " : "  "}
-            </span>
-            <span fg={theme.text}>{`${f.label.padEnd(10)}`}</span>
-            <span fg={theme.text}>{f.value}</span>
-            {i === field ? <span fg={theme.accent}>█</span> : null}
-          </text>
-        </box>
-      ))}
-      <text> </text>
-      <text><span fg={theme.textMuted}>{"  Tab: next field  Enter: create  Esc: cancel"}</span></text>
+      <box height={1}><text fg={theme.warning}><strong>{props.title}</strong></text></box>
+      <box height={1} />
+      <box minHeight={1}><text wrapMode="word" fg={theme.text}>{props.message}</text></box>
+      <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>[y] delete   [n] cancel</text></box>
     </box>
   );
 };
@@ -210,8 +150,11 @@ export const Cron = memo((props: { focused?: boolean }) => {
   const dialog = useDialog();
   const toast = useToast();
   const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [selected, setSelected] = useState(0);
+  const [sel, setSel] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+
+  const live = useRef({ jobs, sel });
+  live.current = { jobs, sel };
 
   const load = useCallback(() => {
     gw.request<{ jobs?: RawJob[] }>("cron.manage", { action: "list" })
@@ -221,80 +164,69 @@ export const Cron = memo((props: { focused?: boolean }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const current = jobs[selected] ?? null;
+  // ── Actions (stable via live ref) ─────────────────────────────────
+
+  const create = useCallback(async () => {
+    const schedule = await openTextPrompt(dialog, {
+      title: "New Cron Job", label: "Schedule (cron expr or 'every 30m')",
+    });
+    if (schedule === null) return;
+    const prompt = await openTextPrompt(dialog, {
+      title: "New Cron Job", label: "Prompt",
+    });
+    if (prompt === null) return;
+    gw.request("cron.manage", { action: "add", name: "", schedule, prompt })
+      .then(() => { toast.show({ variant: "success", message: "Job created" }); load(); })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
+  }, [gw, dialog, toast, load]);
+
+  const toggle = useCallback(() => {
+    const j = live.current.jobs[live.current.sel];
+    if (!j) return;
+    const action = j.enabled ? "pause" : "resume";
+    gw.request("cron.manage", { action, name: j.id })
+      .then(() => { toast.show({ variant: "success", message: j.enabled ? "Paused" : "Resumed" }); load(); })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
+  }, [gw, toast, load]);
+
+  const remove = useCallback(() => {
+    const j = live.current.jobs[live.current.sel];
+    if (!j) return;
+    dialog.replace(
+      <Confirm
+        title="Delete Job?"
+        message={`Delete "${j.name || j.id}"? This cannot be undone.`}
+        onConfirm={() => {
+          dialog.clear();
+          gw.request("cron.manage", { action: "remove", name: j.id })
+            .then(() => {
+              toast.show({ variant: "success", message: "Deleted" });
+              setSel(s => Math.max(0, Math.min(s, live.current.jobs.length - 2)));
+              load();
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
+        }}
+        onCancel={() => dialog.clear()}
+      />,
+    );
+  }, [gw, dialog, toast, load]);
 
   useKeyboard((key) => {
-    if (!props.focused) return;
-    if (key.name === "up") { setSelected(s => Math.max(0, s - 1)); return; }
-    if (key.name === "down") { setSelected(s => Math.min(jobs.length - 1, s + 1)); return; }
-    if (key.name === "r") { load(); return; }
-
-    if (key.raw === "n") {
-      dialog.replace(
-        <CreateDialog
-          onCreate={(name, prompt, schedule, deliver) => {
-            dialog.clear();
-            gw.request("cron.manage", { action: "add", name, prompt, schedule, deliver })
-              .then(() => { toast.show({ variant: "success", message: "Job created" }); load(); })
-              .catch(() => toast.show({ variant: "error", message: "Failed to create job" }));
-          }}
-          onCancel={() => dialog.clear()}
-        />,
-      );
-      return;
-    }
-
-    if (key.raw === "p" && current) {
-      const act = current.enabled ? "pause" : "resume";
-      gw.request("cron.manage", { action: act, name: current.id })
-        .then(() => { toast.show({ variant: "success", message: current.enabled ? "Paused" : "Resumed" }); load(); })
-        .catch(() => toast.show({ variant: "error", message: "Failed" }));
-      return;
-    }
-
-    if (key.raw === "t" && current) {
-      dialog.replace(
-        <Confirm
-          title="Trigger Job?"
-          message={`Run "${current.name || current.id}" now?`}
-          onConfirm={() => {
-            dialog.clear();
-            gw.request("cron.manage", { action: "run", name: current.id })
-              .then(() => { toast.show({ variant: "success", message: "Triggered" }); load(); })
-              .catch(() => toast.show({ variant: "error", message: "Failed to trigger" }));
-          }}
-          onCancel={() => dialog.clear()}
-        />,
-      );
-      return;
-    }
-
-    if (key.raw === "d" && current) {
-      dialog.replace(
-        <Confirm
-          title="Delete Job?"
-          message={`Delete "${current.name || current.id}"?`}
-          onConfirm={() => {
-            dialog.clear();
-            gw.request("cron.manage", { action: "remove", name: current.id })
-              .then(() => {
-                toast.show({ variant: "success", message: "Deleted" });
-                setSelected(s => Math.min(s, jobs.length - 2));
-                load();
-              })
-              .catch(() => toast.show({ variant: "error", message: "Failed to delete" }));
-          }}
-          onCancel={() => dialog.clear()}
-        />,
-      );
-      return;
-    }
+    if (!props.focused || dialog.stack.length > 0) return;
+    if (key.name === "up") return setSel(s => Math.max(0, s - 1));
+    if (key.name === "down") return setSel(s => Math.min(jobs.length - 1, s + 1));
+    if (key.raw === "r") return load();
+    if (key.raw === "n") return void create();
+    if (key.name === "space") return toggle();
+    if (key.raw === "d" || key.name === "delete") return remove();
   });
+
+  const job = jobs[sel] ?? null;
 
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell title={`Cron Jobs (${jobs.length})`} error={err}
-                hint="↑↓ nav  n new  p pause  t trigger  d delete  r refresh">
+                hint="↑↓ nav  n new  Space pause/resume  d delete  r refresh">
         {jobs.length === 0 ? (
           <box key="empty" flexGrow={1}>
             <text fg={theme.textMuted}>No cron jobs. Press n to create one.</text>
@@ -305,16 +237,16 @@ export const Cron = memo((props: { focused?: boolean }) => {
               <JobRow
                 key={j.id}
                 job={j}
-                selected={i === selected}
-                onSelect={() => setSelected(i)}
-                onHover={() => setSelected(i)}
+                selected={i === sel}
+                onSelect={() => setSel(i)}
+                onHover={() => setSel(i)}
               />
             ))}
           </scrollbox>
         )}
       </TabShell>
 
-      {current ? <DetailPanel job={current} /> : null}
+      {job ? <DetailPanel job={job} /> : null}
     </box>
   );
 });
