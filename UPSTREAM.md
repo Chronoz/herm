@@ -35,3 +35,14 @@ no way to poll connection state after `reload.mcp`. Would want
 `ended_at` is NULL for ~80% of rows because tui_gateway never calls
 `SessionDB.end_session()`. Herm derives duration from
 `MAX(messages.timestamp)` instead.
+
+### `tips.list`
+Herm workaround: `src/utils/tips.ts` scrapes string literals out of
+`hermes_cli/tips.py` via `hermesAgentRoot()`. Brittle; breaks if the
+file moves or the list becomes non-literal.
+
+### `platforms.list` (or equivalent)
+`/platforms` falls through to `slash.exec` and renders raw CLI output
+as a system line. A structured `{name, configured, running}[]` would
+let it live in the same KV info-dialog family as /status /usage
+/profile (`src/dialogs/info.tsx`).

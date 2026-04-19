@@ -167,13 +167,12 @@ describe("app", () => {
 
     await act(async () => { await t.keys.typeText("/") })
     await until(t, () => t.frame().includes("/model"))
-    expect(t.frame()).toContain("/retry")
     expect(t.frame()).toContain("Configuration") // category header from pairs shape
 
     // filter by prefix — would fail if names still carried leading "/"
-    await act(async () => { await t.keys.typeText("mo") })
-    await until(t, () => !t.frame().includes("/retry"))
-    expect(t.frame()).toContain("/model")
+    await act(async () => { await t.keys.typeText("re") })
+    await until(t, () => !t.frame().includes("/model"))
+    expect(t.frame()).toContain("/retry")
     t.destroy()
   })
 
@@ -347,6 +346,59 @@ describe("app", () => {
     act(() => t.gw.push({ type: "message.complete", payload: { text: "r2", usage: { input: 1, output: 1, total: 2 } } }))
     await until(t, () => t.frame().includes("Ready"))
     expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
+    t.destroy()
+  })
+
+  test("/usage opens KV dialog populated from session.usage", async () => {
+    const gw = new MockGateway({
+      "session.usage": () => ({
+        model: "test-model", calls: 7, input: 1234, output: 567, total: 1801,
+        cache_read: 0, cache_write: 0, cost_usd: 0.0412, cost_status: "estimated",
+        context_used: 4200, context_max: 200_000, context_percent: 0.021,
+      }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/usage") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("API calls"))
+
+    const f = t.frame()
+    expect(f).toContain("Usage")
+    expect(f).toContain("7")          // calls
+    expect(f).toContain("1.2k")       // input fmt
+    expect(f).toContain("$0.04")      // cost
+    expect(f).toContain("2%")         // context percent
+    expect(f).toContain("estimated")  // cost_status note
+    expect(t.gw.last("slash.exec")).toBeUndefined() // intercepted locally
+
+    act(() => t.keys.pressEscape())
+    await until(t, () => !t.frame().includes("API calls"))
+    t.destroy()
+  })
+
+  test("/status dialog reads from cached SessionInfo", async () => {
+    const gw = new MockGateway()
+    const t = await mount({ gw })
+    act(() => gw.push({
+      type: "session.info",
+      payload: {
+        model: "test-model", session_id: "sid-abc", version: "9.9.9",
+        cwd: "/workspace", tools: { web: ["a", "b"], file: ["c"] }, skills: {},
+      },
+    }))
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/status") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Version"))
+
+    const f = t.frame()
+    expect(f).toContain("9.9.9")
+    expect(f).toContain("sid-abc")
+    expect(f).toContain("/workspace")
+    expect(f).toContain("3 in 2 toolsets")
     t.destroy()
   })
 

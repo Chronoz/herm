@@ -33,6 +33,7 @@ import { openEikonPicker } from "./dialogs/eikon-picker"
 import { openTextPrompt } from "./dialogs/text-prompt"
 import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
+import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
@@ -200,6 +201,9 @@ const AppInner = () => {
         case "eikon": pickEikon(); return
         case "title": editTitle(); return
         case "rollback": openRollback(dialog, gw, toast); return
+        case "status": openStatus(dialog, info, sid); return
+        case "usage": openUsage(dialog, gw); return
+        case "profile": openProfile(dialog); return
         case "save":
           gw.request<{ file: string }>("session.save")
             .then(r => toast.show({ variant: "success", message: `Saved → ${r.file}` }))
@@ -214,7 +218,7 @@ const AppInner = () => {
     gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
       .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, toast])
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, toast, info, sid])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback((text: string) => {
@@ -318,6 +322,12 @@ const AppInner = () => {
       onSelect: () => pickEikon() },
     { title: "Rollback", value: "rollback", description: "Browse & restore checkpoints", category: "Session",
       onSelect: () => openRollback(dialog, gw, toast) },
+    { title: "Status", value: "status", description: "Version · model · paths", category: "Info",
+      onSelect: () => openStatus(dialog, info, sid) },
+    { title: "Usage", value: "usage", description: "Tokens · context · cost", category: "Info",
+      onSelect: () => openUsage(dialog, gw) },
+    { title: "Profile", value: "profile", description: "Active profile details", category: "Info",
+      onSelect: () => openProfile(dialog) },
     { title: "New Session", value: "new-session", description: "Start a new chat session", category: "Session",
       onSelect: () => newSession() },
     { title: "Compress Session", value: "compress", description: "Compress conversation history", category: "Session",
@@ -326,7 +336,7 @@ const AppInner = () => {
       onSelect: () => session.undo() },
     { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
       onSelect: () => session.branch() },
-  ]), [cmd, dialog, themeCtx, session, gw, toast, newSession, pickEikon])
+  ]), [cmd, dialog, themeCtx, session, gw, toast, newSession, pickEikon, info, sid])
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({
