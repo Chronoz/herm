@@ -28,7 +28,7 @@ export type SlashCommand = {
  * Names of purely client-side commands — intercepted before gateway dispatch.
  * These are always treated as local regardless of what the gateway returns.
  */
-export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs", "eikon", "title", "rollback", "save", "status", "usage", "profile"])
+export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "logs", "eikon", "title", "rollback", "save", "history", "status", "usage", "profile"])
 
 /**
  * Descriptions for locally-handled commands. Used to render them in the
@@ -44,6 +44,7 @@ export const LOCAL_COMMANDS: ReadonlyArray<SlashCommand> = [
   { name: "eikon", description: "Pick sidebar avatar",        category: "Client", aliases: [],       argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "title", description: "Set session title",          category: "Client", aliases: [],       argsHint: "[text]", subcommands: [], source: "local", target: "local" },
   { name: "rollback", description: "Browse & restore checkpoints", category: "Client", aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },
+  { name: "history",  description: "Server-side transcript viewer", category: "Info",   aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "status",  description: "Version, model, paths",       category: "Info",   aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "usage",   description: "Tokens, context fill, cost",   category: "Info",   aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "profile", description: "Active profile details",       category: "Info",   aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },

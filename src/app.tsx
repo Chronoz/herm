@@ -33,6 +33,7 @@ import { openEikonPicker } from "./dialogs/eikon-picker"
 import { openTextPrompt } from "./dialogs/text-prompt"
 import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
+import { openHistory } from "./dialogs/history"
 import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
@@ -206,6 +207,7 @@ const AppInner = () => {
         case "eikon": pickEikon(); return
         case "title": editTitle(); return
         case "rollback": openRollback(dialog, gw, toast); return
+        case "history": openHistory(dialog, gw); return
         case "status": openStatus(dialog, info, sid); return
         case "usage": openUsage(dialog, gw); return
         case "profile": openProfile(dialog); return
@@ -327,6 +329,8 @@ const AppInner = () => {
       onSelect: () => pickEikon() },
     { title: "Rollback", value: "rollback", description: "Browse & restore checkpoints", category: "Session",
       onSelect: () => openRollback(dialog, gw, toast) },
+    { title: "History", value: "history", description: "Server-authoritative transcript", category: "Session",
+      onSelect: () => openHistory(dialog, gw) },
     { title: "Status", value: "status", description: "Version · model · paths", category: "Info",
       onSelect: () => openStatus(dialog, info, sid) },
     { title: "Usage", value: "usage", description: "Tokens · context · cost", category: "Info",

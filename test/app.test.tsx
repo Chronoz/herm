@@ -402,6 +402,40 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("/history opens transcript dialog from session.history RPC", async () => {
+    const gw = new MockGateway({
+      "session.history": () => ({
+        count: 3,
+        messages: [
+          { role: "user", text: "write a haiku about debugging" },
+          { role: "tool", name: "terminal", context: "ls -la" },
+          { role: "assistant", text: "silent stack\nunfolds" },
+        ],
+      }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/history") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Session History"))
+
+    const f = t.frame()
+    expect(f).toContain("3 messages")
+    expect(f).toContain("▸ You")
+    expect(f).toContain("write a haiku about debugging")
+    expect(f).toContain("⚙ terminal")
+    expect(f).toContain("ls -la")
+    expect(f).toContain("◂ Agent")
+    expect(f).toContain("silent stack unfolds")   // newlines collapsed
+    expect(t.gw.last("slash.exec")).toBeUndefined() // intercepted locally
+
+    act(() => t.keys.pressEscape())
+    await t.settle()
+    expect(t.frame()).not.toContain("Session History")
+    t.destroy()
+  })
+
   test("failed turn (status=error, text=null) renders error in transcript", async () => {
     // Reproduces the wire trace from a model 404: message.start →
     // lifecycle status.update → message.complete {status:error, text:null}.
