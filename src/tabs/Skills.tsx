@@ -3,13 +3,9 @@ import { useKeyboard } from "@opentui/react";
 import { makeSource, type SkillInfo } from "../utils/hermes-home";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
-
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-const truncate = (s: string, max: number): string => {
-  if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "…";
-};
+import { TabShell } from "../ui/shell";
+import { KVBlock } from "../ui/kv";
+import { trunc } from "../ui/fmt";
 
 // ─── Skill Row ───────────────────────────────────────────────────────
 
@@ -41,7 +37,7 @@ const SkillRow = memo((props: {
           {(s.category || "—").padEnd(16)}
         </span>
         <span fg={theme.textMuted}>
-          {truncate(s.description || "—", 60)}
+          {trunc(s.description || "—", 60)}
         </span>
       </text>
     </box>
@@ -63,41 +59,20 @@ const DetailPanel = memo((props: { skill: SkillInfo }) => {
       backgroundColor={theme.backgroundPanel}
       width="40%"
     >
-      <text>
-        <span fg={theme.primary}>
-          <strong>Skill Detail</strong>
-        </span>
-      </text>
-      <text> </text>
-      <text>
-        <span fg={theme.accent}>
-          <strong>{s.name}</strong>
-        </span>
-      </text>
-      <text> </text>
-      <text>
-        <span fg={theme.textMuted}>{"Category".padEnd(12)}</span>
-        <span fg={theme.info}>{` ${s.category || "uncategorized"}`}</span>
-      </text>
-      <text>
-        <span fg={theme.textMuted}>{"File".padEnd(12)}</span>
-        <span fg={theme.text}>{` ${s.source.relative}`}</span>
-      </text>
-      {s.tags.length > 0 ? (
-        <text>
-          <span fg={theme.textMuted}>{"Tags".padEnd(12)}</span>
-          <span fg={theme.text}>{` ${s.tags.join(", ")}`}</span>
-        </text>
-      ) : null}
-      <text> </text>
+      <box height={1}><text fg={theme.primary}><strong>Skill Detail</strong></text></box>
+      <box height={1} />
+      <box height={1}><text fg={theme.accent}><strong>{s.name}</strong></text></box>
+      <box height={1} />
+      <KVBlock rows={[
+        ["Category", s.category || "uncategorized", theme.info],
+        ["File", s.source.relative],
+        ["Tags", s.tags.length > 0 ? s.tags.join(", ") : undefined],
+      ]} />
+      <box height={1} />
       {s.description ? (
-        <text wrapMode="word">
-          <span fg={theme.text}>{s.description}</span>
-        </text>
+        <text wrapMode="word"><span fg={theme.text}>{s.description}</span></text>
       ) : (
-        <text>
-          <span fg={theme.textMuted}>No description</span>
-        </text>
+        <text fg={theme.textMuted}>No description</text>
       )}
     </box>
   );
@@ -238,33 +213,13 @@ export const Skills = memo((props: { focused?: boolean }) => {
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <box
-        flexDirection="column"
-        flexGrow={1}
-        border
-        borderColor={theme.border}
-        backgroundColor={theme.backgroundPanel}
-        padding={1}
+      <TabShell
+        title={searching ? `Skills (${count} matching)` : `Skills (${skills.length})`}
+        hint={searching ? "↑↓ navigate  Esc cancel" : "↑↓ navigate  / search  r refresh"}
       >
-        {/* Header */}
-        <text>
-          <span fg={theme.primary}>
-            <strong>
-              {searching
-                ? `Skills (${count} matching)`
-                : `Skills (${skills.length})`}
-            </strong>
-          </span>
-          <span fg={theme.textMuted}>
-            {searching
-              ? "  ↑↓ navigate  Esc cancel"
-              : "  ↑↓ navigate  / search  r refresh"}
-          </span>
-        </text>
-
         {/* Search bar */}
         {searching ? (
-          <box>
+          <box height={1}>
             <text>
               <span fg={theme.accent}>{"/ "}</span>
               <span fg={theme.text}>{query}</span>
@@ -274,31 +229,27 @@ export const Skills = memo((props: { focused?: boolean }) => {
         ) : null}
 
         {/* Column headers */}
-        <box marginTop={1}>
-          <text>
-            <span fg={theme.textMuted}>
-              {"  "}{"Name".padEnd(24)}{"Category".padEnd(16)}{"Description"}
-            </span>
+        <box height={1}>
+          <text fg={theme.textMuted}>
+            {"  "}{"Name".padEnd(24)}{"Category".padEnd(16)}{"Description"}
           </text>
         </box>
-        <text>
-          <span fg={theme.borderSubtle}>{"  "}{"─".repeat(22)}{"  "}{"─".repeat(14)}{"  "}{"─".repeat(40)}</span>
-        </text>
+        <box height={1}>
+          <text fg={theme.borderSubtle}>
+            {"  "}{"─".repeat(22)}{"  "}{"─".repeat(14)}{"  "}{"─".repeat(40)}
+          </text>
+        </box>
 
         {/* List */}
         {count === 0 ? (
           <EmptyState searching={searching} />
         ) : (
-          <scrollbox scrollY>
+          <scrollbox scrollY flexGrow={1}>
             {flat.map((row, i) => {
               if (row.type === "header") {
                 return (
                   <box key={`h-${row.category}`} marginTop={i > 0 ? 1 : 0}>
-                    <text>
-                      <span fg={theme.info}>
-                        <strong>{`▾ ${row.category}`}</strong>
-                      </span>
-                    </text>
+                    <text fg={theme.info}><strong>{`▾ ${row.category}`}</strong></text>
                   </box>
                 );
               }
@@ -316,7 +267,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
             })}
           </scrollbox>
         )}
-      </box>
+      </TabShell>
 
       {/* Detail panel */}
       {current ? <DetailPanel skill={current} /> : null}

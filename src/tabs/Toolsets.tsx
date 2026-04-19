@@ -3,6 +3,8 @@ import { useKeyboard } from "@opentui/react";
 import type { ToolsetInfo } from "../utils/hermes-home";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
+import { TabShell } from "../ui/shell";
+import { KVBlock } from "../ui/kv";
 
 // ─── Toolset Row ──────────────────────────────────────────────────────
 
@@ -78,45 +80,26 @@ const DetailPanel = memo((props: { toolset: ToolsetInfo }) => {
       backgroundColor={theme.backgroundPanel}
       width="40%"
     >
-      <text>
-        <span fg={theme.primary}>
-          <strong>Toolset Detail</strong>
-        </span>
-      </text>
-      <text> </text>
-      <text>
-        <span fg={theme.accent}>
-          <strong>{ts.name}</strong>
-        </span>
-      </text>
-      <text> </text>
-      <text>
-        <span fg={theme.textMuted}>{"Status".padEnd(12)}</span>
-        <span fg={ts.enabled ? theme.success : theme.error}>
-          {ts.enabled ? " enabled" : " disabled"}
-        </span>
-      </text>
-      <text>
-        <span fg={theme.textMuted}>{"Tools".padEnd(12)}</span>
-        <span fg={theme.info}>{` ${ts.tools.length} total`}</span>
-      </text>
-      <text>
-        <span fg={theme.textMuted}>{"Active".padEnd(12)}</span>
-        <span fg={theme.success}>{` ${ts.active.length} in session`}</span>
-      </text>
-      <text> </text>
-      <text>
-        <span fg={theme.textMuted}>Tools:</span>
-      </text>
+      <box height={1}><text fg={theme.primary}><strong>Toolset Detail</strong></text></box>
+      <box height={1} />
+      <box height={1}><text fg={theme.accent}><strong>{ts.name}</strong></text></box>
+      <box height={1} />
+      <KVBlock rows={[
+        ["Status", ts.enabled ? "enabled" : "disabled", ts.enabled ? theme.success : theme.error],
+        ["Tools", `${ts.tools.length} total`, theme.info],
+        ["Active", `${ts.active.length} in session`, theme.success],
+      ]} />
+      <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>Tools:</text></box>
       {ts.tools.map(t => (
-        <text key={t}>
+        <box key={t} height={1}><text>
           <span fg={ts.active.includes(t) ? theme.success : theme.textMuted}>
             {ts.active.includes(t) ? "  ● " : "  ○ "}
           </span>
           <span fg={ts.active.includes(t) ? theme.text : theme.textMuted}>
             {t}
           </span>
-        </text>
+        </text></box>
       ))}
     </box>
   );
@@ -254,33 +237,15 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <box
-        flexDirection="column"
-        flexGrow={1}
-        border
-        borderColor={theme.border}
-        backgroundColor={theme.backgroundPanel}
-        padding={1}
+      <TabShell
+        title={searching ? `Toolsets (${count} matching)` : `Toolsets (${toolsets.length})`}
+        hint={searching
+          ? "↑↓ navigate  Enter expand  Esc cancel"
+          : "↑↓ navigate  Enter expand  / search  r refresh"}
       >
-        {/* Header */}
-        <text>
-          <span fg={theme.primary}>
-            <strong>
-              {searching
-                ? `Toolsets (${count} matching)`
-                : `Toolsets (${toolsets.length})`}
-            </strong>
-          </span>
-          <span fg={theme.textMuted}>
-            {searching
-              ? "  ↑↓ navigate  Enter expand  Esc cancel"
-              : "  ↑↓ navigate  Enter expand  / search  r refresh"}
-          </span>
-        </text>
-
         {/* Search bar */}
         {searching ? (
-          <box>
+          <box height={1}>
             <text>
               <span fg={theme.accent}>{"/ "}</span>
               <span fg={theme.text}>{query}</span>
@@ -290,22 +255,22 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
         ) : null}
 
         {/* Column headers */}
-        <box marginTop={1}>
-          <text>
-            <span fg={theme.textMuted}>
-              {"  "}{"Name".padEnd(18)}{"Tools".padEnd(12)}{"Status"}
-            </span>
+        <box height={1}>
+          <text fg={theme.textMuted}>
+            {"  "}{"Name".padEnd(18)}{"Tools".padEnd(12)}{"Status"}
           </text>
         </box>
-        <text>
-          <span fg={theme.borderSubtle}>{"  "}{"─".repeat(16)}{"  "}{"─".repeat(10)}{"  "}{"─".repeat(12)}</span>
-        </text>
+        <box height={1}>
+          <text fg={theme.borderSubtle}>
+            {"  "}{"─".repeat(16)}{"  "}{"─".repeat(10)}{"  "}{"─".repeat(12)}
+          </text>
+        </box>
 
         {/* List */}
         {count === 0 ? (
           <EmptyState searching={searching} />
         ) : (
-          <scrollbox scrollY>
+          <scrollbox scrollY flexGrow={1}>
             {filtered.map((ts, i) => (
               <ToolsetRow
                 key={ts.name}
@@ -318,7 +283,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
             ))}
           </scrollbox>
         )}
-      </box>
+      </TabShell>
 
       {/* Detail panel */}
       {current ? <DetailPanel toolset={current} /> : null}

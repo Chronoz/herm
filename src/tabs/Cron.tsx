@@ -4,6 +4,9 @@ import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
+import { TabShell } from "../ui/shell";
+import { KVBlock } from "../ui/kv";
+import { trunc, ago } from "../ui/fmt";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -48,19 +51,8 @@ const normalize = (j: RawJob): CronJob => ({
   last_error: j.last_delivery_error,
 })
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-const truncate = (s: string, max: number): string =>
-  s.length <= max ? s : s.slice(0, max - 1) + "…";
-
-const ago = (iso?: string): string => {
-  if (!iso) return "—";
-  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (secs < 60) return "just now";
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  return `${Math.floor(secs / 86400)}d ago`;
-};
+// gateway returns ISO timestamps; shared `ago` wants unix seconds
+const rel = (iso?: string) => iso ? ago(new Date(iso).getTime() / 1000) : "—";
 
 // ─── Job Row ─────────────────────────────────────────────────────────
 
@@ -84,12 +76,12 @@ const JobRow = memo((props: {
       <text>
         <span fg={props.selected ? theme.primary : theme.text}>{indicator}</span>
         <span fg={props.selected ? theme.accent : theme.text}>
-          {truncate(j.name || j.id, 20).padEnd(22)}
+          {trunc(j.name || j.id, 20).padEnd(22)}
         </span>
         <span fg={stateColor}>{` ${badge} `}</span>
         <span fg={theme.textMuted}>{(j.schedule?.display ?? j.schedule?.expr ?? "—").padEnd(18)}</span>
-        <span fg={theme.textMuted}>{` last: ${ago(j.last_run).padEnd(10)}`}</span>
-        <span fg={theme.textMuted}>{` next: ${ago(j.next_run).padEnd(10)}`}</span>
+        <span fg={theme.textMuted}>{` last: ${rel(j.last_run).padEnd(10)}`}</span>
+        <span fg={theme.textMuted}>{` next: ${rel(j.next_run).padEnd(10)}`}</span>
       </text>
     </box>
   );
@@ -106,21 +98,21 @@ const DetailPanel = memo((props: { job: CronJob }) => {
       flexDirection="column" padding={1} border
       borderColor={theme.border} backgroundColor={theme.backgroundPanel} width="40%"
     >
-      <text><span fg={theme.primary}><strong>Job Detail</strong></span></text>
-      <text> </text>
-      <text><span fg={theme.accent}><strong>{j.name || j.id}</strong></span></text>
-      <text> </text>
-      <text><span fg={theme.textMuted}>{"ID".padEnd(12)}</span><span fg={theme.text}>{` ${j.id}`}</span></text>
-      <text><span fg={theme.textMuted}>{"State".padEnd(12)}</span><span fg={j.enabled ? theme.success : theme.warning}>{` ${j.enabled ? "active" : "paused"}`}</span></text>
-      <text><span fg={theme.textMuted}>{"Schedule".padEnd(12)}</span><span fg={theme.text}>{` ${j.schedule?.display ?? j.schedule?.expr ?? "—"}`}</span></text>
-      <text><span fg={theme.textMuted}>{"Deliver".padEnd(12)}</span><span fg={theme.text}>{` ${j.deliver ?? "local"}`}</span></text>
-      <text><span fg={theme.textMuted}>{"Last Run".padEnd(12)}</span><span fg={theme.text}>{` ${j.last_run ?? "—"}`}</span></text>
-      <text><span fg={theme.textMuted}>{"Next Run".padEnd(12)}</span><span fg={theme.text}>{` ${j.next_run ?? "—"}`}</span></text>
-      {j.last_error ? (
-        <text><span fg={theme.error}>{`Error: ${j.last_error}`}</span></text>
-      ) : null}
-      <text> </text>
-      <text><span fg={theme.textMuted}>Prompt:</span></text>
+      <box height={1}><text fg={theme.primary}><strong>Job Detail</strong></text></box>
+      <box height={1} />
+      <box height={1}><text fg={theme.accent}><strong>{j.name || j.id}</strong></text></box>
+      <box height={1} />
+      <KVBlock rows={[
+        ["ID", j.id],
+        ["State", j.enabled ? "active" : "paused", j.enabled ? theme.success : theme.warning],
+        ["Schedule", j.schedule?.display ?? j.schedule?.expr ?? "—"],
+        ["Deliver", j.deliver ?? "local"],
+        ["Last Run", j.last_run ?? "—"],
+        ["Next Run", j.next_run ?? "—"],
+        ["Error", j.last_error, theme.error],
+      ]} />
+      <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>Prompt:</text></box>
       <text wrapMode="word"><span fg={theme.text}>{j.prompt}</span></text>
     </box>
   );
@@ -301,22 +293,14 @@ export const Cron = memo((props: { focused?: boolean }) => {
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <box
-        flexDirection="column" flexGrow={1} border
-        borderColor={theme.border} backgroundColor={theme.backgroundPanel} padding={1}
-      >
-        <text>
-          <span fg={theme.primary}><strong>{`Cron Jobs (${jobs.length})`}</strong></span>
-          <span fg={theme.textMuted}>{"  ↑↓ nav  n new  p pause  t trigger  d delete  r refresh"}</span>
-        </text>
-        <text> </text>
-
-        {err ? (
-          <text><span fg={theme.error}>{`Error: ${err}`}</span></text>
-        ) : jobs.length === 0 ? (
-          <text><span fg={theme.textMuted}>No cron jobs. Press n to create one.</span></text>
+      <TabShell title={`Cron Jobs (${jobs.length})`} error={err}
+                hint="↑↓ nav  n new  p pause  t trigger  d delete  r refresh">
+        {jobs.length === 0 ? (
+          <box key="empty" flexGrow={1}>
+            <text fg={theme.textMuted}>No cron jobs. Press n to create one.</text>
+          </box>
         ) : (
-          <scrollbox scrollY>
+          <scrollbox key="list" scrollY flexGrow={1}>
             {jobs.map((j, i) => (
               <JobRow
                 key={j.id}
@@ -328,7 +312,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
             ))}
           </scrollbox>
         )}
-      </box>
+      </TabShell>
 
       {current ? <DetailPanel job={current} /> : null}
     </box>
