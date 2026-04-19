@@ -155,8 +155,12 @@ Reference: `~/Dev/clones/opencode/.../tui/routes/session/` +
         manages own scroll regions — too heavy for nested inline preview.
 - [ ] D3.5 **Sticky prompt tracker** — when scrolled up, show a 1-line
       `↳ <last user msg>` chip at top of viewport (opencode has this).
-- [ ] D3.6 **Queue UI** — `/queue` already RPC'd. Show queued prompts as
+- [x] D3.6 **Queue UI** — `/queue` already RPC'd. Show queued prompts as
       dim chips below composer; ↑↓ edit, Ctrl+K dequeue, Enter submits head.
+      → impl: client-side queue[]. Enter-while-streaming enqueues; ⏸
+        chips above input (click = edit); auto-drain one per idle edge
+        via inflight ref. Ctrl+U pops (Ctrl+K = palette). /queue|/q arg
+        routes into same queue via send().
 - [x] D3.7 **Ctrl+G editor handoff** — suspend renderer, spawn $EDITOR on
       a tmpfile seeded with composer value, on exit read back + resume.
       → impl: multi-line result collapses via paste.collapse (same path
@@ -275,13 +279,13 @@ commit this file, write a clean summary, stop. Never leave tree dirty.
   `UPSTREAM.md` for later PR, don't patch locally.
 
 ## Status
-Tally: 31 done, 5 partial, 9 open. Tests 61→116, 10× stable, tsc clean.
+Tally: 34 done, 5 partial, 6 open. Tests 61→127, 10× stable, tsc clean.
 
 Tree state:
   dev                      75b87bb  (through P4 + slash-fix, 113 tests)
-  overnight/p5             89ee740  ~/Dev/herm-wt (B1.6, D3.rewind,
+  overnight/p5             398994a  ~/Dev/herm-wt (B1.6, D3.rewind/6/7/8,
                                      F5.2-save, F5.4, openConfirm
-                                     consolidation; 116 tests,
+                                     consolidation; 127 tests,
                                      awaiting review → dev)
 
 Bugs fixed along the way:
@@ -297,7 +301,7 @@ Bugs fixed along the way:
 Open (prioritized):
   1. C2.4 tail — Sessions/Config/Memory/Context → TabShell
   2. C2.2 DataList extraction from Sessions
-  3. D3.5-8 — sticky tracker, queue UI, Ctrl+G editor, tips
+  3. D3.5 — sticky prompt tracker (needs scrollbox scrollTop hook)
   4. B1.4 — attachment chips (image.attach event not yet wired)
   5. F5.1/5 — info dialogs, rate-limit line
   6. F5.2 /history — needs a transcript viewer dialog
