@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, memo } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import { queryRecentSessions, type SessionRow } from "../utils/hermes-home"
 import type {
   SessionListItem, SessionListResponse,
@@ -230,30 +231,37 @@ const ConfirmDelete = (props: { title: string; onConfirm: () => void; onCancel: 
 // on narrow ones) while meta columns hold fixed width. height={1}
 // forces single-line truncation instead of wrap.
 //
-// The whole table (header + body) sits inside an h-scrollbox with a
-// minWidth floor so once the list panel drops below TABLE_MIN cols
-// the table scrolls horizontally instead of crushing the title column
-// to nothing. Header and rows share the same Col structure so they
-// stay aligned under h-scroll.
-
-const TABLE_MIN = 70
+// Header and body rows share the same Col structure so they stay
+// aligned under resize. The body scrolls vertically; horizontal
+// scroll is deliberately not nested — OpenTUI's inner vbar becomes
+// part of the scrolled content and both leaks 1px width (phantom
+// h-bar) and scrolls off-screen with the table. The width cascade
+// (sidebar hides <120, detail panel <140) gives the list enough room
+// that the title column only hits its minWidth at ~80 terminal cols.
 
 type ColProps = { w?: number; grow?: boolean; fg: RGBA; bold?: boolean; right?: boolean; children: string }
 const Col = (p: ColProps) => (
   <box width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
        minWidth={p.grow ? 12 : p.w} height={1} overflow="hidden"
-       justifyContent={p.right ? "flex-end" : "flex-start"}>
+       flexDirection="row" justifyContent={p.right ? "flex-end" : "flex-start"}>
     <text>{p.bold
       ? <span fg={p.fg}><strong>{p.children}</strong></span>
       : <span fg={p.fg}>{p.children}</span>}</text>
   </box>
 )
 
+// Body scrollbox forces its vbar visible so it always reserves VBAR_W;
+// header pads by the same so both flex containers have identical
+// available width and the grow column (Title) lands on the same x.
+// (Auto-hide would make the gutter conditional, which can only be
+// detected post-layout — not worth the re-render feedback loop.)
+const VBAR_W = 1
+
 const HeaderRow = memo((props: { detail: boolean }) => {
   const theme = useTheme().theme
   const fg = theme.textMuted
   return (
-    <box flexDirection="row" height={1}>
+    <box flexDirection="row" height={1} paddingRight={VBAR_W}>
       <Col w={2} fg={fg}>{"  "}</Col>
       <Col grow fg={fg} bold>Title</Col>
       <Col w={9} fg={fg} bold>Source</Col>
@@ -268,18 +276,26 @@ const HeaderRow = memo((props: { detail: boolean }) => {
   )
 })
 
+// Row callbacks take the index so the *functions* are stable across
+// renders — otherwise every row gets a fresh closure every parent
+// render and memo() never bails (O(N) React work per keystroke).
+type RowCbs = {
+  onActivate: (i: number) => void
+  onHover: (i: number) => void
+  onDelete: (i: number) => void
+}
+
 const Item = memo((props: {
-  row: Row; selected: boolean; detail: boolean
-  onActivate: () => void; onHover: () => void; onDelete: () => void
-}) => {
+  id: string; row: Row; idx: number; selected: boolean; detail: boolean
+} & RowCbs) => {
   const theme = useTheme().theme
-  const r = props.row
+  const { row: r, idx: i } = props
   const [x, setX] = useState(false)
 
   return (
-    <box flexDirection="row" height={1}
+    <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseDown={props.onActivate} onMouseOver={props.onHover}>
+         onMouseDown={() => props.onActivate(i)} onMouseOver={() => props.onHover(i)}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col grow fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
         {r.title || "Untitled"}
@@ -292,7 +308,7 @@ const Item = memo((props: {
         <Col w={9} fg={theme.success} right>{r.detail ? cost(r.detail.estimated_cost_usd) : "—"}</Col>
       </> : null}
       <box width={3}
-           onMouseDown={(e) => { e.stopPropagation(); props.onDelete() }}
+           onMouseDown={(e) => { e.stopPropagation(); props.onDelete(i) }}
            onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
         <text><span fg={x ? theme.error : theme.textMuted}>{" ✕"}</span></text>
       </box>
@@ -304,7 +320,7 @@ const SearchHeaderRow = memo(() => {
   const theme = useTheme().theme
   const fg = theme.textMuted
   return (
-    <box flexDirection="row" height={1}>
+    <box flexDirection="row" height={1} paddingRight={VBAR_W}>
       <Col w={2} fg={fg}>{"  "}</Col>
       <Col grow fg={fg} bold>Title</Col>
       <Col w={9} fg={fg} bold>Source</Col>
@@ -315,15 +331,15 @@ const SearchHeaderRow = memo(() => {
 })
 
 const SearchItem = memo((props: {
-  result: SessionSearchHit; selected: boolean
-  onActivate: () => void; onHover: () => void
+  id: string; result: SessionSearchHit; idx: number; selected: boolean
+  onActivate: (i: number) => void; onHover: (i: number) => void
 }) => {
   const theme = useTheme().theme
-  const r = props.result
+  const { result: r, idx: i } = props
   return (
-    <box flexDirection="row" height={1}
+    <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseDown={props.onActivate} onMouseOver={props.onHover}>
+         onMouseDown={() => props.onActivate(i)} onMouseOver={() => props.onHover(i)}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col grow fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
         {r.title ?? "Untitled"}
@@ -353,11 +369,20 @@ export const Sessions = memo((props: Props) => {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SessionSearchHit[]>([])
   const seq = useRef(0)
+  const vscroll = useRef<ScrollBoxRenderable | null>(null)
+
+  // Latest-value refs so the stable row callbacks below don't close
+  // over stale arrays (and therefore don't need to be in their deps,
+  // which would defeat the memo).
+  const live = useRef({ rows, results, searching, onSwitch: props.onSwitch })
+  live.current = { rows, results, searching, onSwitch: props.onSwitch }
+
+  const LIMIT = 2000
 
   const load = useCallback(async () => {
     const [rpc, fs] = await Promise.allSettled([
-      gw.request<SessionListResponse>("session.list", { limit: 50 }),
-      Promise.resolve().then(() => queryRecentSessions(100)),
+      gw.request<SessionListResponse>("session.list", { limit: LIMIT }),
+      Promise.resolve().then(() => queryRecentSessions(LIMIT)),
     ])
     const local = fs.status === "fulfilled"
       ? new Map(fs.value.map(r => [r.id, r]))
@@ -402,11 +427,22 @@ export const Sessions = memo((props: Props) => {
       .catch(() => { if (seq.current === id) setResults([]) })
   }, [gw, query, searching])
 
-  const activate = useCallback(() => {
-    const id = searching ? results[sel]?.session_id : rows[sel]?.id
-    if (id && props.onSwitch) props.onSwitch(id)
-  }, [rows, results, sel, props.onSwitch, searching])
+  // ── Stable row callbacks (identity never changes) ────────────────
+  const rowHover = useCallback((i: number) => setSel(i), [])
+  const rowActivate = useCallback((i: number) => {
+    setSel(i)
+    const l = live.current
+    const id = l.searching ? l.results[i]?.session_id : l.rows[i]?.id
+    if (id) l.onSwitch?.(id)
+  }, [])
+  const rowDelete = useCallback((i: number) => {
+    const r = live.current.rows[i]
+    if (r) confirmDeleteRef.current(r)
+  }, [])
 
+  const activate = useCallback(() => rowActivate(sel), [rowActivate, sel])
+
+  const confirmDeleteRef = useRef<(r: Row) => void>(() => {})
   const confirmDelete = useCallback((r: Row) => {
     dialog.replace(
       <ConfirmDelete
@@ -428,8 +464,18 @@ export const Sessions = memo((props: Props) => {
       />,
     )
   }, [gw, dialog, toast, load, rows.length])
+  confirmDeleteRef.current = confirmDelete
 
   const count = searching ? results.length : rows.length
+  const rowId = (i: number) => `sess-row-${i}`
+
+  const move = useCallback((next: (p: number) => number) => {
+    setSel(p => {
+      const n = Math.max(0, Math.min(count - 1, next(p)))
+      vscroll.current?.scrollChildIntoView(rowId(n))
+      return n
+    })
+  }, [count])
 
   useKeyboard((key) => {
     if (!props.focused) return
@@ -441,13 +487,17 @@ export const Sessions = memo((props: Props) => {
       if (key.name === "escape") { setSearching(false); setQuery(""); setResults([]); setSel(0); return }
       if (key.name === "backspace") return setQuery(p => p.slice(0, -1))
       if (key.name === "return") return activate()
-      if (key.name === "up") return setSel(p => Math.max(0, p - 1))
-      if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
+      if (key.name === "up") return move(p => p - 1)
+      if (key.name === "down") return move(p => p + 1)
       if (key.raw && key.raw.length === 1 && key.raw >= " ") return setQuery(p => p + key.raw)
       return
     }
-    if (key.name === "up") return setSel(p => Math.max(0, p - 1))
-    if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
+    if (key.name === "up") return move(p => p - 1)
+    if (key.name === "down") return move(p => p + 1)
+    if (key.name === "pageup") return move(p => p - Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1))
+    if (key.name === "pagedown") return move(p => p + Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1))
+    if (key.name === "home") return move(() => 0)
+    if (key.name === "end") return move(() => count - 1)
     if (key.name === "return") return activate()
     if (key.name === "r") return void load()
     if (key.raw === "d" || key.name === "delete") {
@@ -457,7 +507,7 @@ export const Sessions = memo((props: Props) => {
   })
 
   const empty = searching ? results.length === 0 && query.length > 0 : rows.length === 0
-  const hasDetail = rows.some(r => r.detail)
+  const hasDetail = useMemo(() => rows.some(r => r.detail), [rows])
   const showDetailPanel = dims.width >= 140
 
   return (
@@ -495,32 +545,33 @@ export const Sessions = memo((props: Props) => {
         <box height={1} />
 
         {empty ? (
-          <box flexGrow={1} padding={2}>
+          // key prevents OpenTUI reconciler reusing this <box> for the
+          // table wrapper below — it doesn't unset padding when the new
+          // vnode omits it, so padding={2} would leak into the table.
+          <box key="empty" flexGrow={1} padding={2}>
             <text fg={theme.textMuted}>
               {searching ? "No matching sessions found" : "No sessions found"}
             </text>
           </box>
         ) : (
-          <scrollbox scrollX flexGrow={1}>
-            <box flexDirection="column" flexGrow={1} minWidth={TABLE_MIN}>
-              {searching ? <SearchHeaderRow /> : <HeaderRow detail={hasDetail} />}
-              <box height={1} />
-              <scrollbox scrollY flexGrow={1}>
-                {searching
-                  ? results.map((r, i) => (
-                      <SearchItem key={r.session_id} result={r} selected={i === sel}
-                        onActivate={() => { setSel(i); props.onSwitch?.(r.session_id) }}
-                        onHover={() => setSel(i)} />
-                    ))
-                  : rows.map((r, i) => (
-                      <Item key={r.id} row={r} selected={i === sel} detail={hasDetail}
-                        onActivate={() => { setSel(i); props.onSwitch?.(r.id) }}
-                        onHover={() => setSel(i)}
-                        onDelete={() => confirmDelete(r)} />
-                    ))}
-              </scrollbox>
-            </box>
-          </scrollbox>
+          <box key="table" flexDirection="column" flexGrow={1} minWidth={0}>
+            {searching ? <SearchHeaderRow /> : <HeaderRow detail={hasDetail} />}
+            <box height={1} />
+            <scrollbox ref={vscroll} scrollY viewportCulling flexGrow={1}
+                       verticalScrollbarOptions={{ visible: true }}>
+              {searching
+                ? results.map((r, i) => (
+                    <SearchItem key={r.session_id} id={rowId(i)} idx={i}
+                      result={r} selected={i === sel}
+                      onActivate={rowActivate} onHover={rowHover} />
+                  ))
+                : rows.map((r, i) => (
+                    <Item key={r.id} id={rowId(i)} idx={i}
+                      row={r} selected={i === sel} detail={hasDetail}
+                      onActivate={rowActivate} onHover={rowHover} onDelete={rowDelete} />
+                  ))}
+            </scrollbox>
+          </box>
         )}
       </box>
 

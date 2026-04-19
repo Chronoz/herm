@@ -217,26 +217,76 @@ describe("Sessions tab", () => {
     t.destroy()
   })
 
-  test("column headers align; table h-scrolls below TABLE_MIN", async () => {
-    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+  test("column headers align with data rows", async () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: `sid-${i}`, title: `Session ${i}`, preview: "",
+      message_count: i, started_at: 1700000000 - i * 60, source: "tui",
+    }))
+    const gw = new MockGateway({ "session.list": () => ({ sessions: many }) })
     const t = await mountNode(<Sessions focused />, { gw, width: 200, height: 20 })
-    await until(t, () => t.frame().includes("Sessions (2)"))
+    await until(t, () => t.frame().includes("Sessions (60)"))
 
-    // Header labels sit at the same x as data values.
+    // Header labels sit at the same x as data values — including when
+    // the vbar is visible (it carves 1 col out of the body; header
+    // mirrors it via paddingRight=VBAR_W, vbar forced always visible).
     const lines = t.frame().split("\n")
     const hdr = lines.find(l => /Title\s+Source\s+Start\s+Msgs/.test(l))!
-    const row = lines.find(l => l.includes("▸ First session"))!
-    expect(hdr.indexOf("Title")).toBe(row.indexOf("First session"))
+    const row = lines.find(l => l.includes("▸ Session 0"))!
+    expect(hdr.indexOf("Title")).toBe(row.indexOf("Session 0"))
     expect(hdr.indexOf("Source")).toBe(row.indexOf("TUI"))
+    // Right-aligned Msgs column ends at same x.
+    const hdrMsgsEnd = hdr.indexOf("Msgs") + 4
+    const rowMsgsEnd = row.search(/\d+(\s+✕)/) + row.match(/(\d+)\s+✕/)![1].length
+    expect(rowMsgsEnd).toBe(hdrMsgsEnd)
+    t.destroy()
+  })
 
-    // Narrow enough that TABLE_MIN kicks in → h-scrollbar, right cols clipped.
-    t.resize(55, 20)
+  test("handles full list; arrow/PgDn/End scroll viewport", async () => {
+    const many = Array.from({ length: 300 }, (_, i) => ({
+      id: `sid-${i}`, title: `Session ${i}`, preview: "",
+      message_count: i, started_at: 1700000000 - i * 60, source: "tui",
+    }))
+    const gw = new MockGateway({ "session.list": () => ({ sessions: many }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused onSwitch={sid => { switched = sid }} />,
+      { gw, width: 160, height: 30 },
+    )
+    await until(t, () => t.frame().includes("Sessions (300)"))
+    expect(t.gw.last("session.list")?.params.limit).toBe(2000)
+
+    // Selected row visible; rows past viewport culled from frame.
+    expect(t.frame()).toContain("▸ Session 0")
+    expect(t.frame()).not.toContain("Session 100")
+
+    // End → last row scrolled into view.
+    act(() => t.keys.pressKey("END"))
     await t.settle(); await t.settle()
-    const n = t.frame()
-    expect(n).toMatch(/Title\s+Source/)
-    expect(n).not.toMatch(/Title.*Msgs/)        // right-side clipped
-    const nrow = n.split("\n").find(l => l.includes("▸ First session"))!
-    expect(nrow).toContain("TUI")               // alignment preserved under clip
+    expect(t.frame()).toContain("▸ Session 299")
+    expect(t.frame()).not.toContain("Session 0 ")
+
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(switched).toBe("sid-299")
+
+    // Home → back to top.
+    act(() => t.keys.pressKey("HOME"))
+    await t.settle(); await t.settle()
+    expect(t.frame()).toContain("▸ Session 0")
+
+    // PgDn jumps ~viewport height; selection stays in view.
+    act(() => t.keys.pressKey("\x1B[57355u"))  // kitty: pagedown
+    await t.settle(); await t.settle()
+    let selLine = t.frame().split("\n").find(l => l.includes("▸ Session "))!
+    const firstJump = Number(selLine.match(/Session (\d+)/)![1])
+    expect(firstJump).toBeGreaterThan(10)
+    // Second PgDn scrolls the viewport past row 0.
+    act(() => t.keys.pressKey("\x1B[57355u"))
+    await t.settle(); await t.settle()
+    const f = t.frame()
+    selLine = f.split("\n").find(l => l.includes("▸ Session "))!
+    expect(Number(selLine.match(/Session (\d+)/)![1])).toBe(firstJump * 2)
+    expect(f).not.toContain("Session 0 ")
     t.destroy()
   })
 })
