@@ -19,6 +19,8 @@ import { AtRefPopover } from "./AtRefPopover"
 export type ComposerHandle = {
   value: () => string
   set: (v: string) => void
+  /** Insert multi-line text: ≥2 lines collapses via gateway. */
+  insert: (text: string) => void
   popOpen: () => boolean
   popNav: (d: -1 | 1) => void
   popAccept: () => void
@@ -74,20 +76,25 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     if (next !== null) setInput(next)
   }
 
-  // Multi-line paste: ≥5 lines → gateway writes a temp file and hands
-  // back a `[Pasted #N …]` placeholder (hermes CLI convention; expanded
-  // server-side in prompt.submit). Shorter pastes insert inline with
-  // newlines flattened to spaces (single-line <input>).
+  // Multi-line insert: ≥`limit` lines → gateway writes a temp file and
+  // hands back a `[Pasted #N …]` placeholder (hermes CLI convention;
+  // expanded server-side in prompt.submit). Below limit: flatten
+  // newlines to spaces (single-line <input>).
+  const insert = useCallback((text: string, limit: number) => {
+    const lines = text.split("\n").length
+    const flat = () => setInput(v => v + text.replace(/\s*\n\s*/g, " "))
+    if (lines < limit) return flat()
+    gw.request<{ placeholder: string }>("paste.collapse", { text })
+      .then(r => setInput(v => v + r.placeholder + " "))
+      .catch(flat)
+  }, [gw])
+
   const paste = useCallback((e: PasteEvent) => {
     const text = decodePasteBytes(e.bytes)
     if (!text.includes("\n")) return // let Input.handlePaste do it
     e.preventDefault()
-    const lines = text.split("\n").length
-    if (lines < 5) return setInput(v => v + text.replace(/\s*\n\s*/g, " "))
-    gw.request<{ placeholder: string }>("paste.collapse", { text })
-      .then(r => setInput(v => v + r.placeholder + " "))
-      .catch(() => setInput(v => v + text.replace(/\s*\n\s*/g, " ")))
-  }, [gw])
+    insert(text, 5)
+  }, [insert])
 
   const submit = () => {
     const a = live.current.at
@@ -108,6 +115,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   useImperativeHandle(ref, () => ({
     value: () => live.current.input,
     set: setInput,
+    insert: (text) => insert(text, 2),
     popOpen: () => live.current.pop.open || live.current.at.open,
     popNav: (d) => {
       const a = live.current.at
@@ -129,7 +137,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     },
     historyUp: hist.up,
     historyDown: hist.down,
-  }), [hist.up, hist.down, pop.setCursor])
+  }), [hist.up, hist.down, pop.setCursor, insert])
 
   const active = props.focused && !props.streaming
   const label = !props.ready ? "Connecting..."
@@ -147,7 +155,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   const hint = props.streaming ? "Esc×2: Interrupt"
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
     : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
-    : props.focused ? "Enter: Send · ↑↓: History · /: Commands · @: Context · Tab: Content"
+    : props.focused ? "Enter: Send · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor"
     : "Tab: Focus input · Esc: Focus input"
 
   return (

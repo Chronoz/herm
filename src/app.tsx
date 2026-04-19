@@ -307,6 +307,7 @@ const AppInner = () => {
     onInterrupt: () => session.interrupt(),
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
+    onNotice: (text) => dispatch({ kind: "system", text }),
   })
 
   // ── Control bridge ────────────────────────────────────────────────

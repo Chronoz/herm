@@ -5,6 +5,7 @@
 import { useKeyboard, useRenderer } from "@opentui/react"
 import { useRef, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
+import { editInEditor } from "../utils/editor"
 import type { ComposerHandle } from "../components/chat/Composer"
 
 const INTERRUPT_MS = 5000
@@ -22,6 +23,7 @@ type Opts = {
   onInterrupt: () => void
   onInterruptNotice: () => void
   onCopyLast: () => void
+  onNotice: (text: string) => void
 }
 
 export function useAppKeys(o: Opts) {
@@ -43,6 +45,21 @@ export function useAppKeys(o: Opts) {
       // Resumes on SIGCONT; OpenTUI's suspend/resume cycle re-enables
       // raw mode and redraws on the next frame.
       process.once("SIGCONT", () => renderer.resume())
+      return
+    }
+
+    if (key.ctrl && key.name === "g" && !o.streaming) {
+      const seed = c?.value() ?? ""
+      void editInEditor(renderer, seed).then(out => {
+        if (out === undefined) {
+          if (!process.env.VISUAL && !process.env.EDITOR)
+            o.onNotice("Set $EDITOR or $VISUAL to use Ctrl+G")
+          return
+        }
+        c?.set("")
+        c?.insert(out)
+        o.setFocusRegion("input")
+      })
       return
     }
 
