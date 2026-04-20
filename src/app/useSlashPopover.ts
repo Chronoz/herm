@@ -1,7 +1,21 @@
 // Popover filtering and ghost text for the slash-command composer.
 
 import { useMemo, useEffect, useState } from "react"
-import { filter as filterSlash, matchSub, type SlashCommand } from "../commands/slash"
+import { matchSub, type SlashCommand } from "../commands/slash"
+import { score } from "../utils/fuzzy"
+
+function best(q: string, cmd: SlashCommand) {
+  return cmd.aliases.reduce((m, a) => Math.max(m, score(q, a)), score(q, cmd.name))
+}
+
+export function rank(list: ReadonlyArray<SlashCommand>, q: string): SlashCommand[] {
+  if (!q) return [...list]
+  return list
+    .map(cmd => ({ cmd, s: best(q, cmd) }))
+    .filter(r => r.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .map(r => r.cmd)
+}
 
 export function useSlashPopover(input: string, cmds: ReadonlyArray<SlashCommand>) {
   const [cursor, setCursor] = useState(0)
@@ -10,7 +24,7 @@ export function useSlashPopover(input: string, cmds: ReadonlyArray<SlashCommand>
     const subs = matchSub(cmds, input)
     if (subs) return subs
     const m = input.match(/^\/(\S*)$/)
-    return m ? filterSlash(cmds, m[1]) : null
+    return m ? rank(cmds, m[1]) : null
   }, [input, cmds])
 
   // Reset cursor when input changes
