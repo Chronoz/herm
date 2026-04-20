@@ -39,8 +39,6 @@ export class MockGateway extends EventEmitter implements Gateway {
     this.on$("session.create", () => ({ session_id: "test-sid" }))
     this.on$("session.resume", p => ({ session_id: p.session_id ?? "test-sid", messages: [] }))
     this.on$("session.list", () => ({ sessions: [] }))
-    this.on$("session.search", () => ({ results: [] }))
-    this.on$("session.delete", () => ({ deleted: true }))
     this.on$("agents.list", () => ({ processes: [] }))
     this.on$("complete.path", () => ({ items: [] }))
     this.on$("paste.collapse", p => ({

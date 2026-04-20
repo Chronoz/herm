@@ -106,24 +106,6 @@ export type SessionListResponse = {
   sessions?: SessionListItem[]
 }
 
-export type SessionSearchHit = {
-  session_id: string
-  snippet: string
-  role: string
-  source: string
-  model: string | null
-  started_at: number
-  title: string | null
-}
-
-export type SessionSearchResponse = {
-  results?: SessionSearchHit[]
-}
-
-export type SessionDeleteResponse = {
-  deleted: boolean
-}
-
 export type AgentProcess = {
   session_id: string
   command: string

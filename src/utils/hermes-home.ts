@@ -403,6 +403,88 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
   }
 }
 
+// ─── Session search / delete ─────────────────────────────────────────
+//
+// Stock tui_gateway has no session.search / session.delete RPCs (see
+// UPSTREAM.md). Herm hits state.db's FTS5 index directly — same table
+// and triggers SessionDB.search_messages() uses, so results match the
+// CLI's `hermes sessions search` and the session_search tool.
+
+export interface SessionHit {
+  session_id: string;
+  snippet: string;
+  role: string;
+  source: string;
+  model: string | null;
+  started_at: number;
+  title: string | null;
+}
+
+// FTS5 treats - . ( ) " etc. as syntax. Quote anything non-alnum as a
+// phrase and append * to bare words for prefix match so incremental
+// typing narrows results live.
+const fts = (q: string): string =>
+  q.trim().split(/\s+/)
+    .map(w => /^\w+$/.test(w) ? `${w}*` : `"${w.replace(/"/g, '""')}"`)
+    .join(" ");
+
+/** FTS5 search over all message content, collapsed to one hit per session. */
+export function searchSessions(query: string, limit = 30): SessionHit[] {
+  const q = fts(query);
+  if (!q) return [];
+  const end = perf.mark("io:searchSessions");
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true });
+    const rows = db.query(
+      `SELECT m.session_id, m.role,
+              snippet(messages_fts, 0, '>>>', '<<<', '...', 40) AS snippet,
+              s.source, s.model, s.started_at AS started,
+              COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title
+       FROM messages_fts
+       JOIN messages m ON m.id = messages_fts.rowid
+       JOIN sessions s ON s.id = m.session_id
+       WHERE messages_fts MATCH ? AND s.source IN ('tui', 'cli')
+       ORDER BY rank
+       LIMIT ?`,
+    ).all(q, limit * 4) as Array<{
+      session_id: string; role: string; snippet: string; source: string;
+      model: string | null; started: number; title: string | null;
+    }>;
+    db.close();
+    const seen = new Set<string>();
+    const out: SessionHit[] = [];
+    for (const r of rows) {
+      if (seen.has(r.session_id)) continue;
+      seen.add(r.session_id);
+      out.push({
+        session_id: r.session_id, snippet: r.snippet, role: r.role,
+        source: r.source, model: r.model, started_at: r.started, title: r.title,
+      });
+      if (out.length >= limit) break;
+    }
+    end();
+    return out;
+  } catch {
+    end();
+    return [];
+  }
+}
+
+/** Delete a session and its messages. Children are orphaned, not cascaded. */
+export function deleteSession(sid: string): boolean {
+  const db = new Database(hermesPath("state.db"));
+  try {
+    const hit = db.query("SELECT 1 FROM sessions WHERE id = ?").get(sid);
+    if (!hit) return false;
+    db.run("UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?", [sid]);
+    db.run("DELETE FROM messages WHERE session_id = ?", [sid]);
+    db.run("DELETE FROM sessions WHERE id = ?", [sid]);
+    return true;
+  } finally {
+    db.close();
+  }
+}
+
 /** Memory provider info — what's configured and available */
 export interface MemoryProviderInfo {
   name: string;

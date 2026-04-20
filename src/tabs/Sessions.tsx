@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
 import type { ScrollBoxRenderable } from "@opentui/core"
-import { queryRecentSessions, type SessionRow } from "../utils/hermes-home"
+import {
+  queryRecentSessions, searchSessions, deleteSession,
+  type SessionRow, type SessionHit,
+} from "../utils/hermes-home"
 import type {
   SessionListItem, SessionListResponse,
-  SessionSearchHit, SessionSearchResponse, SessionDeleteResponse,
 } from "../utils/gateway-types"
 import { useGateway } from "../app/gateway"
 import { useTheme } from "../theme"
@@ -16,10 +18,10 @@ import { KVBlock } from "../ui/kv"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
 import { invalidate } from "../utils/cache"
 
-// All reads/writes go through the gateway (session.list / .search /
-// .delete) so the tab is correct under profiles and remote gateways.
-// Rows are enriched best-effort from state.db for token/cost/model
-// detail the list RPC doesn't expose; absence is non-fatal.
+// List comes from the gateway (session.list) so rows are resumable
+// under profiles/remote gateways; detail is enriched best-effort from
+// state.db. Search/delete go direct to state.db — stock tui_gateway
+// has no session.search/.delete RPC (UPSTREAM.md).
 
 type Row = SessionListItem & { detail?: SessionRow }
 
@@ -99,7 +101,7 @@ const Detail = memo((props: { row: Row }) => {
 
 // ─── Search Detail Panel ─────────────────────────────────────────────
 
-const SearchDetail = memo((props: { result: SessionSearchHit }) => {
+const SearchDetail = memo((props: { result: SessionHit }) => {
   const theme = useTheme().theme
   const r = props.result
 
@@ -287,7 +289,7 @@ const SearchHeaderRow = memo(() => {
 })
 
 const SearchItem = memo((props: {
-  id: string; result: SessionSearchHit; idx: number; selected: boolean
+  id: string; result: SessionHit; idx: number; selected: boolean
   onActivate: (i: number) => void; onHover: (i: number) => void
 }) => {
   const theme = useTheme().theme
@@ -309,7 +311,15 @@ const SearchItem = memo((props: {
 
 // ─── Main ────────────────────────────────────────────────────────────
 
-type Props = { focused?: boolean; onSwitch?: (sid: string) => void }
+// Data-layer ops are injectable so tests don't fight analytics.test
+// for the shared sandbox state.db. Defaults are the real functions.
+type IO = {
+  list: typeof queryRecentSessions
+  search: typeof searchSessions
+  remove: typeof deleteSession
+}
+
+type Props = { focused?: boolean; onSwitch?: (sid: string) => void; io?: Partial<IO> }
 
 export const Sessions = memo((props: Props) => {
   const theme = useTheme().theme
@@ -318,13 +328,19 @@ export const Sessions = memo((props: Props) => {
   const toast = useToast()
   const dims = useTerminalDimensions()
 
+  const io: IO = {
+    list: props.io?.list ?? queryRecentSessions,
+    search: props.io?.search ?? searchSessions,
+    remove: props.io?.remove ?? deleteSession,
+  }
+
   const [rows, setRows] = useState<Row[]>([])
   const [warn, setWarn] = useState("")
   const [sel, setSel] = useState(0)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<SessionSearchHit[]>([])
-  const seq = useRef(0)
+  const [results, setResults] = useState<SessionHit[]>([])
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const vscroll = useRef<ScrollBoxRenderable | null>(null)
 
   // Latest-value refs so the stable row callbacks below don't close
@@ -338,7 +354,7 @@ export const Sessions = memo((props: Props) => {
   const load = useCallback(async () => {
     const [rpc, fs] = await Promise.allSettled([
       gw.request<SessionListResponse>("session.list", { limit: LIMIT }),
-      Promise.resolve().then(() => queryRecentSessions(LIMIT)),
+      Promise.resolve().then(() => io.list(LIMIT)),
     ])
     const local = fs.status === "fulfilled"
       ? new Map(fs.value.map(r => [r.id, r]))
@@ -346,7 +362,11 @@ export const Sessions = memo((props: Props) => {
 
     if (rpc.status === "fulfilled" && rpc.value.sessions?.length) {
       setWarn("")
-      setRows(rpc.value.sessions.map(s => ({ ...s, detail: local.get(s.id) })))
+      // Stock session.list doesn't drop 0-msg stubs — every abandoned
+      // connect leaves one, and they're never useful to resume.
+      setRows(rpc.value.sessions
+        .filter(s => (s.message_count ?? 0) > 0)
+        .map(s => ({ ...s, detail: local.get(s.id) })))
       return
     }
     // RPC failed or empty — fall back to filesystem, but flag it.
@@ -354,7 +374,9 @@ export const Sessions = memo((props: Props) => {
       setWarn(rpc.status === "rejected"
         ? `gateway session.list failed (${(rpc.reason as Error).message}) — listing state.db directly; rows may not resume`
         : "")
-      setRows(fs.value.map(d => ({
+      setRows(fs.value
+        .filter(d => d.message_count > 0)
+        .map(d => ({
         id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
         message_count: d.message_count, started_at: d.started_at,
         source: d.sessionSource, detail: d,
@@ -367,21 +389,18 @@ export const Sessions = memo((props: Props) => {
 
   useEffect(() => { load() }, [load])
 
-  // Search via gateway RPC. The old filesystem implementation debounced
-  // with setTimeout because a sync sqlite query on every keystroke blocked
-  // the render thread. RPC is async — fire per keystroke and drop any
-  // response whose seq no longer matches (out-of-order or superseded).
+  // Search is a synchronous FTS5 query on state.db, so debounce —
+  // running it on every keystroke blocks the render thread. The
+  // cleanup clears the pending timer, which also drops superseded
+  // queries for free (only the most recent query value ever runs).
   useEffect(() => {
-    const id = ++seq.current
     if (!searching || !query.trim()) { setResults([]); return }
-    gw.request<SessionSearchResponse>("session.search", { query, limit: 30 })
-      .then(r => {
-        if (seq.current !== id) return
-        setResults(r.results ?? [])
-        setSel(0)
-      })
-      .catch(() => { if (seq.current === id) setResults([]) })
-  }, [gw, query, searching])
+    debounce.current = setTimeout(() => {
+      setResults(io.search(query, 30))
+      setSel(0)
+    }, 150)
+    return () => { if (debounce.current) clearTimeout(debounce.current) }
+  }, [query, searching])
 
   // ── Stable row callbacks (identity never changes) ────────────────
   const rowHover = useCallback((i: number) => setSel(i), [])
@@ -405,9 +424,9 @@ export const Sessions = memo((props: Props) => {
         title={r.title || "Untitled"}
         onConfirm={() => {
           dialog.clear()
-          gw.request<SessionDeleteResponse>("session.delete", { session_id: r.id })
-            .then(res => {
-              if (!res.deleted) throw new Error("not found")
+          Promise.resolve()
+            .then(() => {
+              if (!io.remove(r.id)) throw new Error("not found")
               invalidate()
               toast.show({ variant: "success", message: "Session deleted" })
               setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
@@ -419,7 +438,7 @@ export const Sessions = memo((props: Props) => {
         onCancel={() => dialog.clear()}
       />,
     )
-  }, [gw, dialog, toast, load, rows.length])
+  }, [dialog, toast, load, rows.length])
   confirmDeleteRef.current = confirmDelete
 
   const count = searching ? results.length : rows.length
