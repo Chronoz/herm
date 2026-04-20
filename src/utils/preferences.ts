@@ -32,6 +32,8 @@ export interface TuiPreferences {
   lastSessionId?: string
   /** Path to a .eikon avatar file for the sidebar */
   eikonPath?: string
+  /** Spinner/avatar frame animations (off → static glyphs) */
+  animations?: boolean
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {

@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from "react"
 import type { ToolPart as Part } from "../../types/message"
 import { DiffBlock, isDiff } from "./DiffBlock"
 import { useTheme } from "../../theme"
+import { useSpinnerGlyph } from "../../ui/spinner"
 
 /** First non-empty string value in an args object, truncated. */
 function brief(args: string, max = 40): string {
@@ -43,7 +44,8 @@ export const ToolPart = memo(({ tool }: { tool: Part }) => {
   const running = tool.status === "running"
   const failed = tool.status === "error"
   const tint = failed ? theme.error : running ? theme.warning : theme.textMuted
-  const glyph = open ? "▾" : "▸"
+  const spin = useSpinnerGlyph(running)
+  const glyph = running ? spin : open ? "▾" : "▸"
 
   const sum = useMemo(() => brief(tool.args) || tool.preview || "", [tool.args, tool.preview])
   const pairs = useMemo(() => kv(tool.args), [tool.args])
@@ -65,7 +67,6 @@ export const ToolPart = memo(({ tool }: { tool: Part }) => {
           {sum ? <span fg={theme.textMuted}>  {sum}</span> : null}
           {diff && !open ? <span fg={theme.accent}>  ±</span> : null}
           {tool.duration != null ? <span fg={theme.textMuted}>  {ms(tool.duration)}</span> : null}
-          {running ? <span fg={theme.warning}>  ◌</span> : null}
         </text>
       </box>
       {open ? (

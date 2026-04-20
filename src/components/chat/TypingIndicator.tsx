@@ -1,28 +1,12 @@
-import { useState, useEffect, useRef, memo } from "react";
-import { useTheme } from "../../theme";
+import { memo } from "react"
+import { useTheme } from "../../theme"
+import { Spinner } from "../../ui/spinner"
 
-const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-export const TypingIndicator = memo(() => {
-  const theme = useTheme().theme;
-  const [frame, setFrame] = useState(0);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    timer.current = setInterval(() => {
-      setFrame((f) => (f + 1) % FRAMES.length);
-    }, 120);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
-  }, []);
-
+export const TypingIndicator = memo((props: { label?: string }) => {
+  const theme = useTheme().theme
   return (
     <box height={1} paddingLeft={1}>
-      <text>
-        <span fg={theme.info}>{FRAMES[frame]}</span>
-        <span fg={theme.textMuted}> Generating...</span>
-      </text>
+      <Spinner color={theme.info} label={props.label ?? "Generating…"} />
     </box>
-  );
-});
+  )
+})
