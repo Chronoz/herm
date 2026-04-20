@@ -3,8 +3,12 @@ import { act } from "react"
 import { mountNode, until, type Harness } from "./harness"
 import { MessageList } from "../src/components/chat/MessageList"
 import { isDiff } from "../src/components/chat/DiffBlock"
+import { spec } from "../src/components/chat/tool/preview"
 import type { Message } from "../src/types/message"
 
+// Fixture mirrors the wire: tool.start gives a preview string (via
+// _tool_ctx → build_tool_preview, ≤80ch), tool.complete gives summary
+// + optional inline_diff. No raw args JSON, no stdout body.
 const turn: Message[] = [
   {
     id: "u1", role: "user", timestamp: 0,
@@ -16,10 +20,13 @@ const turn: Message[] = [
     parts: [
       { type: "text", content: "On it.", streaming: false },
       {
-        type: "tool", id: "t1", name: "terminal",
-        args: JSON.stringify({ command: "bun run build", workdir: "/tmp" }),
-        status: "done", duration: 87,
-        result: "line-one\nline-two\nline-three\nline-four\nline-five\nline-six",
+        type: "tool", id: "t1", name: "terminal", args: "",
+        preview: "bun run build", status: "done", duration: 87,
+        result: "Completed in 0.1s",
+      },
+      {
+        type: "tool", id: "t2", name: "read_file", args: "",
+        preview: "src/index.tsx", status: "done", duration: 12,
       },
     ],
   },
@@ -30,9 +37,8 @@ async function setup() {
     <box flexDirection="column" width="100%" height="100%">
       <MessageList messages={turn} streaming={false} />
     </box>,
-    { width: 100, height: 30 },
+    { width: 120, height: 30 },
   )
-  // scrollbox + sticky-bottom needs two settle passes to lay out
   await t.settle()
   await until(t, () => t.frame().includes("▸ you"))
   return t
@@ -60,47 +66,61 @@ describe("MessageList", () => {
     t.destroy()
   })
 
-  test("renders gutter + header + collapsed tool row", async () => {
+  test("renders gutter + header + inline tool rows", async () => {
     const t = await setup()
     const f = t.frame()
 
-    // user prefix + body
     expect(f).toContain("▸ you")
     expect(f).toContain("run the build")
 
-    // assistant gutter bar + header line
     expect(f).toContain("│")
     expect(f).toContain("test-model · 12→34 tok · 250ms")
 
-    // tool row: collapsed glyph, name, summary, duration
-    expect(f).toContain("▸ terminal")
-    expect(f).toContain("bun run build")
+    // terminal: icon `$`, no verb → shows preview directly
+    expect(f).toContain("$ bun run build")
     expect(f).toContain("87ms")
-
-    // collapsed: args KV + result body hidden
-    expect(f).not.toContain("workdir")
-    expect(f).not.toContain("line-one")
+    // read_file: icon `→`, verb `Read`
+    expect(f).toContain("→ Read src/index.tsx")
     t.destroy()
   })
 
-  test("clicking tool row expands to show args KV + first 5 result lines", async () => {
-    const t = await setup()
-    const p = locate(t, "▸ terminal")
-    await act(async () => { await t.mouse.pressDown(p.x, p.y) })
-    await until(t, () => t.frame().includes("▾ terminal"))
+  test("running tool shows pending gerund until preview arrives", async () => {
+    const msgs: Message[] = [{
+      id: "a0", role: "assistant", timestamp: 0,
+      parts: [{
+        type: "tool", id: "tr", name: "search_files", args: "",
+        status: "running", startedAt: Date.now(),
+      }],
+    }]
+    const t = await mountNode(
+      <box flexDirection="column" width="100%" height="100%">
+        <MessageList messages={msgs} streaming />
+      </box>,
+      { width: 100, height: 20 },
+    )
+    await until(t, () => t.frame().includes("~ Searching…"))
+    // braille spinner glyph in place of the icon while running
+    expect(t.frame()).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] ~ Searching…/)
+    t.destroy()
+  })
 
-    const f = t.frame()
-    expect(f).toContain("command")
-    expect(f).toContain("workdir")
-    expect(f).toContain("line-one")
-    expect(f).toContain("line-five")
-    expect(f).not.toContain("line-six")  // capped at 5
-
-    // collapse again
-    const q = locate(t, "▾ terminal")
-    await act(async () => { await t.mouse.pressDown(q.x, q.y) })
-    await until(t, () => t.frame().includes("▸ terminal"))
-    expect(t.frame()).not.toContain("workdir")
+  test("failed tool row is error-tinted and shows error body", async () => {
+    const msgs: Message[] = [{
+      id: "a0", role: "assistant", timestamp: 0,
+      parts: [{
+        type: "tool", id: "te", name: "terminal", args: "",
+        preview: "rm -rf /", status: "error", duration: 5,
+        result: "permission denied",
+      }],
+    }]
+    const t = await mountNode(
+      <box flexDirection="column" width="100%" height="100%">
+        <MessageList messages={msgs} streaming={false} />
+      </box>,
+      { width: 100, height: 20 },
+    )
+    await until(t, () => t.frame().includes("$ rm -rf /"))
+    expect(t.frame()).toContain("permission denied")
     t.destroy()
   })
 })
@@ -114,7 +134,7 @@ const UDIFF = [
   "+new line",
 ].join("\n")
 
-describe("diff detection", () => {
+describe("tool/file-edit", () => {
   test("isDiff matches unified headers and hunk markers", () => {
     expect(isDiff(UDIFF)).toBe(true)
     expect(isDiff("@@ -1 +1 @@\n-a\n+b")).toBe(true)
@@ -124,12 +144,12 @@ describe("diff detection", () => {
     expect(isDiff(undefined)).toBe(false)
   })
 
-  test("tool result that looks like a diff renders as DiffBlock on expand", async () => {
+  test("patch with inline_diff renders as a BlockTool with DiffBlock + delta footer", async () => {
     const msgs: Message[] = [{
       id: "a2", role: "assistant", timestamp: 0,
       parts: [{
-        type: "tool", id: "t2", name: "patch", args: "",
-        status: "done", duration: 42, result: UDIFF,
+        type: "tool", id: "td", name: "patch", args: "",
+        preview: "src/foo.ts", status: "done", duration: 42, diff: UDIFF,
       }],
     }]
     const t = await mountNode(
@@ -139,19 +159,58 @@ describe("diff detection", () => {
       { width: 100, height: 30 },
     )
     await t.settle()
-    await until(t, () => t.frame().includes("▸ patch"))
-
-    // collapsed row shows ± hint
-    expect(t.frame()).toContain("±")
-
-    const p = locate(t, "▸ patch")
-    await act(async () => { await t.mouse.pressDown(p.x, p.y) })
     await until(t, () => t.frame().includes("@@ -1,3 +1,3 @@"))
 
     const f = t.frame()
-    expect(f).toContain("--- a/foo.ts")
+    // BlockTool heavy left bar + title row
+    expect(f).toContain("┃")
+    expect(f).toContain("← Edit src/foo.ts")
+    // diff body
     expect(f).toContain("+new line")
     expect(f).toContain("-old line")
+    // delta footer
+    expect(f).toContain("+1")
+    expect(f).toContain("-1")
     t.destroy()
+  })
+
+  test("write_file without a diff stays inline", async () => {
+    const msgs: Message[] = [{
+      id: "a3", role: "assistant", timestamp: 0,
+      parts: [{
+        type: "tool", id: "tw", name: "write_file", args: "",
+        preview: "docs/README.md", status: "done", duration: 9,
+      }],
+    }]
+    const t = await mountNode(
+      <box flexDirection="column" width="100%" height="100%">
+        <MessageList messages={msgs} streaming={false} />
+      </box>,
+      { width: 100, height: 20 },
+    )
+    await until(t, () => t.frame().includes("← Write docs/README.md"))
+    expect(t.frame()).not.toContain("┃")
+    t.destroy()
+  })
+})
+
+describe("tool/preview spec table", () => {
+  test("every hermes tool has a single-char icon and non-empty pending", () => {
+    const names = [
+      "terminal", "process", "execute_code", "read_file", "write_file",
+      "patch", "search_files", "web_search", "web_extract", "session_search",
+      "browser_navigate", "browser_click", "browser_type", "browser_snapshot",
+      "browser_vision", "vision_analyze", "todo", "memory", "clarify",
+      "skill_view", "skills_list", "skill_manage", "delegate_task", "cronjob",
+      "text_to_speech", "image_generate",
+    ]
+    for (const n of names) {
+      const s = spec(n)
+      expect([...s.icon].length).toBe(1)
+      expect(s.pending.length).toBeGreaterThan(0)
+    }
+    expect(spec("unknown_tool").icon).toBe("⚙")
+    expect(spec("mcp__foo").icon).toBe("◇")
+    expect(spec("subagent[0]").icon).toBe("⊙")
   })
 })
