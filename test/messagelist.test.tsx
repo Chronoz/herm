@@ -194,6 +194,34 @@ describe("tool/file-edit", () => {
   })
 })
 
+describe("ErrorBlock", () => {
+  test("failed turn renders bordered card with head + collapsed body + copy", async () => {
+    const stack = ["RuntimeError: boom", ...Array.from({ length: 10 }, (_, i) => `  at frame${i}`)].join("\n")
+    const msgs: Message[] = [{
+      id: "ae", role: "assistant", timestamp: 0, parts: [], error: stack,
+    }]
+    const t = await mountNode(
+      <box flexDirection="column" width="100%" height="100%">
+        <MessageList messages={msgs} streaming={false} />
+      </box>,
+      { width: 100, height: 30 },
+    )
+    await until(t, () => t.frame().includes("✗ RuntimeError: boom"))
+    const f = t.frame()
+    expect(f).toContain("┃")
+    expect(f).toContain("copy")
+    expect(f).toContain("at frame0")
+    expect(f).toContain("at frame5")
+    expect(f).not.toContain("at frame6")
+    expect(f).toContain("click to expand")
+
+    const p = locate(t, "at frame0")
+    await act(async () => { await t.mouse.pressDown(p.x, p.y) })
+    await until(t, () => t.frame().includes("at frame9"))
+    t.destroy()
+  })
+})
+
 describe("tool/preview spec table", () => {
   test("every hermes tool has a single-char icon and non-empty pending", () => {
     const names = [

@@ -2,6 +2,7 @@ import { memo, useState } from "react"
 import type { RGBA } from "@opentui/core"
 import type { Message, Part, TextPart, ThinkingPart } from "../../types/message"
 import { Tool } from "./tool"
+import { ErrorBlock } from "./ErrorBlock"
 import { useTheme } from "../../theme"
 
 export type { Message }
@@ -153,11 +154,7 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
           <text fg={theme.textMuted}>{header}</text>
         </box>
         {message.parts.map(part)}
-        {err ? (
-          <box height={1}>
-            <text fg={theme.error}>✗ {message.error}</text>
-          </box>
-        ) : null}
+        {err ? <ErrorBlock text={message.error!} /> : null}
       </Gutter>
     </box>
   )
