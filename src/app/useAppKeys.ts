@@ -24,6 +24,8 @@ type Opts = {
   onInterruptNotice: () => void
   onCopyLast: () => void
   onNotice: (text: string) => void
+  /** Inject text into the running turn via session.steer (Shift+Enter). */
+  onSteer: (text: string) => void
   /** Pop last queued prompt into the composer; returns whether one existed. */
   onQueuePop: () => boolean
 }
@@ -73,6 +75,16 @@ export function useAppKeys(o: Opts) {
     if (key.ctrl && key.name === "right") {
       o.setTab(t => Math.min(o.tabMax, t + 1))
       o.setFocusRegion("input")
+      return
+    }
+
+    // Shift+Enter while streaming → steer the running turn. Plain Enter
+    // falls through to <input> onSubmit (queues). Stop propagation so the
+    // input doesn't also enqueue on the same keystroke.
+    if (o.streaming && key.shift && key.name === "return") {
+      const text = c?.value().trim() ?? ""
+      if (text) { o.onSteer(text); c?.set("") }
+      key.stopPropagation()
       return
     }
 
