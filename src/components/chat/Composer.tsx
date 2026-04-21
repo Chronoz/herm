@@ -8,6 +8,7 @@ import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
 import { useGateway } from "../../app/gateway"
 import type { Usage } from "../../types/message"
+import type { ImageAttachResponse } from "../../utils/gateway-types"
 import type { SlashCommand } from "../../commands/slash"
 import { useSlashCommands } from "../../app/useSlashCommands"
 import { useSlashPopover } from "../../app/useSlashPopover"
@@ -43,6 +44,7 @@ type Props = {
   /** 0–100; context window fill from session.usage. */
   contextPct?: number
   queue?: ReadonlyArray<string>
+  attachments?: ReadonlyArray<ImageAttachResponse>
   onSend: (text: string) => void
   onSlash: (cmd: SlashCommand) => void
   onEnqueue?: (text: string) => void
@@ -216,6 +218,23 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
                 <span fg={theme.textMuted}>⏸ {i + 1}. {trunc(q, 60)}</span>
               </text>
             </box>
+          ))}
+        </box>
+      ) : null}
+
+      {(props.attachments?.length ?? 0) > 0 ? (
+        <box flexDirection="row" flexWrap="wrap" gap={1} paddingX={1} paddingBottom={1}>
+          {props.attachments!.map((a, i) => (
+            <text key={a.path ?? i}>
+              <span bg={theme.accent} fg={theme.background}> img </span>
+              <span bg={theme.backgroundElement} fg={theme.textMuted}> {a.name ?? `image ${i + 1}`} </span>
+              {a.width && a.height
+                ? <span bg={theme.backgroundElement} fg={theme.textMuted}>{a.width}×{a.height} </span>
+                : null}
+              {a.token_estimate
+                ? <span bg={theme.backgroundElement} fg={theme.textMuted}>~{fmt(a.token_estimate)}t </span>
+                : null}
+            </text>
           ))}
         </box>
       ) : null}

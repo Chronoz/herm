@@ -182,6 +182,17 @@ export type ModelOptionsResponse = {
   }[]
 }
 
+export type ImageAttachResponse = {
+  attached: boolean
+  path?: string
+  count?: number
+  name?: string
+  width?: number
+  height?: number
+  token_estimate?: number
+  message?: string
+}
+
 export type ShellExecResponse = {
   stdout?: string
   stderr?: string

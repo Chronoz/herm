@@ -3,7 +3,7 @@ import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "
 import * as perf from "./utils/perf"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
-import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage } from "./utils/gateway-types"
+import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
 import type { Message } from "./types/message"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
@@ -86,6 +86,7 @@ const AppInner = () => {
   const [status, setStatus] = useState("")
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
   const [queue, setQueue] = useState<string[]>([])
+  const [attachments, setAttachments] = useState<ImageAttachResponse[]>([])
   const inflight = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
@@ -107,6 +108,7 @@ const AppInner = () => {
     setReady(false)
     setStatus("")
     setTitle("")
+    setAttachments([])
   }, [])
 
   const newSession = useCallback(async () => {
@@ -212,6 +214,18 @@ const AppInner = () => {
     openMessage(dialog, m, { rewind, fork })
   }, [turn.streaming, dialog, rewind, fork])
 
+  // ── Attachments ───────────────────────────────────────────────────
+  // Gateway owns the canonical list (session["attached_images"]); chips
+  // are a client-side mirror. prompt.submit drains server-side, so clear
+  // here too. No image.detach RPC yet — chips are display-only.
+  const attachClipboard = useCallback(() => {
+    gw.request<ImageAttachResponse>("clipboard.paste")
+      .then(r => r.attached
+        ? setAttachments(a => [...a, r])
+        : toast.show({ variant: "info", message: r.message ?? "No image in clipboard" }))
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+  }, [gw, toast])
+
   // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
     if (c.target === "local") {
@@ -255,6 +269,7 @@ const AppInner = () => {
     }
     dispatch({ kind: "user", text })
     preferences.set("lastSessionId", sid)
+    setAttachments([])
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
   }, [sid, gw, applyTitle])
@@ -387,6 +402,7 @@ const AppInner = () => {
     onInterrupt: () => session.interrupt(),
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
+    onAttachClipboard: attachClipboard,
     onNotice: (text) => dispatch({ kind: "system", text }),
     onSteer: (text) => {
       gw.request("session.steer", { text })
@@ -471,6 +487,7 @@ const AppInner = () => {
                 status={status} model={model} title={title} usage={usage} cost={cost} turns={msgCount}
                 contextPct={ctxPct}
                 queue={queue}
+                attachments={attachments}
                 onSend={send} onSlash={slash}
                 onEnqueue={(t) => setQueue(q => [...q, t])}
                 onDequeue={dequeue}

@@ -23,6 +23,7 @@ type Opts = {
   onInterrupt: () => void
   onInterruptNotice: () => void
   onCopyLast: () => void
+  onAttachClipboard: () => void
   onNotice: (text: string) => void
   /** Inject text into the running turn via session.steer (Shift+Enter). */
   onSteer: (text: string) => void
@@ -121,6 +122,13 @@ export function useAppKeys(o: Opts) {
     }
 
     if (key.ctrl && key.name === "y") return o.onCopyLast()
+    // Alt+V → gateway probes the system clipboard for an image. Ctrl+V
+    // is the terminal's bracketed-paste path; Alt avoids collision.
+    if (key.meta && key.name === "v") {
+      o.onAttachClipboard()
+      key.stopPropagation()
+      return
+    }
     // Ctrl+U (readline kill-to-start) repurposed: if there's a queued
     // prompt, pop it back into the input instead. Only stop propagation
     // on success so the readline binding still works on an empty queue.

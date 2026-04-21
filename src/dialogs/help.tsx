@@ -19,6 +19,7 @@ const SECTIONS = [
       ["Enter", "Send message"],
       ["Esc ×2", "Interrupt generation"],
       ["Ctrl+Y", "Copy last response"],
+      ["Alt+V", "Attach clipboard image"],
       ["↑ / ↓", "Prompt history"],
     ],
   },
