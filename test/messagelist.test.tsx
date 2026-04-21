@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { act } from "react"
 import { mountNode, until, type Harness } from "./harness"
 import { MessageList } from "../src/components/chat/MessageList"
+import { Tool } from "../src/components/chat/tool"
 import { isDiff } from "../src/components/chat/DiffBlock"
 import { spec } from "../src/components/chat/tool/preview"
-import type { Message } from "../src/types/message"
+import type { Message, ToolPart } from "../src/types/message"
 
 // Fixture mirrors the wire: tool.start gives a preview string (via
 // _tool_ctx → build_tool_preview, ≤80ch), tool.complete gives summary
@@ -32,15 +33,12 @@ const turn: Message[] = [
   },
 ]
 
-async function setup() {
+async function tool(part: ToolPart, w = 100) {
   const t: Harness = await mountNode(
-    <box flexDirection="column" width="100%" height="100%">
-      <MessageList messages={turn} streaming={false} />
-    </box>,
-    { width: 120, height: 30 },
+    <box flexDirection="column" width="100%" height="100%"><Tool tool={part} /></box>,
+    { width: w, height: 30 },
   )
   await t.settle()
-  await until(t, () => t.frame().includes("▸ you"))
   return t
 }
 
@@ -66,38 +64,43 @@ describe("MessageList", () => {
     t.destroy()
   })
 
-  test("renders gutter + header + inline tool rows", async () => {
-    const t = await setup()
+  test("renders gutter + header + trail badge; body is text-only", async () => {
+    const t: Harness = await mountNode(
+      <box flexDirection="column" width="100%" height="100%">
+        <MessageList messages={turn} streaming={false} />
+      </box>,
+      { width: 120, height: 30 },
+    )
+    await until(t, () => t.frame().includes("On it."))
     const f = t.frame()
 
-    expect(f).toContain("▸ you")
     expect(f).toContain("run the build")
-
     expect(f).toContain("│")
     expect(f).toContain("test-model · 12→34 tok · 250ms")
+    // trail badge (right-aligned), not inline tool bodies
+    expect(f).toContain("terminal · read_file")
+    expect(f).not.toContain("$ bun run build")
+    t.destroy()
+  })
+})
 
-    // terminal: icon `$`, no verb → shows preview directly
-    expect(f).toContain("$ bun run build")
-    expect(f).toContain("87ms")
-    // read_file: icon `→`, verb `Read`
-    expect(f).toContain("→ Read src/index.tsx")
+describe("tool/inline", () => {
+  test("terminal + read_file render icon/verb rows", async () => {
+    let t = await tool(turn[1].parts[1] as ToolPart)
+    await until(t, () => t.frame().includes("$ bun run build"))
+    expect(t.frame()).toContain("87ms")
+    t.destroy()
+
+    t = await tool(turn[1].parts[2] as ToolPart)
+    await until(t, () => t.frame().includes("→ Read src/index.tsx"))
     t.destroy()
   })
 
   test("running tool shows pending gerund until preview arrives", async () => {
-    const msgs: Message[] = [{
-      id: "a0", role: "assistant", timestamp: 0,
-      parts: [{
-        type: "tool", id: "tr", name: "search_files", args: "",
-        status: "running", startedAt: Date.now(),
-      }],
-    }]
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msgs} streaming />
-      </box>,
-      { width: 100, height: 20 },
-    )
+    const t = await tool({
+      type: "tool", id: "tr", name: "search_files", args: "",
+      status: "running", startedAt: Date.now(),
+    })
     await until(t, () => t.frame().includes("~ Searching…"))
     // braille spinner glyph in place of the icon while running
     expect(t.frame()).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] ~ Searching…/)
@@ -105,20 +108,11 @@ describe("MessageList", () => {
   })
 
   test("failed tool row is error-tinted and shows error body", async () => {
-    const msgs: Message[] = [{
-      id: "a0", role: "assistant", timestamp: 0,
-      parts: [{
-        type: "tool", id: "te", name: "terminal", args: "",
-        preview: "rm -rf /", status: "error", duration: 5,
-        result: "permission denied",
-      }],
-    }]
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msgs} streaming={false} />
-      </box>,
-      { width: 100, height: 20 },
-    )
+    const t = await tool({
+      type: "tool", id: "te", name: "terminal", args: "",
+      preview: "rm -rf /", status: "error", duration: 5,
+      result: "permission denied",
+    })
     await until(t, () => t.frame().includes("$ rm -rf /"))
     expect(t.frame()).toContain("permission denied")
     t.destroy()
@@ -145,20 +139,10 @@ describe("tool/file-edit", () => {
   })
 
   test("patch with inline_diff renders as a BlockTool with DiffBlock + delta footer", async () => {
-    const msgs: Message[] = [{
-      id: "a2", role: "assistant", timestamp: 0,
-      parts: [{
-        type: "tool", id: "td", name: "patch", args: "",
-        preview: "src/foo.ts", status: "done", duration: 42, diff: UDIFF,
-      }],
-    }]
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msgs} streaming={false} />
-      </box>,
-      { width: 100, height: 30 },
-    )
-    await t.settle()
+    const t = await tool({
+      type: "tool", id: "td", name: "patch", args: "",
+      preview: "src/foo.ts", status: "done", duration: 42, diff: UDIFF,
+    })
     await until(t, () => t.frame().includes("@@ -1,3 +1,3 @@"))
 
     const f = t.frame()
@@ -175,19 +159,10 @@ describe("tool/file-edit", () => {
   })
 
   test("write_file without a diff stays inline", async () => {
-    const msgs: Message[] = [{
-      id: "a3", role: "assistant", timestamp: 0,
-      parts: [{
-        type: "tool", id: "tw", name: "write_file", args: "",
-        preview: "docs/README.md", status: "done", duration: 9,
-      }],
-    }]
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msgs} streaming={false} />
-      </box>,
-      { width: 100, height: 20 },
-    )
+    const t = await tool({
+      type: "tool", id: "tw", name: "write_file", args: "",
+      preview: "docs/README.md", status: "done", duration: 9,
+    })
     await until(t, () => t.frame().includes("← Write docs/README.md"))
     expect(t.frame()).not.toContain("┃")
     t.destroy()

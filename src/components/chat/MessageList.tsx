@@ -9,9 +9,10 @@ type Props = {
   messages: Message[]
   streaming: boolean
   onRewind?: (m: Message) => void
+  onPick?: (m: Message) => void
 }
 
-export const MessageList = memo(({ messages, streaming, onRewind }: Props) => {
+export const MessageList = memo(({ messages, streaming, onRewind, onPick }: Props) => {
   const theme = useTheme().theme
 
   if (messages.length === 0) {
@@ -81,6 +82,7 @@ export const MessageList = memo(({ messages, streaming, onRewind }: Props) => {
             message={msg}
             streaming={lastStreaming && i === messages.length - 1}
             onRewind={onRewind}
+            onPick={onPick}
           />
         ))}
         {streaming && last?.role !== "assistant" && <TypingIndicator />}

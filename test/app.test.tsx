@@ -286,11 +286,17 @@ describe("app", () => {
       await until(t, () => t.frame().includes(`re: ${msg}`))
     }
 
-    // Click the first user message → action menu.
-    const rows = t.frame().split("\n")
-    const y = rows.findIndex(l => l.includes("first q") && !l.includes("re:"))
-    expect(y).toBeGreaterThan(0)
-    await act(async () => { await t.mouse.pressDown(4, y) })
+    // Click the first user message → action menu. It's under the cloud
+    // overlay in a short transcript, so scroll it into view first.
+    const row = () => {
+      const rows = t.frame().split("\n")
+      return rows.findIndex(l => l.includes("first q") && !l.includes("re:") && !l.includes("┇"))
+    }
+    await act(async () => {
+      for (let i = 0; i < 30 && row() < 0; i++) await t.mouse.scroll(20, 20, "up")
+    })
+    await until(t, () => row() > 0)
+    await act(async () => { await t.mouse.click(4, row()) })
     await until(t, () => t.frame().includes("Message Actions"))
     expect(t.frame()).toContain("Rewind here")
     expect(t.frame()).toContain("Fork here")
@@ -328,8 +334,8 @@ describe("app", () => {
     await until(t, () => t.frame().includes("re: seed q"))
 
     const rows = t.frame().split("\n")
-    const y = rows.findIndex(l => l.includes("seed q") && !l.includes("re:"))
-    await act(async () => { await t.mouse.pressDown(4, y) })
+    const y = rows.findIndex(l => l.includes("seed q") && !l.includes("re:") && !l.includes("┇"))
+    await act(async () => { await t.mouse.click(4, y) })
     await until(t, () => t.frame().includes("Message Actions"))
 
     act(() => t.keys.pressArrow("down"))

@@ -5,6 +5,7 @@ import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
 import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
 import type { Message } from "./types/message"
+import { CLOUD_MIN } from "./components/chat/ThoughtCloud"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
@@ -87,6 +88,9 @@ const AppInner = () => {
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
   const [queue, setQueue] = useState<string[]>([])
   const [attachments, setAttachments] = useState<ImageAttachResponse[]>([])
+  const [cloud, setCloud] = useState(false)
+  const [cloudH, setCloudH] = useState(CLOUD_MIN)
+  const [pick, setPick] = useState<Message | undefined>(undefined)
   const inflight = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
@@ -97,6 +101,15 @@ const AppInner = () => {
     : turn.streaming && turn.hasContent ? "speaking"
     : turn.streaming ? "thinking"
     : "idle"
+
+  // Thought cloud: single `cloud` bit, driven by events. Streaming
+  // opens it and clears any pin; streaming end closes it; avatar click
+  // and message-pin override freely from either side.
+  useEffect(() => {
+    if (turn.streaming) setPick(undefined)
+    setCloud(turn.streaming)
+  }, [turn.streaming])
+  const onPick = useCallback((m?: Message) => { setPick(m); setCloud(!!m) }, [])
 
   // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
@@ -449,7 +462,9 @@ const AppInner = () => {
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} onRewind={msgMenu} />
+        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} status={status}
+                             cloud={cloud} cloudH={cloudH} pick={pick}
+                             onResize={setCloudH} onPick={onPick} onRewind={msgMenu} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} />
         case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />
@@ -496,7 +511,9 @@ const AppInner = () => {
           </box>
           {dims.width >= 120 ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
-              <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()} />
+              <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()}
+                       cloud={tab === 0 && cloud} pulse={turn.streaming}
+                       onAvatar={() => setCloud(o => !o)} />
             </Profiler>
           ) : null}
         </box>

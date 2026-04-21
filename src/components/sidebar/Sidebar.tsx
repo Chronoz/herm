@@ -6,6 +6,7 @@ import type { AvatarState } from "../avatar/states"
 import type { SessionInfo } from "../../utils/gateway-types"
 import type { HermesHomeSnapshot, MemoryFileInfo } from "../../utils/hermes-home"
 import { snapshot } from "../../utils/cache"
+import { Tail } from "../chat/ThoughtCloud"
 
 // The pillar body carries what used to be the Overview tab, broken into
 // collapsible sections. Identity uses live `SessionInfo` from the gateway
@@ -109,6 +110,9 @@ export const Sidebar = memo((props: {
   info?: SessionInfo | null
   eikon?: ParsedEikon
   profile?: string
+  cloud?: boolean
+  pulse?: boolean
+  onAvatar?: () => void
 }) => {
   const theme = useTheme().theme
   const state = props.agentState ?? "idle"
@@ -144,9 +148,15 @@ export const Sidebar = memo((props: {
 
   return (
     <box width={WIDTH} flexDirection="column">
-      {/* Avatar (bust) */}
-      <box flexDirection="column" height={24} overflow="hidden">
+      {/* Avatar (bust) — also the anchor for the thought-cloud tail */}
+      <box position="relative" flexDirection="column" height={24} overflow="hidden"
+           onMouseDown={props.onAvatar}>
         <AnimatedAvatar state={state} eikon={props.eikon} />
+        {props.cloud ? (
+          <box position="absolute" left={0} top={0}>
+            <Tail run={!!props.pulse} />
+          </box>
+        ) : null}
       </box>
 
       {/* Body (pillar) */}

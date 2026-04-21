@@ -1,7 +1,6 @@
-import { memo, useState } from "react"
-import type { RGBA } from "@opentui/core"
-import type { Message, Part, TextPart, ThinkingPart } from "../../types/message"
-import { Tool } from "./tool"
+import { memo, useRef, useState } from "react"
+import type { RGBA, MouseEvent } from "@opentui/core"
+import type { Message, Part, TextPart } from "../../types/message"
 import { ErrorBlock } from "./ErrorBlock"
 import { useTheme } from "../../theme"
 
@@ -25,6 +24,22 @@ function extract(msg: Message): string {
     .filter((p): p is TextPart => p.type === "text")
     .map(p => p.content)
     .join("")
+}
+
+const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + "…"
+
+// OpenTUI has no onClick; synthesize one from down→up at the same cell
+// so text-selection drags don't fire it.
+function useClick(fn?: () => void) {
+  const at = useRef<{ x: number; y: number } | null>(null)
+  return {
+    onMouseDown: (e: MouseEvent) => { at.current = { x: e.x, y: e.y } },
+    onMouseUp: (e: MouseEvent) => {
+      const a = at.current
+      at.current = null
+      if (fn && a && a.x === e.x && a.y === e.y) fn()
+    },
+  }
 }
 
 /** Two-column gutter: a themed vertical bar runs the full height of the body. */
@@ -51,14 +66,15 @@ const Gutter = memo(({ color, glyph = "│", children }: {
   </box>
 ))
 
-export const MessageItem = memo(({ message, streaming, onRewind }: {
+export const MessageItem = memo(({ message, streaming, onRewind, onPick }: {
   message: Message
   streaming: boolean
   onRewind?: (m: Message) => void
+  onPick?: (m: Message) => void
 }) => {
   if (message.role === "system") return <SystemMessage message={message} />
   if (message.role === "user") return <UserMessage message={message} onRewind={onRewind} />
-  return <AssistantMessage message={message} streaming={streaming} />
+  return <AssistantMessage message={message} streaming={streaming} onPick={onPick} />
 })
 
 const SystemMessage = memo(({ message }: { message: Message }) => {
@@ -77,6 +93,7 @@ const SystemMessage = memo(({ message }: { message: Message }) => {
 const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: (m: Message) => void }) => {
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)
+  const click = useClick(onRewind && (() => onRewind(message)))
   return (
     <box
       flexDirection="column"
@@ -84,7 +101,7 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
       backgroundColor={hover ? theme.backgroundElement : undefined}
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
-      onMouseDown={onRewind ? () => onRewind(message) : undefined}
+      {...click}
     >
       <box height={1} flexDirection="row">
         <box flexGrow={1}>
@@ -101,21 +118,15 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
   )
 })
 
-const Thinking = memo(({ part }: { part: ThinkingPart }) => {
-  const theme = useTheme().theme
-  const [open, setOpen] = useState(false)
-  const body = open ? part.content : part.content.slice(0, 80).replace(/\n/g, " ")
-  return (
-    <box onMouseDown={() => setOpen(o => !o)}>
-      <text fg={theme.textMuted}>💭 {body}{!open && part.content.length > 80 ? "…" : ""}</text>
-    </box>
-  )
-})
-
-const AssistantMessage = memo(({ message, streaming }: { message: Message; streaming: boolean }) => {
+const AssistantMessage = memo(({ message, streaming, onPick }: {
+  message: Message; streaming: boolean; onPick?: (m: Message) => void
+}) => {
   const ctx = useTheme()
   const theme = ctx.theme
+  const [hover, setHover] = useState(false)
+  const click = useClick(onPick && (() => onPick(message)))
   const err = !!message.error
+  const trail = message.parts.filter(p => p.type !== "text")
 
   const header = [
     message.model ?? "assistant",
@@ -124,9 +135,7 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
   ].filter(Boolean).join(" · ")
 
   const part = (p: Part, i: number) => {
-    if (p.type === "thinking") return <Thinking key={`t-${i}`} part={p} />
-    if (p.type === "tool") return <Tool key={p.id || `tool-${i}`} tool={p} />
-    if (!p.content) return null
+    if (p.type !== "text" || !p.content) return null
     // Fenced code blocks inside assistant markdown are rendered by
     // OpenTUI's MarkdownRenderable → CodeRenderable, which uses the
     // process-global TreeSitterClient singleton for syntax highlighting
@@ -148,10 +157,19 @@ const AssistantMessage = memo(({ message, streaming }: { message: Message; strea
   }
 
   return (
-    <box flexDirection="column" marginBottom={1}>
+    <box flexDirection="column" marginBottom={1}
+         backgroundColor={hover ? theme.backgroundElement : undefined}
+         onMouseOver={() => setHover(true)}
+         onMouseOut={() => setHover(false)}
+         {...click}>
       <Gutter color={err ? theme.error : theme.primary}>
-        <box height={1}>
-          <text fg={theme.textMuted}>{header}</text>
+        <box height={1} flexDirection="row">
+          <box flexGrow={1}><text fg={theme.textMuted}>{header}</text></box>
+          {trail.length ? (
+            <box><text fg={theme.textMuted}>
+              {trunc(trail.map(p => p.type === "tool" ? p.name : "💭").join(" · "), 40)}
+            </text></box>
+          ) : null}
         </box>
         {message.parts.map(part)}
         {err ? <ErrorBlock text={message.error!} /> : null}

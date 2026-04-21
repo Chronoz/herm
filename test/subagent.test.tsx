@@ -2,8 +2,8 @@ import { describe, test, expect } from "bun:test"
 import { act } from "react"
 import { mountNode, until, type Harness } from "./harness"
 import { turnReducer, initialTurn, type TurnState } from "../src/app/turnReducer"
-import { MessageList } from "../src/components/chat/MessageList"
-import type { Message, ToolPart } from "../src/types/message"
+import { Tool } from "../src/components/chat/tool"
+import type { ToolPart } from "../src/types/message"
 
 function run(actions: Parameters<typeof turnReducer>[1][]): TurnState {
   return actions.reduce(turnReducer, initialTurn)
@@ -59,28 +59,29 @@ function locate(t: Harness, needle: string) {
 }
 
 describe("Subagent renderer", () => {
-  const msg = (part: Partial<ToolPart>): Message[] => [{
-    id: "a", role: "assistant", timestamp: 0,
-    parts: [{
-      type: "tool", id: "sub-0", name: "delegate_task", args: "",
-      status: "done", goal: "refactor foo", preview: "refactor foo",
-      trail: [
-        { name: "read_file", preview: "src/a.ts" },
-        { name: "terminal", preview: "bun test" },
-        { name: "patch", preview: "src/a.ts" },
-      ],
-      duration: 4200, result: "3 files changed",
-      ...part,
-    }],
-  }]
+  const part = (p: Partial<ToolPart>): ToolPart => ({
+    type: "tool", id: "sub-0", name: "delegate_task", args: "",
+    status: "done", goal: "refactor foo", preview: "refactor foo",
+    trail: [
+      { name: "read_file", preview: "src/a.ts" },
+      { name: "terminal", preview: "bun test" },
+      { name: "patch", preview: "src/a.ts" },
+    ],
+    duration: 4200, result: "3 files changed",
+    ...p,
+  })
 
-  test("collapsed: goal + footer row (└ N toolcalls · dur)", async () => {
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msg({})} streaming={false} />
-      </box>,
+  async function setup(p: Partial<ToolPart>) {
+    const t: Harness = await mountNode(
+      <box flexDirection="column" width="100%" height="100%"><Tool tool={part(p)} /></box>,
       { width: 120, height: 30 },
     )
+    await t.settle()
+    return t
+  }
+
+  test("collapsed: goal + footer row (└ N toolcalls · dur)", async () => {
+    const t = await setup({})
     await until(t, () => t.frame().includes("⊙ Task — refactor foo"))
     const f = t.frame()
     expect(f).toContain("└ 3 toolcalls · 4.2s")
@@ -90,12 +91,7 @@ describe("Subagent renderer", () => {
   })
 
   test("running: spinner + ↳ last child row", async () => {
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msg({ status: "running", duration: undefined })} streaming />
-      </box>,
-      { width: 120, height: 30 },
-    )
+    const t = await setup({ status: "running", duration: undefined })
     await until(t, () => t.frame().includes("Task — refactor foo"))
     const f = t.frame()
     expect(f).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task — refactor foo/)
@@ -104,12 +100,7 @@ describe("Subagent renderer", () => {
   })
 
   test("click expands to ├─/└─ trail with per-child glyphs + summary", async () => {
-    const t = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={msg({})} streaming={false} />
-      </box>,
-      { width: 120, height: 30 },
-    )
+    const t = await setup({})
     await until(t, () => t.frame().includes("⊙ Task — refactor foo"))
     const p = locate(t, "⊙ Task")
     await act(async () => { await t.mouse.pressDown(p.x, p.y) })

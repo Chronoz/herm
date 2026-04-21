@@ -16,6 +16,10 @@ describe("steer", () => {
     await until(t, () => t.gw.last("session.steer") !== undefined)
 
     expect(t.gw.last("session.steer")?.params.text).toBe("also check foo")
+    // Close the cloud (it overlays the top rows in a short transcript).
+    const av = t.frame().split("\n")[3].length - 20
+    await act(async () => { await t.mouse.pressDown(av, 3) })
+    await until(t, () => !t.frame().includes("┇"))
     await until(t, () => t.frame().includes("↪ steered: also check foo"))
     // stopPropagation: input didn't also enqueue the same text
     expect(t.frame()).not.toContain("⏸ 1.")

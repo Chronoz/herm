@@ -278,7 +278,10 @@ function upsertThinking(messages: Message[], text: string, final: boolean): Mess
       const idx = m.parts.findIndex(p => p.type === "thinking")
       if (idx >= 0) {
         const prev = m.parts[idx] as Part & { content: string }
-        const content = final ? text : prev.content + text
+        // `final` (reasoning.available) is a fallback for providers
+        // that don't stream deltas — keep the accumulated buffer if we
+        // have one. Matches Ink turnController.recordReasoningAvailable.
+        const content = final ? prev.content.trim() || text : prev.content + text
         const parts = [...m.parts]
         parts[idx] = { type: "thinking", content, streaming: !final }
         return { ...m, parts }

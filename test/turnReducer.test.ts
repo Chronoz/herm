@@ -82,13 +82,22 @@ describe("turnReducer", () => {
     expect((last(s).parts[0] as ToolPart).status).toBe("error")
   })
 
-  test("thinking delta then final replaces content", () => {
+  test("thinking deltas win; reasoning.available is fallback-only", () => {
     const s = run([
       { kind: "message.start" },
       { kind: "thinking", text: "hmm ", final: false },
-      { kind: "thinking", text: "hmm more", final: true },
+      { kind: "thinking", text: "more", final: false },
+      { kind: "thinking", text: "summary", final: true },
     ])
     expect(last(s).parts[0]).toMatchObject({ type: "thinking", content: "hmm more", streaming: false })
+  })
+
+  test("reasoning.available used when no deltas streamed", () => {
+    const s = run([
+      { kind: "message.start" },
+      { kind: "thinking", text: "recovered from last_reasoning", final: true },
+    ])
+    expect(last(s).parts[0]).toMatchObject({ type: "thinking", content: "recovered from last_reasoning", streaming: false })
   })
 
   test("interrupt.notice dedupes consecutive identical notices", () => {
