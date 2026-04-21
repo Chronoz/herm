@@ -35,6 +35,7 @@ import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
 import { openHistory } from "./dialogs/history"
 import { openStatus, openUsage, openProfile } from "./dialogs/info"
+import { openAlert } from "./dialogs/alert"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
@@ -306,8 +307,23 @@ const AppInner = () => {
       onApproval: (req) => dialog.replace(<ApprovalPrompt req={req} />),
       onSudo: (req) => dialog.replace(<SudoPrompt req={req} />),
       onSecret: (req) => dialog.replace(<SecretPrompt req={req} />),
-      onBackground: (_tid, text) => toast.show({ variant: "info", message: `bg task: ${text.slice(0, 80)}` }),
-      onBtw: (text) => dispatch({ kind: "system", text: `btw: ${text}` }),
+      onBackground: (tid, text) => {
+        const head = text.split("\n")[0].slice(0, 80)
+        dispatch({ kind: "system", text: `◷ background task ${tid} complete — ${head}` })
+        toast.show({
+          variant: "info", title: "Background task complete", message: head,
+          duration: 8000,
+          action: { label: "view", run: () => openAlert(dialog, `Background task ${tid}`, text) },
+        })
+      },
+      onBtw: (text) => {
+        const head = text.split("\n")[0].slice(0, 80)
+        dispatch({ kind: "system", text: `◈ btw — ${head}` })
+        toast.show({
+          variant: "info", title: "btw", message: head, duration: 8000,
+          action: { label: "view", run: () => openAlert(dialog, "btw", text) },
+        })
+      },
       onStatus: (text) => setStatus(text),
     })
     if (action) dispatch(action)

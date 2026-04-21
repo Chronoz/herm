@@ -21,6 +21,8 @@ type ToastOptions = {
   readonly title?: string
   readonly message: string
   readonly duration?: number
+  /** Clickable affordance on the toast (e.g. "view" → open dialog). */
+  readonly action?: { label: string; run: () => void }
 }
 
 type ToastEntry = ToastOptions & {
@@ -104,6 +106,11 @@ const ToastOverlay = ({ items }: { items: ReadonlyArray<ToastEntry> }) => {
           <text fg={theme.textMuted} wrapMode="word">
             {item.message}
           </text>
+          {item.action ? (
+            <box height={1} marginTop={0} onMouseDown={item.action.run}>
+              <text fg={color(item.variant)}><u>{item.action.label}</u></text>
+            </box>
+          ) : null}
         </box>
       ))}
     </box>
