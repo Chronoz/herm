@@ -33,6 +33,11 @@ function useRespondOnce(cancel: () => void) {
 }
 
 // ── Approval ─────────────────────────────────────────────────────────
+//
+// oc permission.tsx grammar: ┃-bar panel (warning-tinted), a
+// "△ Permission required" head, indented title row, command body,
+// and a horizontal pill footer navigated with ←/→. hermes' approval
+// event is always a shell command, so this is oc's `bash` case only.
 
 const CHOICES = ["once", "session", "always", "deny"] as const
 type Choice = typeof CHOICES[number]
@@ -41,6 +46,23 @@ const LABELS: Record<Choice, string> = {
   session: "Allow this session",
   always: "Always allow",
   deny: "Deny",
+}
+
+const Pill = (p: { on: boolean; hot: string; label: string; onPick: () => void }) => {
+  const theme = useTheme().theme
+  return (
+    <box
+      height={1}
+      paddingX={1}
+      backgroundColor={p.on ? theme.primary : undefined}
+      onMouseDown={p.onPick}
+    >
+      <text>
+        <span fg={p.on ? theme.background : theme.textMuted}>{p.hot} </span>
+        <span fg={p.on ? theme.background : theme.text}>{p.label}</span>
+      </text>
+    </box>
+  )
 }
 
 export type ApprovalReq = { command: string; description: string }
@@ -58,8 +80,10 @@ export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
   const answer = (c: Choice) => { once(() => send(c)); dialog.clear() }
 
   useKeyboard((key) => {
-    if (key.name === "up") return setSel(s => Math.max(0, s - 1))
-    if (key.name === "down") return setSel(s => Math.min(CHOICES.length - 1, s + 1))
+    if (key.name === "left" || key.name === "h")
+      return setSel(s => (s + CHOICES.length - 1) % CHOICES.length)
+    if (key.name === "right" || key.name === "l")
+      return setSel(s => (s + 1) % CHOICES.length)
     if (key.name === "return") return answer(CHOICES[sel])
     if (key.name === "escape") return answer("deny")
     const n = digit(key.name)
@@ -67,17 +91,48 @@ export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
   })
 
   return (
-    <box flexDirection="column" width={70}>
-      <text fg={theme.warning}><strong>⚠ Approval required — {req.description}</strong></text>
-      <text fg={theme.text}> {req.command}</text>
-      <box height={1} />
-      {CHOICES.map((o, i) => (
-        <text key={o} fg={sel === i ? theme.text : theme.textMuted}>
-          {sel === i ? "▸ " : "  "}{i + 1}. {LABELS[o]}
-        </text>
-      ))}
-      <box height={1} />
-      <text fg={theme.textMuted}>↑/↓ select · Enter confirm · 1-4 quick · Esc deny</text>
+    <box
+      flexDirection="column"
+      width={84}
+      border={["left"]}
+      borderColor={theme.warning}
+      customBorderChars={{
+        topLeft: "", bottomLeft: "", topRight: "", bottomRight: "",
+        horizontal: "", vertical: "┃", topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
+      }}
+      backgroundColor={theme.backgroundPanel}
+    >
+      <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={2} paddingY={1}>
+        <box flexDirection="row" gap={1} height={1}>
+          <text fg={theme.warning}>△</text>
+          <text fg={theme.text}>Permission required</text>
+        </box>
+        <box flexDirection="row" gap={1} paddingLeft={2} minHeight={1}>
+          <text fg={theme.textMuted}>#</text>
+          <text fg={theme.text} wrapMode="word">{req.description || "Shell command"}</text>
+        </box>
+        <box paddingLeft={2} minHeight={1}>
+          <text fg={theme.text} wrapMode="word">$ {req.command}</text>
+        </box>
+      </box>
+      <box
+        flexDirection="row"
+        gap={2}
+        flexShrink={0}
+        paddingLeft={2}
+        paddingRight={2}
+        paddingY={1}
+        backgroundColor={theme.backgroundElement}
+      >
+        {CHOICES.map((c, i) => (
+          <Pill key={c} on={sel === i} hot={String(i + 1)} label={LABELS[c]}
+                onPick={() => answer(c)} />
+        ))}
+        <box flexGrow={1} />
+        <box height={1}>
+          <text fg={theme.textMuted}>←/→ · enter · esc deny</text>
+        </box>
+      </box>
     </box>
   )
 }

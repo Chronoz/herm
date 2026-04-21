@@ -100,15 +100,15 @@ describe("app", () => {
     }))
     await t.settle()
 
-    expect(t.frame()).toContain("Approval required")
-    expect(t.frame()).toContain("rm -rf /")
+    expect(t.frame()).toContain("Permission required")
+    expect(t.frame()).toContain("$ rm -rf /")
 
     act(() => t.keys.pressEscape())
     await t.settle()
 
     const call = t.gw.last("approval.respond")
     expect(call?.params.choice).toBe("deny")
-    expect(t.frame()).not.toContain("Approval required")
+    expect(t.frame()).not.toContain("Permission required")
 
     t.destroy()
   })

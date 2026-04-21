@@ -9,12 +9,28 @@ describe("prompts", () => {
     await until(t, () => t.frame().includes("Ready"))
     act(() => t.gw.push({ type: "approval.request", payload: { command: "ls", description: "list" } }))
     await t.settle()
-    expect(t.frame()).toContain("Approval required")
+    expect(t.frame()).toContain("△ Permission required")
+    expect(t.frame()).toContain("$ ls")
 
     act(() => t.keys.pressKey("2"))
     await t.settle()
     expect(t.gw.last("approval.respond")?.params.choice).toBe("session")
-    expect(t.frame()).not.toContain("Approval required")
+    expect(t.frame()).not.toContain("Permission required")
+    t.destroy()
+  })
+
+  test("approval: ←/→ pill nav wraps; Enter sends selected", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.gw.push({ type: "approval.request", payload: { command: "x", description: "" } }))
+    await t.settle()
+    expect(t.frame()).toContain("Shell command")
+
+    act(() => t.keys.pressArrow("left"))   // wraps to deny
+    act(() => t.keys.pressArrow("left"))   // → always
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.gw.last("approval.respond")?.params.choice).toBe("always")
     t.destroy()
   })
 
