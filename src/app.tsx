@@ -356,6 +356,11 @@ const AppInner = () => {
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onNotice: (text) => dispatch({ kind: "system", text }),
+    onSteer: (text) => {
+      gw.request("session.steer", { text })
+        .then(() => dispatch({ kind: "system", text: `↪ steered: ${text}` }))
+        .catch(e => toast.show({ variant: "error", message: String(e) }))
+    },
     onQueuePop: () => {
       if (!queue.length) return false
       dequeue(queue.length - 1)
