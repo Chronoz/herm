@@ -295,18 +295,22 @@ function renderSubagent(
   p: SubagentPayload,
 ): Message[] {
   const id = `sub-${p.task_index}`
-  const name = `subagent[${p.task_index}]`
-  const preview = p.tool_name
-    ? `${p.tool_name}${p.tool_preview ? `: ${p.tool_preview}` : ""}`
-    : p.text ?? p.goal
 
   if (event === "start") {
     const part: ToolPart = {
-      type: "tool", id, name, args: "",
+      type: "tool", id, name: "delegate_task", args: "",
       status: "running", startedAt: Date.now(),
-      preview: p.goal,
+      preview: p.goal, goal: p.goal, trail: [],
     }
     return appendPart(messages, part, true)
+  }
+
+  if (event === "tool" && p.tool_name) {
+    return updateToolById(messages, id, t => ({
+      ...t,
+      trail: [...(t.trail ?? []), { name: p.tool_name!, preview: p.tool_preview }],
+      preview: p.tool_preview ? `${p.tool_name}: ${p.tool_preview}` : p.tool_name,
+    }))
   }
 
   if (event === "complete") {
@@ -314,9 +318,11 @@ function renderSubagent(
       ...t,
       status: (p.status === "failed" ? "error" : "done") as ToolPart["status"],
       duration: p.duration_seconds ? p.duration_seconds * 1000 : (t.startedAt ? Date.now() - t.startedAt : undefined),
-      preview: p.summary || t.preview,
+      result: p.summary,
+      preview: t.goal ?? t.preview,
     }))
   }
 
-  return updateToolById(messages, id, t => ({ ...t, preview: preview || t.preview }))
+  // thinking / progress — surface transient text on the row.
+  return updateToolById(messages, id, t => ({ ...t, preview: p.text ?? t.preview }))
 }

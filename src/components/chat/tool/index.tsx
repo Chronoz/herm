@@ -13,6 +13,7 @@ import { memo } from "react"
 import type { ToolPart as Part } from "../../../types/message"
 import { InlineTool, BlockTool } from "./frame"
 import { DiffBlock, isDiff } from "../DiffBlock"
+import { Subagent } from "./Subagent"
 import { spec, label } from "./preview"
 import { useTheme } from "../../../theme"
 
@@ -63,6 +64,7 @@ const FileEdit = memo(({ tool }: { tool: Part }) => {
 })
 
 export const Tool = memo(({ tool }: { tool: Part }) => {
+  if (tool.trail || tool.name === "delegate_task") return <Subagent tool={tool} />
   if (FILE.has(tool.name) || tool.diff || isDiff(tool.result)) return <FileEdit tool={tool} />
   return <Inline tool={tool} />
 })

@@ -17,6 +17,10 @@ export type ToolPart = {
   preview?: string
   result?: string
   diff?: string
+  /** Subagent only — child tool calls accumulated from subagent.tool events. */
+  trail?: Array<{ name: string; preview?: string }>
+  /** Subagent only — goal text from subagent.start. */
+  goal?: string
 }
 
 export type ThinkingPart = {
