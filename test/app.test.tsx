@@ -261,7 +261,7 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("click user message → confirm → N×session.undo → composer seeded", async () => {
+  test("click user message → action menu → Rewind → N×session.undo → composer seeded", async () => {
     // History after rewind: server-authoritative via session.history.
     const hist = (n: number) => Array.from({ length: n }, (_, i) => ({
       role: i % 2 ? "assistant" : "user", text: `turn${Math.floor(i / 2)}`,
@@ -286,24 +286,65 @@ describe("app", () => {
       await until(t, () => t.frame().includes(`re: ${msg}`))
     }
 
-    // Click the first user message → Rewind dialog (2 turns).
+    // Click the first user message → action menu.
     const rows = t.frame().split("\n")
     const y = rows.findIndex(l => l.includes("first q") && !l.includes("re:"))
     expect(y).toBeGreaterThan(0)
     await act(async () => { await t.mouse.pressDown(4, y) })
-    await until(t, () => t.frame().includes("Rewind?"))
-    expect(t.frame()).toContain("Undo 2 turns")
+    await until(t, () => t.frame().includes("Message Actions"))
+    expect(t.frame()).toContain("Rewind here")
+    expect(t.frame()).toContain("Fork here")
 
-    await act(async () => { await t.keys.typeText("y") })
+    // Select Rewind here (↓ from Copy).
+    act(() => t.keys.pressArrow("down"))
+    act(() => t.keys.pressEnter())
     // rewind() is async (N×undo + history fetch) — poll for the seed
     await until(t, () => t.frame().includes("> first q"))
 
     const undos = t.gw.calls.filter(c => c.method === "session.undo").length
     expect(undos).toBe(2)
     expect(t.gw.last("session.history")).toBeDefined()
-    // Second turn is gone from transcript (history now empty).
     expect(t.frame()).not.toContain("second q")
-    expect(t.frame()).not.toContain("Rewind?")
+    expect(t.frame()).not.toContain("Message Actions")
+    t.destroy()
+  })
+
+  test("action menu → Fork → session.branch + undo-in-branch + switch", async () => {
+    const gw = new MockGateway({
+      "session.branch": () => ({ session_id: "branch-sid", title: "branch 1" }),
+      "session.resume": p => ({ session_id: p.session_id, messages: [] }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    // One turn so there's something to fork from.
+    await act(async () => { await t.keys.typeText("seed q") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    act(() => {
+      gw.push({ type: "message.start" })
+      gw.push({ type: "message.complete", payload: { text: "re: seed q", usage: { input: 1, output: 1, total: 2 } } })
+    })
+    await until(t, () => t.frame().includes("re: seed q"))
+
+    const rows = t.frame().split("\n")
+    const y = rows.findIndex(l => l.includes("seed q") && !l.includes("re:"))
+    await act(async () => { await t.mouse.pressDown(4, y) })
+    await until(t, () => t.frame().includes("Message Actions"))
+
+    act(() => t.keys.pressArrow("down"))
+    act(() => t.keys.pressArrow("down"))
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("forked → branch 1"))
+
+    expect(t.gw.last("session.branch")).toBeDefined()
+    // Undo targets the BRANCH session, not the original.
+    const u = t.gw.calls.find(c => c.method === "session.undo")
+    expect(u?.params.session_id).toBe("branch-sid")
+    // Switched into it.
+    expect(t.gw.last("session.resume")?.params.session_id).toBe("branch-sid")
+    // Composer seeded.
+    expect(t.frame()).toContain("> seed q")
     t.destroy()
   })
 

@@ -91,7 +91,7 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
           <text><span fg={theme.accent}>▸ you</span></text>
         </box>
         {hover && onRewind ? (
-          <box><text fg={theme.textMuted}>click to rewind ↶</text></box>
+          <box><text fg={theme.textMuted}>actions ⋯</text></box>
         ) : null}
       </box>
       <box paddingLeft={2}>

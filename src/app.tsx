@@ -31,11 +31,11 @@ import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
 import { openEikonPicker } from "./dialogs/eikon-picker"
 import { openTextPrompt } from "./dialogs/text-prompt"
-import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
 import { openHistory } from "./dialogs/history"
 import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { openAlert } from "./dialogs/alert"
+import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
 import type { SlashCommand } from "./commands/slash"
@@ -167,34 +167,50 @@ const AppInner = () => {
       .then(v => { if (v) applyTitle(v) })
   }, [dialog, title, applyTitle])
 
-  // ── Rewind to a prior user turn ───────────────────────────────────
-  // Counts user messages at-or-after the clicked one, calls session.undo
-  // that many times (each undo pops one user+assistant turn server-side),
-  // then reloads authoritative history and seeds the composer with the
-  // clicked text for editing.
+  // ── Message actions ───────────────────────────────────────────────
+  // turnsFrom counts user turns at-or-after m — each session.undo pops
+  // one user+assistant pair server-side.
+  const turnsFrom = (m: Message) => {
+    const at = turn.messages.findIndex(x => x.id === m.id)
+    return at < 0 ? 0 : turn.messages.slice(at).filter(x => x.role === "user").length
+  }
+
   const rewind = useCallback(async (m: Message) => {
     if (turn.streaming) return
-    const msgs = turn.messages
-    const at = msgs.findIndex(x => x.id === m.id)
-    if (at < 0) return
-    const turns = msgs.slice(at).filter(x => x.role === "user").length
-    if (turns === 0) return
+    const n = turnsFrom(m)
+    if (n === 0) return
     const text = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
-
-    const ok = await openConfirm(dialog, {
-      title: "Rewind?",
-      body: `Undo ${turns} turn${turns > 1 ? "s" : ""} back to "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}". Server history will be rolled back.`,
-      yes: "rewind", danger: true,
-    })
-    if (!ok) return
-
-    for (let i = 0; i < turns; i++) await gw.request("session.undo").catch(() => {})
+    for (let i = 0; i < n; i++) await gw.request("session.undo").catch(() => {})
     const r = await gw.request<{ messages: TranscriptMessage[] }>("session.history").catch(() => null)
-    dispatch({ kind: "load", messages: r ? transcriptToMessages(r.messages ?? []) : msgs.slice(0, at) })
-    setMsgCount(c => Math.max(0, c - turns))
+    const at = turn.messages.findIndex(x => x.id === m.id)
+    dispatch({ kind: "load", messages: r ? transcriptToMessages(r.messages ?? []) : turn.messages.slice(0, at) })
+    setMsgCount(c => Math.max(0, c - n))
     composer.current?.set(text)
     setFocusRegion("input")
-  }, [turn.streaming, turn.messages, gw, dialog])
+  }, [turn.streaming, turn.messages, gw])
+
+  // Non-destructive: session.branch clones full history into a new
+  // gateway session; undo N turns *in that session* to land at m;
+  // then switch. Original session is untouched.
+  const fork = useCallback(async (m: Message) => {
+    if (turn.streaming) return
+    const n = turnsFrom(m)
+    const text = m.parts.filter(p => p.type === "text").map(p => p.content).join("")
+    const res = await gw.request<{ session_id: string; title?: string }>("session.branch", {})
+      .catch((e: Error) => { toast.show({ variant: "error", message: `branch failed: ${e.message}` }); return null })
+    if (!res?.session_id) return
+    for (let i = 0; i < n; i++)
+      await gw.request("session.undo", { session_id: res.session_id }).catch(() => {})
+    await switchSession(res.session_id)
+    composer.current?.set(text)
+    setFocusRegion("input")
+    toast.show({ variant: "success", message: `forked → ${res.title ?? res.session_id}` })
+  }, [turn.streaming, turn.messages, gw, toast, switchSession])
+
+  const msgMenu = useCallback((m: Message) => {
+    if (turn.streaming) return
+    openMessage(dialog, m, { rewind, fork })
+  }, [turn.streaming, dialog, rewind, fork])
 
   // ── Slash dispatch ────────────────────────────────────────────────
   const slash = useCallback((c: SlashCommand) => {
@@ -417,7 +433,7 @@ const AppInner = () => {
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} onRewind={rewind} />
+        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} onRewind={msgMenu} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} />
         case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />
