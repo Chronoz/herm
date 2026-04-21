@@ -1,8 +1,9 @@
 // @-ref completion for the composer. Triggers when the word under the
-// cursor starts with `@` (and we're not in slash mode). The gateway's
-// `complete.path` already understands the `@` prefix — it returns the
-// fixed keyword list for bare `@`, and path completions for
-// `@file:…` / `@folder:…` (and maps bare `@<path>` → `@file:` / `@folder:`).
+// cursor starts with `@` (and we're not in slash mode). A fixed keyword
+// set (diff/staged/git:N/url:/folder:) is defined client-side and
+// prepended to whatever the gateway's `complete.path` returns — the
+// gateway still handles path completion for `@file:…` / `@folder:…`
+// (and maps bare `@<path>` → `@file:` / `@folder:`).
 //
 // Expansion itself happens server-side in `prompt.submit`; this hook
 // only drives the popover UI and text insertion.
@@ -14,6 +15,26 @@ export type AtRefItem = {
   readonly text: string
   readonly display: string
   readonly meta: string
+}
+
+// Fixed hermes @-keywords. Shown above file results; `text` is what
+// gets inserted (trailing `:` keeps the popover open for further input).
+export const KEYWORDS: ReadonlyArray<AtRefItem> = [
+  { text: "@diff",    display: "@diff",          meta: "working-tree diff" },
+  { text: "@staged",  display: "@staged",        meta: "staged changes" },
+  { text: "@git:1",   display: "@git:1",         meta: "last 1 commit" },
+  { text: "@git:3",   display: "@git:3",         meta: "last 3 commits" },
+  { text: "@git:5",   display: "@git:5",         meta: "last 5 commits" },
+  { text: "@url:",    display: "@url:<…>",       meta: "fetch a URL" },
+  { text: "@folder:", display: "@folder:<path>", meta: "recurse directory" },
+]
+
+// Keywords whose text strictly extends `word` (case-insensitive).
+// Exact matches are dropped so e.g. accepting `@url:` closes the
+// popover and `@folder:` hands off cleanly to path completion.
+export function match(word: string): AtRefItem[] {
+  const q = word.toLowerCase()
+  return KEYWORDS.filter(k => k.text.toLowerCase().startsWith(q) && k.text !== word)
 }
 
 // Find the @-word the caret is at the end of. Returns {word, start}
@@ -43,13 +64,15 @@ export function useAtRefPopover(input: string) {
     if (dismissed.current === spot.word) return
     dismissed.current = null
     const me = ++seq.current
+    const fixed = match(spot.word)
     gw.request<{ items: AtRefItem[] }>("complete.path", { word: spot.word })
       .then(r => {
         if (seq.current !== me) return
-        setItems(r.items ?? [])
+        const seen = new Set(fixed.map(k => k.text))
+        setItems([...fixed, ...(r.items ?? []).filter(i => !seen.has(i.text))])
         setCursor(0)
       })
-      .catch(() => { if (seq.current === me) setItems([]) })
+      .catch(() => { if (seq.current === me) { setItems(fixed); setCursor(0) } })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spot?.word, ready, gw])
 

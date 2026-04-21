@@ -152,11 +152,14 @@ describe("composer", () => {
     await act(async () => { await t.keys.typeText("review @") })
     await until(t, () => t.frame().includes("@diff"))
     expect(ref.current?.popOpen()).toBe(true)
+    // client-side keywords precede gateway results; gateway's @diff is deduped
+    expect(t.frame()).toContain("@staged")
     expect(t.frame()).toContain("@file:")
     expect(t.frame()).toContain("Tab/Enter: Insert")
 
     // Enter on keyword-with-colon → inserts without trailing space
-    act(() => ref.current?.popNav(1))
+    // (@file: sits after the 7 fixed keywords)
+    for (let n = 0; n < 7; n++) act(() => ref.current?.popNav(1))
     await t.settle()
     act(() => t.keys.pressEnter())
     await t.settle()
