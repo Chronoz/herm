@@ -65,14 +65,17 @@ export function useAtRefPopover(input: string) {
     dismissed.current = null
     const me = ++seq.current
     const fixed = match(spot.word)
-    gw.request<{ items: AtRefItem[] }>("complete.path", { word: spot.word })
-      .then(r => {
-        if (seq.current !== me) return
-        const seen = new Set(fixed.map(k => k.text))
-        setItems([...fixed, ...(r.items ?? []).filter(i => !seen.has(i.text))])
-        setCursor(0)
-      })
-      .catch(() => { if (seq.current === me) { setItems(fixed); setCursor(0) } })
+    const t = setTimeout(() => {
+      gw.request<{ items: AtRefItem[] }>("complete.path", { word: spot.word })
+        .then(r => {
+          if (seq.current !== me) return
+          const seen = new Set(fixed.map(k => k.text))
+          setItems([...fixed, ...(r.items ?? []).filter(i => !seen.has(i.text))])
+          setCursor(0)
+        })
+        .catch(() => { if (seq.current === me) { setItems(fixed); setCursor(0) } })
+    }, 120)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spot?.word, ready, gw])
 

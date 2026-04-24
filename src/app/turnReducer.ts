@@ -3,7 +3,7 @@
 // iterate `parts` chronologically without regrouping.
 
 import type { Message, Part, TextPart, ToolPart, Usage } from "../types/message"
-import { mid } from "../types/message"
+import { mid, pid } from "../types/message"
 import type { SubagentPayload, TranscriptMessage } from "../utils/gateway-types"
 
 export type TurnState = {
@@ -212,9 +212,9 @@ function appendText(messages: Message[], chunk: string): Message[] {
         const part: TextPart = { ...last, content: last.content + chunk }
         return { ...m, parts: [...m.parts.slice(0, -1), part] }
       }
-      return { ...m, parts: [...m.parts, { type: "text", content: chunk, streaming: true }] }
+      return { ...m, parts: [...m.parts, { type: "text", key: pid(), content: chunk, streaming: true }] }
     },
-    () => assistant([{ type: "text", content: chunk, streaming: true }]),
+    () => assistant([{ type: "text", key: pid(), content: chunk, streaming: true }]),
   )
 }
 
@@ -277,18 +277,18 @@ function upsertThinking(messages: Message[], text: string, final: boolean): Mess
     m => {
       const idx = m.parts.findIndex(p => p.type === "thinking")
       if (idx >= 0) {
-        const prev = m.parts[idx] as Part & { content: string }
+        const prev = m.parts[idx] as Part & { type: "thinking"; content: string }
         // `final` (reasoning.available) is a fallback for providers
         // that don't stream deltas — keep the accumulated buffer if we
         // have one. Matches Ink turnController.recordReasoningAvailable.
         const content = final ? prev.content.trim() || text : prev.content + text
         const parts = [...m.parts]
-        parts[idx] = { type: "thinking", content, streaming: !final }
+        parts[idx] = { ...prev, content, streaming: !final }
         return { ...m, parts }
       }
-      return { ...m, parts: [{ type: "thinking" as const, content: text, streaming: !final }, ...m.parts] }
+      return { ...m, parts: [{ type: "thinking" as const, key: pid(), content: text, streaming: !final }, ...m.parts] }
     },
-    () => assistant([{ type: "thinking", content: text, streaming: !final }]),
+    () => assistant([{ type: "thinking", key: pid(), content: text, streaming: !final }]),
   )
 }
 

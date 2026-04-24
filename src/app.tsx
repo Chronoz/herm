@@ -110,6 +110,8 @@ const AppInner = () => {
     setCloud(turn.streaming)
   }, [turn.streaming])
   const onPick = useCallback((m?: Message) => { setPick(m); setCloud(!!m) }, [])
+  const onAvatar = useCallback(() => setCloud(o => !o), [])
+  const onEnqueue = useCallback((t: string) => setQueue(q => [...q, t]), [])
 
   // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
@@ -324,6 +326,20 @@ const AppInner = () => {
   }, [turn.messages])
 
   // ── Gateway events ────────────────────────────────────────────────
+  // Delta batching: streamed text/reasoning chunks are accumulated in
+  // a ref and flushed at most once per 16ms. Every delta otherwise
+  // triggers an O(messages) array spread + O(content) string concat +
+  // full markdown re-parse of the streaming block. Any non-delta
+  // action flushes synchronously first so part ordering is preserved.
+  const deltas = useRef({ text: "", think: "", timer: null as ReturnType<typeof setTimeout> | null })
+
+  const flush = useCallback(() => {
+    const d = deltas.current
+    if (d.timer) { clearTimeout(d.timer); d.timer = null }
+    if (d.think) { dispatch({ kind: "thinking", text: d.think, final: false }); d.think = "" }
+    if (d.text) { dispatch({ kind: "message.delta", chunk: d.text }); d.text = "" }
+  }, [])
+
   const handle = useCallback((ev: GatewayEvent) => {
     const action = mapEvent(ev, {
       onReady: () => {
@@ -370,8 +386,23 @@ const AppInner = () => {
       },
       onStatus: (text) => setStatus(text),
     })
-    if (action) dispatch(action)
-  }, [session, dialog, toast, pollUsage, gw])
+    if (!action) return
+    const d = deltas.current
+    if (action.kind === "message.delta") {
+      if (d.think) flush()
+      d.text += action.chunk
+      d.timer ??= setTimeout(flush, 16)
+      return
+    }
+    if (action.kind === "thinking" && !action.final) {
+      if (d.text) flush()
+      d.think += action.text
+      d.timer ??= setTimeout(flush, 16)
+      return
+    }
+    flush()
+    dispatch(action)
+  }, [session, dialog, toast, pollUsage, gw, flush])
 
   useGatewayEvent(handle)
 
@@ -504,7 +535,7 @@ const AppInner = () => {
                 queue={queue}
                 attachments={attachments}
                 onSend={send} onSlash={slash}
-                onEnqueue={(t) => setQueue(q => [...q, t])}
+                onEnqueue={onEnqueue}
                 onDequeue={dequeue}
               />
             </box>
@@ -513,7 +544,7 @@ const AppInner = () => {
             <Profiler id="sidebar" onRender={perf.onRender}>
               <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()}
                        cloud={tab === 0 && cloud} pulse={turn.streaming}
-                       onAvatar={() => setCloud(o => !o)} />
+                       onAvatar={onAvatar} />
             </Profiler>
           ) : null}
         </box>

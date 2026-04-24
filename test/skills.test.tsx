@@ -64,7 +64,7 @@ describe("Skills tab", () => {
     await act(async () => { await t.keys.typeText("/") })
     await t.settle()
     await act(async () => { await t.keys.typeText("a") })
-    await t.settle()
+    await until(t, () => !!hold)
     await act(async () => { await t.keys.typeText("b") })
     await until(t, () => t.frame().includes("fresh-ab"))
 

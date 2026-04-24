@@ -1,4 +1,4 @@
-import { memo, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import { MessageItem } from "./MessageItem"
 import { TypingIndicator } from "./TypingIndicator"
 import { useTheme } from "../../theme"
@@ -14,6 +14,16 @@ type Props = {
 
 export const MessageList = memo(({ messages, streaming, onRewind, onPick }: Props) => {
   const theme = useTheme().theme
+
+  const style = useMemo(() => ({
+    viewportOptions: { backgroundColor: theme.background },
+    scrollbarOptions: {
+      trackOptions: {
+        foregroundColor: theme.borderSubtle,
+        backgroundColor: theme.background,
+      },
+    },
+  }), [theme])
 
   if (messages.length === 0) {
     return (
@@ -65,15 +75,7 @@ export const MessageList = memo(({ messages, streaming, onRewind, onPick }: Prop
       scrollY
       stickyScroll
       stickyStart="bottom"
-      style={{
-        viewportOptions: { backgroundColor: theme.background },
-        scrollbarOptions: {
-          trackOptions: {
-            foregroundColor: theme.borderSubtle,
-            backgroundColor: theme.background,
-          },
-        },
-      }}
+      style={style}
     >
       <box flexDirection="column" paddingBottom={1}>
         {messages.map((msg, i) => (

@@ -165,7 +165,7 @@ describe("composer", () => {
     await t.settle()
     expect(sent).toEqual([]) // did NOT send
     expect(ref.current?.value()).toBe("review @file:")
-    expect(t.gw.last("complete.path")?.params.word).toBe("@file:")
+    await until(t, () => t.gw.last("complete.path")?.params.word === "@file:")
     await until(t, () => t.frame().includes("README.md"))
 
     // Nav to README, Tab accepts → adds trailing space

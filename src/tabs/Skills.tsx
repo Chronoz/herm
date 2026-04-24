@@ -154,17 +154,20 @@ export const Skills = memo((props: { focused?: boolean }) => {
     load();
   }, [load]);
 
-  // Hub search — fire per keystroke, drop stale responses via seq ref.
+  // Hub search — debounced, drop stale responses via seq ref.
   useEffect(() => {
     const id = ++seq.current;
     if (!searching || !query.trim()) { setHits([]); return }
-    gw.request<{ results: Hit[] }>("skills.manage", { action: "search", query })
-      .then(r => {
-        if (seq.current !== id) return;
-        setHits(r.results ?? []);
-        setSelected(0);
-      })
-      .catch(() => { if (seq.current === id) setHits([]) });
+    const t = setTimeout(() => {
+      gw.request<{ results: Hit[] }>("skills.manage", { action: "search", query })
+        .then(r => {
+          if (seq.current !== id) return;
+          setHits(r.results ?? []);
+          setSelected(0);
+        })
+        .catch(() => { if (seq.current === id) setHits([]) });
+    }, 150);
+    return () => clearTimeout(t);
   }, [gw, query, searching]);
 
   // Group installed skills by category for display

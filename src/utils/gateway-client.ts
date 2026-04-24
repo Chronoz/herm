@@ -148,13 +148,14 @@ export class GatewayClient extends EventEmitter {
       this.push({ type: "gateway.start_timeout", payload: { cwd, python: bin } })
     }, STARTUP_MS)
 
-    this.proc = Bun.spawn(["sh", "-c", `exec ${bin} -m tui_gateway.entry`], {
+    const proc = Bun.spawn(["sh", "-c", `exec ${bin} -m tui_gateway.entry`], {
       cwd,
       env,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
     })
+    this.proc = proc
 
     // Read stdout lines — Bun returns ReadableStream
     if (this.proc.stdout) {
@@ -179,8 +180,10 @@ export class GatewayClient extends EventEmitter {
       })
     }
 
-    // Handle exit
-    this.proc.exited.then(code => {
+    // Handle exit — guard against a superseded proc (restart kills the
+    // old one, whose exit handler must not touch the new proc's state).
+    proc.exited.then(code => {
+      if (this.proc !== proc) return
       if (this.timer) { clearTimeout(this.timer); this.timer = null }
       this.fail(new Error(`gateway exited${code === null ? "" : ` (${code})`}`))
       if (this.sub) this.emit("exit", code)

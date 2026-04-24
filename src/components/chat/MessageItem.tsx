@@ -145,7 +145,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
     // backgroundElement box with a top-right language label once
     // OpenTUI exposes a React-safe renderNode hook.
     return (
-      <box key={`x-${i}`}>
+      <box key={p.key ?? `x-${i}`}>
         <markdown
           content={p.content}
           fg={theme.markdownText}

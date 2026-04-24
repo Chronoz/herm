@@ -2,6 +2,7 @@
 
 export type TextPart = {
   type: "text"
+  key?: string
   content: string
   streaming: boolean
 }
@@ -25,6 +26,7 @@ export type ToolPart = {
 
 export type ThinkingPart = {
   type: "thinking"
+  key?: string
   content: string
   streaming: boolean
 }
@@ -64,4 +66,10 @@ export function tools(msg: Message): ToolPart[] {
 // Create a unique message ID
 export function mid(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+let pn = 0
+/** Stable per-part key so React doesn't remount when parts shift index. */
+export function pid(): string {
+  return `p${++pn}`
 }

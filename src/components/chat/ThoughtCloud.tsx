@@ -132,7 +132,7 @@ export const ThoughtCloud = memo((props: {
         <box flexDirection="column" width="100%">
           {body.map((p, i) =>
             p.type === "thinking"
-              ? <box key={`th-${i}`} minHeight={1}>
+              ? <box key={(p as ThinkingPart).key ?? `th-${i}`} minHeight={1}>
                   <text fg={theme.textMuted} wrapMode="word">{(p as ThinkingPart).content}</text>
                 </box>
               : <Tool key={(p as ToolPart).id || `t-${i}`} tool={p as ToolPart} />,

@@ -25,9 +25,7 @@ export const AnimatedAvatar = memo(({ state = "idle", eikon }: { state?: AvatarS
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ext = eikon?.states.get(state)
-  const frames: string[][] = ext
-    ? ext.frames
-    : STATE_FRAMES[state].map(f => f.split("\n").filter(l => l.length > 0))
+  const frames: string[][] = ext ? ext.frames : STATE_FRAMES[state]
   const fps = ext?.fps ?? FPS
   const count = frames.length
 
