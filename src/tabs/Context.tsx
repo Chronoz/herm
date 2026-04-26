@@ -19,6 +19,7 @@ import {
   type SessionRow,
   type ToolInfo,
 } from "../utils/hermes-home"
+import type { SessionInfo } from "../utils/gateway-types"
 import { snapshot } from "../utils/cache"
 import {
   parse,
@@ -39,6 +40,7 @@ type Props = {
   description?: string
   messages?: Message[]
   sessionStart?: number
+  info?: SessionInfo
 }
 
 type Wire = { input: number; output: number; total: number; calls: number }
@@ -288,7 +290,7 @@ const NO_MESSAGES: readonly Message[] = Object.freeze([])
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = memo(({ messages = NO_MESSAGES as Message[] }: Props) => {
+export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Props) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
   const wireRef = useRef(wire)
@@ -327,8 +329,12 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[] }: Props) => 
   // Derived
   const sessions = home?.recentSessions ?? []
   const session: SessionRow | undefined = sessions[sidx]
-  const model = session?.model ?? home?.config?.model?.default ?? "unknown"
-  const ctxLen = resolveCtx(model)
+  const model = info?.model ?? session?.model ?? home?.config?.model?.default ?? "unknown"
+  // Gateway's context_max is the authoritative runtime value; the CTX
+  // lookup is a fallback for when info isn't wired (e.g. fresh session
+  // before session.info lands) or for historical session rows that
+  // don't carry a live ctx.
+  const ctxLen = info?.context_max ?? resolveCtx(model)
 
   const live = session
     ? Object.values(home?.liveSessions ?? {}).find(ls => ls.session_id === session.id)

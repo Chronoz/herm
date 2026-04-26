@@ -520,7 +520,7 @@ const AppInner = () => {
                              cloud={cloud} cloudH={cloudH} pick={pick}
                              onResize={setCloudH} onPick={onPick} onRewind={msgMenu} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
-                               sessionStart={sessionStart.current} />
+                               sessionStart={sessionStart.current} info={info ?? undefined} />
         case 2: return <Sessions onSwitch={switchSession} currentId={sid} focused={contentFocused} />
         case 3: return <Agents focused={contentFocused} sessionId={sid} />
         case 4: return <Analytics focused={contentFocused} />
