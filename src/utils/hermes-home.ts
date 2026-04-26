@@ -180,6 +180,13 @@ export interface SkillInfo {
   name: string;
   description: string;
   tags: string[];
+  /**
+   * Token cost of this skill's index entry in the system prompt
+   * (name + description + tags). Body content is NOT included — it
+   * only loads on skill_view() and shows up as a tool result.
+   * Chars/4 heuristic pending gpt-tokenizer swap (herm-hxv).
+   */
+  tokenEstimate: number;
 }
 
 /** SOUL.md info */
@@ -187,6 +194,8 @@ export interface SoulInfo {
   source: Source;
   charCount: number;
   tokenEstimate: number;
+  /** Raw SOUL.md body. Consumed by the Context drill-down detail panel. */
+  content: string;
 }
 
 /** System prompt breakdown — full text for section parsing */
@@ -209,6 +218,7 @@ export interface HermesHomeSnapshot {
   config: HermesConfig | null;
   memory: MemoryFileInfo | null;
   userProfile: MemoryFileInfo | null;
+  memoryProviders: MemoryProviderInfo[];
   gateway: GatewayState | null;
   liveSessions: Record<string, LiveSession>;
   recentSessions: SessionRow[];
@@ -725,12 +735,14 @@ export async function listSkills(): Promise<SkillInfo[]> {
       const fm = await Bun.file(hermesPath(`skills/${path}`)).text()
         .then(parseFrontmatter)
         .catch(() => ({ description: "", tags: [] as string[] }));
+      const indexEntry = `${name}: ${fm.description}${fm.tags.length ? ` [${fm.tags.join(",")}]` : ""}`;
       skills.push({
         source: makeSource(`skills/${path}`, `${name}/SKILL.md`),
         category,
         name,
         description: fm.description,
         tags: fm.tags,
+        tokenEstimate: Math.ceil(indexEntry.length / 4),
       });
     }
     return skills.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
@@ -748,6 +760,7 @@ export async function readSoul(): Promise<SoulInfo | null> {
       source: makeSource("SOUL.md"),
       charCount: text.length,
       tokenEstimate: Math.ceil(text.length / 4),
+      content: text,
     };
   } catch {
     return null;
@@ -874,6 +887,7 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
     config: null,
     memory: null,
     userProfile: null,
+    memoryProviders: [],
     gateway: null,
     liveSessions: {},
     recentSessions: [],
@@ -941,6 +955,13 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
     snapshot.systemPrompt = readSystemPromptInfo();
   } catch (e: unknown) {
     errors.push(`systemPrompt: ${(e as Error).message}`);
+  }
+
+  try {
+    const active = snapshot.config?.memory?.provider ?? "";
+    snapshot.memoryProviders = await readMemoryProviders(active);
+  } catch (e: unknown) {
+    errors.push(`memoryProviders: ${(e as Error).message}`);
   }
 
   end()

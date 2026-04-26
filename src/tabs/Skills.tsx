@@ -142,6 +142,9 @@ export const Skills = memo((props: { focused?: boolean }) => {
             name: n,
             description: "",
             tags: [],
+            // No description available from the gateway list — estimate
+            // from name only until skills.manage returns frontmatter.
+            tokenEstimate: Math.ceil(n.length / 4),
           }))
         );
         rows.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
