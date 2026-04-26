@@ -15,6 +15,7 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
+import { openConfirm } from "../dialogs/confirm"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
 import { invalidate } from "../utils/cache"
 
@@ -319,7 +320,7 @@ type IO = {
   remove: typeof deleteSession
 }
 
-type Props = { focused?: boolean; onSwitch?: (sid: string) => void; io?: Partial<IO> }
+type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
 
 export const Sessions = memo((props: Props) => {
   const theme = useTheme().theme
@@ -346,8 +347,8 @@ export const Sessions = memo((props: Props) => {
   // Latest-value refs so the stable row callbacks below don't close
   // over stale arrays (and therefore don't need to be in their deps,
   // which would defeat the memo).
-  const live = useRef({ rows, results, searching, onSwitch: props.onSwitch })
-  live.current = { rows, results, searching, onSwitch: props.onSwitch }
+  const live = useRef({ rows, results, searching, onSwitch: props.onSwitch, currentId: props.currentId })
+  live.current = { rows, results, searching, onSwitch: props.onSwitch, currentId: props.currentId }
 
   const LIMIT = 2000
 
@@ -404,12 +405,23 @@ export const Sessions = memo((props: Props) => {
 
   // ── Stable row callbacks (identity never changes) ────────────────
   const rowHover = useCallback((i: number) => setSel(i), [])
+  // Switching sessions reset()s the current chat; confirm unless it's
+  // a no-op (same id) or there's nothing to switch to.
   const rowActivate = useCallback((i: number) => {
     setSel(i)
     const l = live.current
-    const id = l.searching ? l.results[i]?.session_id : l.rows[i]?.id
-    if (id) l.onSwitch?.(id)
-  }, [])
+    const hit = l.searching ? l.results[i] : l.rows[i]
+    const id = l.searching ? (hit as SessionHit | undefined)?.session_id : (hit as Row | undefined)?.id
+    if (!id || !l.onSwitch) return
+    if (id === l.currentId) return l.onSwitch(id)
+    const title = hit?.title || "Untitled"
+    const n = l.searching ? undefined : (hit as Row).message_count
+    void openConfirm(dialog, {
+      title: "Load session?",
+      body: `${trunc(title, 60)}${n != null ? `  ·  ${n} msg${n === 1 ? "" : "s"}` : ""}\n\nCurrent chat will be replaced.`,
+      yes: "load",
+    }).then(ok => { if (ok) l.onSwitch?.(id) })
+  }, [dialog])
   const rowDelete = useCallback((i: number) => {
     const r = live.current.rows[i]
     if (r) confirmDeleteRef.current(r)
@@ -453,7 +465,7 @@ export const Sessions = memo((props: Props) => {
   }, [count])
 
   useKeyboard((key) => {
-    if (!props.focused) return
+    if (!props.focused || dialog.stack.length > 0) return
     if (!searching && key.raw === "/") {
       setSearching(true); setQuery(""); setResults([]); setSel(0)
       return

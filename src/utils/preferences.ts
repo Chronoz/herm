@@ -30,6 +30,8 @@ export interface TuiPreferences {
   // ─── Herm extensions ─────────────────────────────────────────────
   /** Last active session ID — used for auto-resume on startup */
   lastSessionId?: string
+  /** Resume `lastSessionId` on launch; false → always fresh session */
+  resumeOnLaunch?: boolean
   /** Path to a .eikon avatar file for the sidebar */
   eikonPath?: string
   /** Spinner/avatar frame animations (off → static glyphs) */

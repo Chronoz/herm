@@ -38,7 +38,8 @@ export function useSession(): SessionOps {
   }, [gw])
 
   const boot = useCallback(async () => {
-    const last = preferences.get("lastSessionId")
+    const last = preferences.get("resumeOnLaunch") !== false
+      ? preferences.get("lastSessionId") : undefined
     if (last) {
       try { return await resume(last) } catch { /* fall through */ }
     }

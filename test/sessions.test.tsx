@@ -29,13 +29,40 @@ describe("Sessions tab", () => {
     expect(t.gw.last("session.list")).toBeDefined()
 
     act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Load session?"))
+    expect(t.frame()).toContain("First session")
+    expect(t.frame()).toContain("4 msgs")
+    await act(async () => { await t.keys.typeText("y") })
     await t.settle()
     expect(switched).toBe("sid-a")
 
     act(() => t.keys.pressArrow("down"))
     act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("n") })
+    await t.settle()
+    expect(switched).toBe("sid-a") // cancelled
+
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
     await t.settle()
     expect(switched).toBe("sid-b")
+    t.destroy()
+  })
+
+  test("activating current session skips confirm", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={NOIO} currentId="sid-a" onSwitch={sid => { switched = sid }} />,
+      { gw },
+    )
+    await until(t, () => t.frame().includes("Sessions (2)"))
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.frame()).not.toContain("Load session?")
+    expect(switched).toBe("sid-a")
     t.destroy()
   })
 
@@ -96,6 +123,8 @@ describe("Sessions tab", () => {
     expect(t.frame()).not.toContain(">>>")
 
     act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
     await t.settle()
     expect(switched).toBe("sid-hit")
 
@@ -157,6 +186,8 @@ describe("Sessions tab", () => {
     const y = lines.findIndex(l => l.includes("Second session"))
     const x = lines[y].indexOf("Second session")
     await act(async () => { await t.mouse.pressDown(x, y) })
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
     await t.settle()
     expect(switched).toBe("sid-b")
     t.destroy()
@@ -251,6 +282,8 @@ describe("Sessions tab", () => {
     expect(t.frame()).not.toContain("Session 0 ")
 
     act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
     await t.settle()
     expect(switched).toBe("sid-299")
 
