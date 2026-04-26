@@ -25,7 +25,7 @@ export function useSession(): SessionOps {
     const res = await gw.request<SessionResumeResponse>("session.resume", { session_id: sid })
     const id = res.session_id
     gw.setSession(id)
-    preferences.set("lastSessionId", id)
+    preferences.set("lastSessionId", res.resumed ?? sid)
     const messages = res.messages?.length ? transcriptToMessages(res.messages) : []
     return { id, messages }
   }, [gw])
@@ -33,7 +33,6 @@ export function useSession(): SessionOps {
   const create = useCallback(async () => {
     const res = await gw.request<SessionCreateResponse>("session.create", {})
     gw.setSession(res.session_id)
-    preferences.set("lastSessionId", res.session_id)
     return res.session_id
   }, [gw])
 

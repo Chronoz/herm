@@ -32,6 +32,16 @@ is ignored. Herm's Sessions-tab rename (`t`) writes state.db
 directly (`renameSession()` in `src/utils/hermes-home.ts`); won't
 work against a remote gateway.
 
+### `session.create` — return `session_key`
+Response is `{session_id, info}` where `session_id` is the
+ephemeral 8-hex `_sessions` key. The persistent state.db row id
+(`_new_session_key()`) is never returned — it only surfaces later
+via `session.title`'s read-mode `{title, session_key}`. Herm needs
+the db key to persist for resume-on-reload (`lastSessionId` pref).
+Workaround: the `session.info` event → `session.title` round-trip
+in `app.tsx onSessionInfo` captures it one tick late. Would also
+accept `session.info` carrying `session_key` in `_session_info()`.
+
 ### `session.list` — filter 0-msg stubs
 Stock RPC returns eagerly-created stub rows (every abandoned connect
 leaves one). Herm filters `message_count > 0` client-side in

@@ -301,11 +301,10 @@ const AppInner = () => {
       return setQueue(q => [...q, arg])
     }
     dispatch({ kind: "user", text })
-    preferences.set("lastSessionId", sid)
     setAttachments([])
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
-  }, [sid, gw, applyTitle])
+  }, [gw, applyTitle])
 
   // ── Queue drain ───────────────────────────────────────────────────
   // Purely client-side: prompts typed while streaming accumulate in
@@ -377,7 +376,10 @@ const AppInner = () => {
           kind: "system",
           text: `MCP: ${bad.length} server(s) failed to connect — ${bad.map(s => s.name + (s.error ? ` (${s.error})` : "")).join(", ")}`,
         })
-        gw.request<{ title: string }>("session.title").then(r => setTitle(r.title ?? "")).catch(() => {})
+        gw.request<{ title: string; session_key?: string }>("session.title").then(r => {
+          setTitle(r.title ?? "")
+          if (r.session_key) preferences.set("lastSessionId", r.session_key)
+        }).catch(() => {})
       },
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => {
