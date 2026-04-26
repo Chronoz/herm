@@ -37,3 +37,8 @@ docs/
 profiles/
 
 !AGENTS.md!src/theme/themes/opencode.json
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
