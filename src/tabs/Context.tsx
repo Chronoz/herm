@@ -282,9 +282,13 @@ const FreePanel = memo(({ seg, theme, ctxLen, home }: {
   )
 })
 
+// Stable empty default so memo comparison and downstream useEffect
+// deps don't see a fresh [] reference on every render.
+const NO_MESSAGES: readonly Message[] = Object.freeze([])
+
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = memo(({ messages = [] }: Props) => {
+export const Context = memo(({ messages = NO_MESSAGES as Message[] }: Props) => {
   const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
   const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
   const wireRef = useRef(wire)
