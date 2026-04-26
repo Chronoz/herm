@@ -38,10 +38,15 @@ Until then the tab drifts every time hermes adds a setting.
 
 ## Rich slash completion
 
-`complete.slash` RPC exists on the gateway but isn't wired. `Composer`
-owns `useSlashPopover` now, so the hook can swap its local `filter()`
-for an async gateway call (debounced) to get skill/plugin/arg
-completions the static catalog can't provide.
+`complete.slash` returns prompt_toolkit `Completion` objects:
+`{text, display, meta}` where `text` is an *insertion fragment* and
+`replace_from` is a splice offset into the raw input — not the
+whole-token replacement `useSlashPopover` assumes. Merging those
+results into the local popover needs a second accept mode (splice at
+`replace_from` + `item.text`, vs. replace-token). Deferred until the
+arg-completion case actually bites — the static catalog + `matchSub`
+already cover name+subcommand; the only loss today is skill-arg
+enumeration (`/use <skill>`), which `commands.catalog` mostly covers.
 
 ───────────────────────────────────────────────────────────────────────
 ## Agents tab
@@ -57,31 +62,35 @@ Correctness — these bite:
 [x] G2  `gateway_running` misses JSON pidfiles. `hermes-profiles.ts:80`
         does `Number(read().trim())`; upstream writes `{"pid":N}` in
         some paths. Parse both → `●` stops lying.
-[ ] G3  `is_active` derives from herm's process env, not the gateway's.
+[x] G3  `is_active` derives from herm's process env, not the gateway's.
         Same failure mode as the Sessions-tab item above. Fetch
         `config.get key=profile` once on mount; compare names against
         that, not `activeProfileName()`.
 
 Create path — unify on the CLI:
 
-[ ] G4  Drop fs `createProfile()`; call `shell.exec → hermes profile
+[x] G4  Drop fs `createProfile()`; call `shell.exec → hermes profile
         create <name> [--clone --clone-from <src>]`. Gains skill seed,
         default SOUL.md, wrapper alias, and subcommand/PATH-collision
         validation for free. Add `--no-alias` toggle to the dialog.
         Deletes ~20L from `hermes-profiles.ts`.
-[ ] G5  `validateName()` — keep as pre-flight UX only (live error text
+[x] G5  `validateName()` — keep as pre-flight UX only (live error text
         in the dialog); authoritative check is G4's CLI exit.
 
 Actions — the tab is read-mostly today:
 
-[ ] G6  Enter → action menu on selected profile. Reuse E2's
-        `dialog-message` pattern. Actions: edit SOUL.md, open
-        config.yaml, open .env, start/stop gateway, set sticky
-        default, rename, export. Most dispatch via `shell.exec →
-        hermes profile <verb>` / `<name> gateway <verb>`.
-[ ] G7  Surface sticky default. Read `<root>/active_profile`; badge
+[x] G6  Enter → `dialogs/profile.tsx` action menu. Open SOUL.md /
+        config.yaml / .env / dir via `openFile`; set/clear sticky,
+        export, delete via `shell.exec → hermes profile <verb>`.
+        Rename + start/stop-gateway intentionally omitted —
+        rename is a rare+risky path-mutating op better done from
+        the CLI where the output is readable; gateway start/stop
+        for the *active* profile would sever this session, and for
+        other profiles `gateway_running` already tells you enough.
+        Revisit if either proves needed.
+[x] G7  Surface sticky default. Read `<root>/active_profile`; badge
         the row (`★`); expose "set sticky" / "clear" in G6.
-[ ] G8  `<FileLink>` for Path / SOUL.md / config.yaml / .env in the
+[x] G8  `<FileLink>` for Path / SOUL.md / config.yaml / .env in the
         detail panel. Plain strings now.
 
 Right pane:
@@ -100,15 +109,18 @@ Right pane:
 
 Polish:
 
-[ ] G10 SOUL preview: strip first `#` heading + leading blank lines
+[x] G10 SOUL preview: strip first `#` heading + leading blank lines
         instead of raw `slice(0, 400)`.
-[ ] G11 Detail panel: add session count, cron job count, service
-        status (`systemctl --user is-active hermes-gateway-<name>`).
-[ ] G12 Narrow layout: Enter on a row swaps list→detail (Sessions
+[ ] G11 Detail panel: add session count, cron job count. Skip the
+        systemctl probe — pidfile check (G2) is the better signal
+        and doesn't spawn a process per row. Counts need opening
+        each profile's state.db / cron dir; do lazily on selection,
+        not in listProfiles().
+[x] G12 Narrow layout: Enter on a row swaps list→detail (Sessions
         tab already does this). Today detail is invisible <130 cols.
-[ ] G13 `listProfiles()` does sync `readdirSync` skill-walk per
+[x] G13 `listProfiles()` does sync `readdirSync` skill-walk per
         profile per refresh. Cache until `r`, or make async.
-[ ] G14 Delete path can exceed `shell.exec` 30s (systemctl stop +
+[x] G14 Delete path can exceed `shell.exec` 30s (systemctl stop +
         10s SIGTERM wait). Pre-check `gateway_running` and warn, or
         fire-and-refresh instead of awaiting.
 
@@ -188,7 +200,7 @@ against sections above; dedupe as they're picked up.
 
 [ ] E1  "Summarize this session" action on selected row.
 [ ] E2  Titles for sessions (gateway already emits; render + edit).
-[ ] E3  Confirmation prompt before loading/resuming a session.
+[x] E3  Confirmation prompt before loading/resuming a session.
 [ ] E4  Combine sessions — forward a slice of one into another.
 
 ### Context tab
@@ -207,7 +219,9 @@ against sections above; dedupe as they're picked up.
         does burst; extend to full stream).
 [ ] H2  `/btw` renders in a chat bubble, not system strip.
 [ ] H3  Tool calls in right-hand gutter (not inline).
-[ ] H4  Default-to-resume last session on launch.
+[x] H4  Default-to-resume last session on launch. Already the
+        behavior via `boot()`; added `resumeOnLaunch` pref to
+        opt out (tui.json).
 [ ] H5  opencode-style multiline composer behavior.
 [ ] H6  ASCII image representation in chat (eikon/chafa pipeline).
 [ ] H7  Subagent chat in a "sub-herm" nested view.
