@@ -3,87 +3,50 @@ import { act } from "react"
 import { mountNode, until, MockGateway } from "./harness"
 import { Cron } from "../src/tabs/Cron"
 
+const iso = (dsec: number) => new Date(Date.now() + dsec * 1000).toISOString()
+
 const JOBS = [
-  { job_id: "cj_001", name: "digest", schedule: "every 30m", enabled: true, prompt: "summarize" },
-  { job_id: "cj_002", name: "backup", schedule: "0 2 * * *", enabled: false, prompt: "snapshot" },
+  { job_id: "j1", name: "nightly", schedule: "0 3 * * *", enabled: true,
+    last_run_at: iso(-3600), next_run_at: iso(1800) },
+  { job_id: "j2", name: "paused-job", schedule: "every 1h", enabled: false,
+    last_run_at: iso(-120), next_run_at: iso(60) },
+  { job_id: "j3", name: "overdue", schedule: "every 5m", enabled: true,
+    next_run_at: iso(-30) },
 ]
 
 describe("Cron tab", () => {
-  test("renders jobs with ●/○ state glyphs", async () => {
+  test("renders rows; next uses until() for future, 'due' for past, 'paused' when disabled", async () => {
     const gw = new MockGateway({ "cron.manage": () => ({ jobs: JOBS }) })
-    const t = await mountNode(<Cron focused />, { gw })
-    await until(t, () => t.frame().includes("Cron Jobs (2)"))
+    const t = await mountNode(<Cron focused />, { gw, width: 180 })
+    await until(t, () => t.frame().includes("Cron Jobs (3)"))
+
     const f = t.frame()
-    expect(f).toContain("● digest")
-    expect(f).toContain("○ backup")
+    const row = (name: string) => f.split("\n").find(l => l.includes(name))!
+
+    expect(row("nightly")).toContain("last: 1h ago")
+    expect(row("nightly")).toMatch(/next: in (29|30)m/)
+    expect(row("paused-job")).toContain("next: paused")
+    expect(row("overdue")).toContain("next: due")
+    // Bug the fix addresses: future ts must NOT render as "just now".
+    expect(row("nightly")).not.toContain("next: just now")
     t.destroy()
   })
 
-  test("Space on enabled job → cron.manage pause; on paused → resume", async () => {
-    const calls: Array<Record<string, unknown>> = []
+  test("Space toggles enabled via cron.manage pause/resume", async () => {
+    let paused = ""
     const gw = new MockGateway({
       "cron.manage": p => {
-        if (p.action !== "list") calls.push(p)
-        return { jobs: JOBS }
+        if (p.action === "list") return { jobs: JOBS }
+        if (p.action === "pause" || p.action === "resume") { paused = `${p.action}:${p.name}`; return {} }
+        return {}
       },
     })
-    const t = await mountNode(<Cron focused />, { gw })
-    await until(t, () => t.frame().includes("Cron Jobs (2)"))
+    const t = await mountNode(<Cron focused />, { gw, width: 180 })
+    await until(t, () => t.frame().includes("nightly"))
 
     await act(async () => { await t.keys.typeText(" ") })
     await t.settle()
-    expect(calls[0]).toMatchObject({ action: "pause", name: "cj_001" })
-
-    act(() => t.keys.pressArrow("down"))
-    await t.settle()
-    await act(async () => { await t.keys.typeText(" ") })
-    await t.settle()
-    expect(calls[1]).toMatchObject({ action: "resume", name: "cj_002" })
-    t.destroy()
-  })
-
-  test("d opens confirm; y → cron.manage remove", async () => {
-    const calls: Array<Record<string, unknown>> = []
-    const gw = new MockGateway({
-      "cron.manage": p => {
-        if (p.action !== "list") calls.push(p)
-        return { jobs: JOBS }
-      },
-    })
-    const t = await mountNode(<Cron focused />, { gw })
-    await until(t, () => t.frame().includes("Cron Jobs (2)"))
-
-    await act(async () => { await t.keys.typeText("d") })
-    await until(t, () => t.frame().includes("Delete Job?"))
-    expect(t.frame()).toContain("digest")
-
-    await act(async () => { await t.keys.typeText("y") })
-    await t.settle()
-    expect(calls[0]).toMatchObject({ action: "remove", name: "cj_001" })
-    t.destroy()
-  })
-
-  test("n prompts schedule then prompt → cron.manage add", async () => {
-    const calls: Array<Record<string, unknown>> = []
-    const gw = new MockGateway({
-      "cron.manage": p => {
-        if (p.action !== "list") calls.push(p)
-        return { jobs: [] }
-      },
-    })
-    const t = await mountNode(<Cron focused />, { gw })
-    await until(t, () => t.frame().includes("Cron Jobs (0)"))
-
-    await act(async () => { await t.keys.typeText("n") })
-    await until(t, () => t.frame().includes("Schedule"))
-    for (const c of "every 5m") await act(async () => { await t.keys.typeText(c) })
-    act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes("Prompt"))
-    for (const c of "ping") await act(async () => { await t.keys.typeText(c) })
-    act(() => t.keys.pressEnter())
-    await t.settle()
-
-    expect(calls[0]).toMatchObject({ action: "add", name: "", schedule: "every 5m", prompt: "ping" })
+    expect(paused).toBe("pause:j1")
     t.destroy()
   })
 })

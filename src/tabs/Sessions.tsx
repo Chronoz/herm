@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import {
-  queryRecentSessions, searchSessions, deleteSession,
+  queryRecentSessions, searchSessions, deleteSession, renameSession,
   type SessionRow, type SessionHit,
 } from "../utils/hermes-home"
 import type {
@@ -16,6 +16,7 @@ import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 import { openConfirm } from "../dialogs/confirm"
+import { openTextPrompt } from "../dialogs/text-prompt"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
 import { invalidate } from "../utils/cache"
 
@@ -318,6 +319,7 @@ type IO = {
   list: typeof queryRecentSessions
   search: typeof searchSessions
   remove: typeof deleteSession
+  rename: typeof renameSession
 }
 
 type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
@@ -333,6 +335,7 @@ export const Sessions = memo((props: Props) => {
     list: props.io?.list ?? queryRecentSessions,
     search: props.io?.search ?? searchSessions,
     remove: props.io?.remove ?? deleteSession,
+    rename: props.io?.rename ?? renameSession,
   }
 
   const [rows, setRows] = useState<Row[]>([])
@@ -453,6 +456,26 @@ export const Sessions = memo((props: Props) => {
   }, [dialog, toast, load, rows.length])
   confirmDeleteRef.current = confirmDelete
 
+  const rename = useCallback(async () => {
+    const r = live.current.rows[sel]
+    if (!r) return
+    const title = await openTextPrompt(dialog, {
+      title: "Rename Session", label: "Title", initial: r.title || "",
+    })
+    if (title === null) return
+    Promise.resolve()
+      .then(() => {
+        if (!io.rename(r.id, title)) throw new Error("not found")
+        invalidate()
+        // Patch in place so the row updates without a full RPC reload
+        // (session.list is the slow path). reload still happens next r.
+        setRows(prev => prev.map(row => row.id === r.id ? { ...row, title } : row))
+        toast.show({ variant: "success", message: "Renamed" })
+      })
+      .catch((e: Error) =>
+        toast.show({ variant: "error", message: `Rename failed: ${e.message}` }))
+  }, [dialog, toast, sel])
+
   const count = searching ? results.length : rows.length
   const rowId = (i: number) => `sess-row-${i}`
 
@@ -487,6 +510,7 @@ export const Sessions = memo((props: Props) => {
     if (key.name === "end") return move(() => count - 1)
     if (key.name === "return") return activate()
     if (key.name === "r") return void load()
+    if (key.raw === "t") return void rename()
     if (key.raw === "d" || key.name === "delete") {
       const r = rows[sel]
       if (r) confirmDelete(r)
@@ -503,7 +527,7 @@ export const Sessions = memo((props: Props) => {
         title={searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
         hint={searching
           ? "↑↓ navigate  Enter/click switch  Esc cancel"
-          : "↑↓ navigate  Enter/click switch  / search  d delete  r refresh"}
+          : "↑↓ navigate  Enter/click switch  / search  t rename  d delete  r refresh"}
         error={warn || null}
         grow={3}
       >

@@ -8,7 +8,7 @@ import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { openTextPrompt } from "../dialogs/text-prompt";
-import { trunc, ago } from "../ui/fmt";
+import { trunc, ago, until } from "../ui/fmt";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -53,8 +53,10 @@ const normalize = (j: RawJob): CronJob => ({
   last_error: j.last_delivery_error,
 })
 
-// gateway returns ISO timestamps; shared `ago` wants unix seconds
-const rel = (iso?: string) => iso ? ago(new Date(iso).getTime() / 1000) : "—";
+// gateway returns ISO timestamps; shared `ago`/`until` want unix seconds
+const sec = (iso?: string) => iso ? new Date(iso).getTime() / 1000 : null
+const last = (iso?: string) => { const t = sec(iso); return t ? ago(t) : "—" }
+const next = (iso?: string) => { const t = sec(iso); return t ? until(t) : "—" }
 
 // ─── Job Row ─────────────────────────────────────────────────────────
 
@@ -78,8 +80,8 @@ const JobRow = memo((props: {
           {trunc(j.name || j.id, 20).padEnd(22)}
         </span>
         <span fg={theme.textMuted}>{(j.schedule?.display ?? j.schedule?.expr ?? "—").padEnd(18)}</span>
-        <span fg={theme.textMuted}>{` last: ${rel(j.last_run).padEnd(10)}`}</span>
-        <span fg={theme.textMuted}>{` next: ${rel(j.next_run).padEnd(10)}`}</span>
+        <span fg={theme.textMuted}>{` last: ${last(j.last_run).padEnd(10)}`}</span>
+        <span fg={j.enabled ? theme.text : theme.textMuted}>{` next: ${(j.enabled ? next(j.next_run) : "paused").padEnd(10)}`}</span>
         {j.state === "error" ? <span fg={theme.error}>{"  ERR"}</span> : null}
       </text>
     </box>

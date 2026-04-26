@@ -19,6 +19,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { readdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, basename, dirname } from "node:path"
+import { Database } from "bun:sqlite"
 import type { Source } from "./hermes-home"
 
 export type ProfileInfo = {
@@ -174,4 +175,43 @@ export function validateName(name: string, existing: string[]): string | null {
   if (existing.includes(name)) return "already exists"
   if (["hermes", "default", "test", "tmp", "root", "sudo"].includes(name)) return "reserved name"
   return null
+}
+
+// ── Lazy per-profile stats ───────────────────────────────────────────
+//
+// Counts that require opening that profile's state.db or reading its
+// cron/jobs.json. Not part of listProfiles() — fetched on selection so
+// a 10-profile list doesn't open 10 sqlite connections per refresh.
+
+export type ProfileStats = {
+  sessions: number | null
+  messages: number | null
+  crons: number | null
+}
+
+export async function profileStats(dir: string): Promise<ProfileStats> {
+  let sessions: number | null = null
+  let messages: number | null = null
+  const dbPath = join(dir, "state.db")
+  if (existsSync(dbPath)) {
+    try {
+      const db = new Database(dbPath, { readonly: true })
+      const r = db.query("SELECT COUNT(*) AS s FROM sessions WHERE message_count > 0")
+        .get() as { s: number }
+      const m = db.query("SELECT COALESCE(SUM(message_count), 0) AS m FROM sessions")
+        .get() as { m: number }
+      sessions = r.s
+      messages = m.m
+      db.close()
+    } catch { /* schema drift or locked — leave null */ }
+  }
+  let crons: number | null = null
+  try {
+    const jobs = await Bun.file(join(dir, "cron", "jobs.json")).json() as unknown
+    crons = Array.isArray(jobs) ? jobs.length
+      : jobs && typeof jobs === "object" && Array.isArray((jobs as { jobs?: unknown[] }).jobs)
+        ? (jobs as { jobs: unknown[] }).jobs.length
+      : 0
+  } catch { crons = existsSync(join(dir, "cron")) ? 0 : null }
+  return { sessions, messages, crons }
 }

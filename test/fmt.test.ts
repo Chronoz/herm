@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { trunc, fmt, cost, span, dur } from "../src/ui/fmt"
+import { trunc, fmt, cost, span, dur, until } from "../src/ui/fmt"
 
 describe("fmt", () => {
   it("trunc", () => {
@@ -25,5 +25,13 @@ describe("fmt", () => {
     expect(dur(5)).toBe("5s")
     expect(dur(65)).toBe("1m5s")
     expect(dur(3661)).toBe("1h1m")
+  })
+  it("until", () => {
+    const now = Date.now() / 1000
+    expect(until(now - 5)).toBe("due")
+    expect(until(now + 30)).toMatch(/^in \d+s$/)
+    expect(until(now + 120)).toBe("in 2m")
+    expect(until(now + 7200)).toBe("in 2h")
+    expect(until(now + 172800)).toBe("in 2d")
   })
 })

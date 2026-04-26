@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { mountNode, until, MockGateway } from "./harness"
 import { Agents } from "../src/tabs/Agents"
 import {
-  listProfiles, validateName, activeProfileName, profileNameFrom, stickyDefault,
+  listProfiles, validateName, activeProfileName, profileNameFrom, stickyDefault, profileStats,
 } from "../src/utils/hermes-profiles"
 import type { DelegationRecord, DelegationStatus } from "../src/utils/gateway-types"
 
@@ -96,6 +96,31 @@ describe("hermes-profiles", () => {
     expect(validateName("coder", ["coder"])).toBe("already exists")
     expect(validateName("default", [])).toBe("reserved name")
   })
+
+  test("profileStats reads state.db + cron/jobs.json; nulls when absent", async () => {
+    // Bare profile: no state.db, no cron → all null.
+    const bare = await profileStats(join(ROOT, "profiles", "coder"))
+    expect(bare).toEqual({ sessions: null, messages: null, crons: null })
+
+    // Seed default with a state.db and jobs.json.
+    const { Database } = await import("bun:sqlite")
+    const db = new Database(join(ROOT, "state.db"))
+    db.run("CREATE TABLE sessions (id TEXT PRIMARY KEY, message_count INT)")
+    db.run("INSERT INTO sessions VALUES ('a', 4), ('b', 0), ('c', 7)")
+    db.close()
+    mkdirSync(join(ROOT, "cron"), { recursive: true })
+    writeFileSync(join(ROOT, "cron", "jobs.json"),
+      JSON.stringify({ jobs: [{ id: "j1" }, { id: "j2" }] }))
+
+    const s = await profileStats(ROOT)
+    expect(s.sessions).toBe(2)   // message_count > 0
+    expect(s.messages).toBe(11)
+    expect(s.crons).toBe(2)
+
+    // Array-shaped jobs.json also supported.
+    writeFileSync(join(ROOT, "cron", "jobs.json"), JSON.stringify([{ id: "j1" }]))
+    expect((await profileStats(ROOT)).crons).toBe(1)
+  })
 })
 
 // ─── Agents tab ──────────────────────────────────────────────────────
@@ -146,6 +171,8 @@ describe("Agents tab", () => {
     expect(f.indexOf("sub: scan repo")).toBeLessThan(f.indexOf("root: docs"))
     expect(t.gw.last("delegation.status")).toBeDefined()
     expect(t.gw.last("config.get")?.params.key).toBe("profile")
+    // Lazy stats: no state.db in fixture → Sessions row shows dash.
+    await until(t, () => t.frame().includes("Sessions   —"))
     t.destroy()
   })
 

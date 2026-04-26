@@ -9,7 +9,7 @@ const ROWS = [
   { id: "sid-b", title: "Second session", preview: "", message_count: 12, started_at: 1699999000, source: "cli" },
 ]
 
-const NOIO = { list: () => [], search: () => [], remove: () => true }
+const NOIO = { list: () => [], search: () => [], remove: () => true, rename: () => true }
 
 describe("Sessions tab", () => {
   test("lists from session.list RPC and switches on Enter", async () => {
@@ -170,6 +170,30 @@ describe("Sessions tab", () => {
     await until(t, () => t.frame().includes("session is active"))
 
     expect(t.frame()).toContain("Sessions (2)")
+    t.destroy()
+  })
+
+  test("t renames selected session via io.rename, patches row in place", async () => {
+    const calls: Array<[string, string]> = []
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    const rename = (sid: string, title: string) => { calls.push([sid, title]); return true }
+    const t = await mountNode(<Sessions focused io={{ ...NOIO, rename }} />, { gw })
+    await until(t, () => t.frame().includes("First session"))
+
+    await act(async () => { await t.keys.typeText("t") })
+    await until(t, () => t.frame().includes("Rename Session"))
+    // initial seeded from current title
+    expect(t.frame()).toContain("First session")
+    // Ctrl+U clear, then type new title
+    await act(async () => { await t.keys.pressKey("u", { ctrl: true }) })
+    for (const c of "Renamed A") await act(async () => { await t.keys.typeText(c) })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Renamed A"))
+
+    expect(calls).toEqual([["sid-a", "Renamed A"]])
+    expect(t.frame()).not.toContain("First session")
+    // No reload fired — only the initial session.list.
+    expect(t.gw.calls.filter(c => c.method === "session.list").length).toBe(1)
     t.destroy()
   })
 

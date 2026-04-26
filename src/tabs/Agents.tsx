@@ -13,8 +13,8 @@ import { KV, KVBlock } from "../ui/kv"
 import { FileLink } from "../components/ui/FileLink"
 import { dur, trunc, fmt } from "../ui/fmt"
 import {
-  listProfiles, validateName, stickyDefault,
-  type ProfileInfo,
+  listProfiles, validateName, stickyDefault, profileStats,
+  type ProfileInfo, type ProfileStats,
 } from "../utils/hermes-profiles"
 import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
 
@@ -71,9 +71,10 @@ const ProfileRow = memo((props: {
   )
 })
 
-const ProfileDetail = memo((props: { p: ProfileInfo }) => {
+const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => {
   const theme = useTheme().theme
   const p = props.p
+  const s = props.stats
   return (
     <scrollbox scrollY flexGrow={1}>
       <box flexDirection="column" width="100%">
@@ -90,6 +91,8 @@ const ProfileDetail = memo((props: { p: ProfileInfo }) => {
         <KV label="Model" value={p.model ?? "—"} />
         <KV label="Provider" value={p.provider ?? "—"} />
         <KV label="Skills" value={String(p.skill_count)} />
+        <KV label="Sessions" value={s ? s.sessions == null ? "—" : `${fmt(s.sessions)}  (${fmt(s.messages ?? 0)} msgs)` : "…"} />
+        <KV label="Cron jobs" value={s ? s.crons == null ? "—" : String(s.crons) : "…"} />
         <KV label="Gateway" value={p.gateway_running ? "running" : "stopped"}
             fg={p.gateway_running ? theme.success : theme.textMuted} />
         {p.has_alias ? <KV label="Alias" value={`${p.name} (shell)`} /> : null}
@@ -336,8 +339,12 @@ export const Agents = memo((props: Props) => {
   // Gateway's own HERMES_HOME (may differ from herm's process env).
   // Fetched once on mount; listProfiles() derives is_active from it.
   const gwHome = useRef<string | undefined>(undefined)
+  // Lazy per-profile stats (session/msg/cron counts) — fetched when a
+  // profile is first selected, cached by path, cleared on `r`.
+  const [stats, setStats] = useState<ReadonlyMap<string, ProfileStats>>(() => new Map())
 
   const loadProfiles = useCallback(() => {
+    setStats(new Map())
     listProfiles(gwHome.current)
       .then(ps => { setProfiles(ps); setErr("") })
       .catch((e: Error) => setErr(`profiles: ${e.message}`))
@@ -502,6 +509,19 @@ export const Agents = memo((props: Props) => {
     )
   }, [sh, dialog, toast, loadProfiles])
 
+  const selected = profiles[pSel]
+
+  useEffect(() => {
+    const path = selected?.path
+    if (!path || stats.has(path)) return
+    let dead = false
+    profileStats(path).then(s => {
+      if (dead) return
+      setStats(prev => new Map(prev).set(path, s))
+    })
+    return () => { dead = true }
+  }, [selected?.path, stats])
+
   const dims = useTerminalDimensions()
   const wide = dims.width >= 130
   const pWide = dims.width >= 170 || (!wide && dims.width >= 90)
@@ -529,7 +549,6 @@ export const Agents = memo((props: Props) => {
     if (key.raw === "h") return openSpawnHistory(dialog, gw, props.sessionId)
   })
 
-  const selected = profiles[pSel]
   const showProfiles = wide || pane === "profiles"
   const showDeleg = wide || pane === "deleg"
   const showList = pWide || pView === "list"
@@ -567,7 +586,7 @@ export const Agents = memo((props: Props) => {
           {showList && showDetail ? <box width={2} /> : null}
           {showDetail ? (
           <box flexDirection="column" flexGrow={2} flexBasis={0} minWidth={0}>
-            {selected ? <ProfileDetail p={selected} />
+            {selected ? <ProfileDetail p={selected} stats={stats.get(selected.path)} />
               : <box height={1}><text fg={theme.textMuted}>No profiles</text></box>}
           </box>
           ) : null}

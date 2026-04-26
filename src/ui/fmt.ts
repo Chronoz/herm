@@ -24,6 +24,16 @@ export const ago = (ts: number): string => {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+// Future counterpart to `ago`. Past → "due".
+export const until = (ts: number): string => {
+  const s = Math.floor(ts - Date.now() / 1000)
+  if (s <= 0) return "due"
+  if (s < 60) return `in ${s}s`
+  if (s < 3600) return `in ${Math.floor(s / 60)}m`
+  if (s < 86400) return `in ${Math.floor(s / 3600)}h`
+  return `in ${Math.floor(s / 86400)}d`
+}
+
 export const when = (ts: number): string => {
   const d = new Date(ts * 1000)
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`

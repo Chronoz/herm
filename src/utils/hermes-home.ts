@@ -485,6 +485,22 @@ export function deleteSession(sid: string): boolean {
   }
 }
 
+/**
+ * Rename a session. Direct state.db write — `session.title` RPC is
+ * bound to the gateway's *current* session, so it can't retitle an
+ * arbitrary row from the list. UPSTREAM.md tracks wanting a
+ * `{session_id, title}` variant.
+ */
+export function renameSession(sid: string, title: string): boolean {
+  const db = new Database(hermesPath("state.db"));
+  try {
+    db.run("UPDATE sessions SET title = ? WHERE id = ?", [title, sid]);
+    return (db.query("SELECT changes() AS c").get() as { c: number }).c > 0;
+  } finally {
+    db.close();
+  }
+}
+
 /** Memory provider info — what's configured and available */
 export interface MemoryProviderInfo {
   name: string;
