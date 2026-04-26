@@ -7,11 +7,13 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { openConfirm } from "../dialogs/confirm"
 import { openSpawnHistory } from "../dialogs/spawn-history"
+import { openProfileMenu } from "../dialogs/profile"
 import { TabShell } from "../ui/shell"
 import { KV, KVBlock } from "../ui/kv"
+import { FileLink } from "../components/ui/FileLink"
 import { dur, trunc, fmt } from "../ui/fmt"
 import {
-  listProfiles, createProfile, validateName,
+  listProfiles, validateName, stickyDefault,
   type ProfileInfo,
 } from "../utils/hermes-profiles"
 import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
@@ -21,9 +23,9 @@ import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
 //     profile is an isolated HERMES_HOME (config, env, memory, skills).
 //     Switching profiles = restarting the gateway under a new
 //     HERMES_HOME, which would sever this session — so "switch" is
-//     deliberately NOT offered here. Create is additive (fs only);
-//     delete runs `hermes profile delete -y` via shell.exec so the
-//     authoritative CLI handles gateway stop + wrapper cleanup.
+//     deliberately NOT offered here. All mutations route through
+//     `shell.exec → hermes profile <verb>` so the authoritative CLI
+//     owns validation, skill seeding, aliases and gateway cleanup.
 //   Delegation (right) — live subagent tree via `delegation.status`
 //     (tools/delegate_tool registry). `p` toggles spawn-pause
 //     (`delegation.pause`), `k` interrupts the selected child
@@ -33,7 +35,7 @@ import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
 
 const ProfileRow = memo((props: {
   p: ProfileInfo; idx: number; selected: boolean
-  onHover: (i: number) => void; onDelete: (i: number) => void
+  onHover: (i: number) => void; onEnter: (i: number) => void; onDelete: (i: number) => void
 }) => {
   const theme = useTheme().theme
   const { p, idx: i } = props
@@ -41,7 +43,8 @@ const ProfileRow = memo((props: {
   return (
     <box flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseOver={() => props.onHover(i)}>
+         onMouseOver={() => props.onHover(i)}
+         onMouseDown={() => props.onEnter(i)}>
       <box width={2}><text fg={props.selected ? theme.primary : theme.text}>
         {props.selected ? "▸ " : "  "}
       </text></box>
@@ -50,6 +53,7 @@ const ProfileRow = memo((props: {
           <span fg={p.is_active ? theme.accent : theme.text}>
             {p.is_active ? <strong>{p.name}</strong> : p.name}
           </span>
+          {p.is_sticky ? <span fg={theme.warning}>{" ★"}</span> : null}
           {p.gateway_running ? <span fg={theme.success}>{" ●"}</span> : null}
         </text>
       </box>
@@ -73,18 +77,26 @@ const ProfileDetail = memo((props: { p: ProfileInfo }) => {
   return (
     <scrollbox scrollY flexGrow={1}>
       <box flexDirection="column" width="100%">
-        <box height={1}><text fg={theme.accent}><strong>{p.name}</strong></text></box>
+        <box height={1}>
+          <text fg={theme.accent}>
+            <strong>{p.name}</strong>
+            {p.is_sticky ? <span fg={theme.warning}>{"  ★ sticky default"}</span> : null}
+          </text>
+        </box>
         <box height={1} />
-        <KV label="Path" value={p.path} />
+        <KVLink label="Path" source={p.sources.dir} text={p.sources.dir.relative} />
         <KV label="Active" value={p.is_active ? "yes (this session)" : "no"}
             fg={p.is_active ? theme.accent : theme.textMuted} />
         <KV label="Model" value={p.model ?? "—"} />
         <KV label="Provider" value={p.provider ?? "—"} />
         <KV label="Skills" value={String(p.skill_count)} />
-        <KV label="Env" value={p.has_env ? "configured" : "—"} />
         <KV label="Gateway" value={p.gateway_running ? "running" : "stopped"}
             fg={p.gateway_running ? theme.success : theme.textMuted} />
         {p.has_alias ? <KV label="Alias" value={`${p.name} (shell)`} /> : null}
+        <box height={1} />
+        <KVLink label="Config" source={p.sources.config} />
+        <KVLink label="Soul" source={p.sources.soul} />
+        {p.has_env ? <KVLink label="Env" source={p.sources.env} /> : <KV label="Env" value="—" />}
         {p.soul_preview ? <>
           <box height={1} />
           <box height={1}><text fg={theme.textMuted}>SOUL.md</text></box>
@@ -97,14 +109,30 @@ const ProfileDetail = memo((props: { p: ProfileInfo }) => {
   )
 })
 
+// KV row whose value is a clickable FileLink rather than plain text.
+// Lives here (not ui/kv) because it depends on FileLink/Source, which
+// are data-layer imports — ui/kv stays dependency-light.
+const KVLink = (props: { label: string; source: import("../utils/hermes-home").Source; text?: string }) => {
+  const theme = useTheme().theme
+  return (
+    <box height={1} flexDirection="row">
+      <box width={11} flexShrink={0}><text fg={theme.textMuted}>{props.label}</text></box>
+      <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+        <FileLink source={props.source}>{props.text ?? props.source.label}</FileLink>
+      </box>
+    </box>
+  )
+}
+
 const CreateProfile = (props: {
   existing: string[]
-  onSubmit: (name: string, cloneFrom: string | null) => void
+  onSubmit: (name: string, cloneFrom: string | null, alias: boolean) => void
   onCancel: () => void
 }) => {
   const theme = useTheme().theme
   const [name, setName] = useState("")
   const [cloneIdx, setCloneIdx] = useState(0)
+  const [alias, setAlias] = useState(true)
   const options = ["(fresh)", ...props.existing]
   const err = name ? validateName(name, props.existing) : null
   const valid = !!name && !err
@@ -113,10 +141,11 @@ const CreateProfile = (props: {
     if (key.name === "escape") return props.onCancel()
     if (key.name === "return") {
       if (!valid) return
-      return props.onSubmit(name, cloneIdx === 0 ? null : options[cloneIdx])
+      return props.onSubmit(name, cloneIdx === 0 ? null : options[cloneIdx], alias)
     }
     if (key.name === "up") return setCloneIdx(i => Math.max(0, i - 1))
     if (key.name === "down") return setCloneIdx(i => Math.min(options.length - 1, i + 1))
+    if (key.name === "tab") return setAlias(a => !a)
     if (key.name === "backspace") return setName(n => n.slice(0, -1))
     if (key.raw && key.raw.length === 1 && /[a-z0-9_-]/.test(key.raw))
       return setName(n => n + key.raw)
@@ -144,6 +173,9 @@ const CreateProfile = (props: {
         </box>
       ))}
       <box height={1} />
+      <box height={1}><text fg={theme.textMuted}>
+        {`[Tab] shell alias: ${alias ? "yes" : "no"}`}
+      </text></box>
       <box height={1}><text fg={theme.textMuted}>
         {valid ? "Enter create  ·  Esc cancel" : err ?? "type a name"}
       </text></box>
@@ -274,7 +306,9 @@ const DelegDetail = memo((props: { r: DelegationRecord; live?: Live; now: number
 
 // ─── Main ────────────────────────────────────────────────────────────
 
+type ShellResult = { stdout: string; stderr: string; code: number }
 type Pane = "profiles" | "deleg"
+type View = "list" | "detail"
 type Props = { focused?: boolean; sessionId: string }
 
 export const Agents = memo((props: Props) => {
@@ -284,6 +318,9 @@ export const Agents = memo((props: Props) => {
   const toast = useToast()
 
   const [pane, setPane] = useState<Pane>("profiles")
+  // Profiles-pane list↔detail swap for narrow terminals — in wide
+  // layouts both render side-by-side and this is ignored.
+  const [pView, setPView] = useState<View>("list")
   const [profiles, setProfiles] = useState<ProfileInfo[]>([])
   const [deleg, setDeleg] = useState<DelegationStatus | null>(null)
   const [liveMap, setLiveMap] = useState<ReadonlyMap<string, Live>>(() => new Map())
@@ -296,10 +333,22 @@ export const Agents = memo((props: Props) => {
   const live = useRef({ profiles, active })
   live.current = { profiles, active }
 
+  // Gateway's own HERMES_HOME (may differ from herm's process env).
+  // Fetched once on mount; listProfiles() derives is_active from it.
+  const gwHome = useRef<string | undefined>(undefined)
+
   const loadProfiles = useCallback(() => {
-    try { setProfiles(listProfiles()); setErr("") }
-    catch (e) { setErr(`profiles: ${(e as Error).message}`) }
+    listProfiles(gwHome.current)
+      .then(ps => { setProfiles(ps); setErr("") })
+      .catch((e: Error) => setErr(`profiles: ${e.message}`))
   }, [])
+
+  useEffect(() => {
+    gw.request<{ home?: string }>("config.get", { key: "profile" })
+      .then(r => { gwHome.current = r.home })
+      .catch(() => {})
+      .finally(loadProfiles)
+  }, [gw, loadProfiles])
 
   const loadDeleg = useCallback(() => {
     gw.request<DelegationStatus>("delegation.status")
@@ -307,7 +356,6 @@ export const Agents = memo((props: Props) => {
       .catch(() => setDeleg({ active: [], paused: false, max_spawn_depth: 0, max_concurrent_children: 0 }))
   }, [gw])
 
-  useEffect(loadProfiles, [loadProfiles])
   useEffect(loadDeleg, [loadDeleg])
 
   // Poll delegation while focused + agents are live; back off when idle.
@@ -348,6 +396,15 @@ export const Agents = memo((props: Props) => {
     if (ev.type === "subagent.start" || ev.type === "subagent.complete") loadDeleg()
   })
 
+  // Thin wrapper for `hermes profile <verb>` — all profile mutations go
+  // through the CLI so validation/skill-seeding/alias/cleanup stay
+  // upstream-owned. Returns stdout on success, throws on non-zero.
+  const sh = useCallback((cmd: string) =>
+    gw.request<ShellResult>("shell.exec", { command: cmd }).then(r => {
+      if (r.code !== 0) throw new Error((r.stderr || r.stdout || "exit " + r.code).trim())
+      return r.stdout
+    }), [gw])
+
   // ── Stable callbacks ──────────────────────────────────────────────
   const pHover = useCallback((i: number) => setPSel(i), [])
   const dHover = useCallback((i: number) => setDSel(i), [])
@@ -355,22 +412,43 @@ export const Agents = memo((props: Props) => {
   const pDelete = useCallback(async (i: number) => {
     const p = live.current.profiles[i]
     if (!p || p.is_default || p.is_active) return
+    // `hermes profile delete` stops that profile's gateway first
+    // (SIGTERM + up to 10s wait). shell.exec is capped at 30s —
+    // usually fine, but warn so a rare timeout isn't mysterious.
+    const warn = p.gateway_running
+      ? "\n\nIts gateway is running and will be stopped first (may take up to ~10s)."
+      : ""
     const ok = await openConfirm(dialog, {
       title: "Delete Profile?",
-      body: `'${p.name}' — config, env, memory, skills, and sessions will be removed. This cannot be undone.`,
+      body: `'${p.name}' — config, env, memory, skills, and sessions will be removed. This cannot be undone.${warn}`,
       yes: "delete", danger: true,
     })
     if (!ok) return
-    gw.request<{ stdout: string; stderr: string; code: number }>(
-      "shell.exec", { command: `hermes profile delete ${p.name} -y` },
-    )
-      .then(r => {
-        if (r.code !== 0) throw new Error((r.stderr || r.stdout || "exit " + r.code).trim())
+    sh(`hermes profile delete ${p.name} -y`)
+      .then(() => {
         toast.show({ variant: "success", message: `Deleted '${p.name}'` })
         loadProfiles()
       })
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-  }, [gw, dialog, toast, loadProfiles])
+  }, [sh, dialog, toast, loadProfiles])
+
+  const pEnter = useCallback((i: number) => {
+    setPSel(i)
+    const p = live.current.profiles[i]
+    if (!p) return
+    openProfileMenu(dialog, p, {
+      sticky: (pp) => sh(`hermes profile use ${pp.name}`)
+        .then(() => { toast.show({ variant: "success", message: `Sticky default → '${pp.name}'` }); loadProfiles() })
+        .catch((e: Error) => toast.show({ variant: "error", message: e.message })),
+      unsticky: () => sh("hermes profile use --clear")
+        .then(() => { toast.show({ variant: "info", message: "Cleared sticky default" }); loadProfiles() })
+        .catch((e: Error) => toast.show({ variant: "error", message: e.message })),
+      export: (pp) => sh(`hermes profile export ${pp.name}`)
+        .then(out => toast.show({ variant: "success", message: trunc(out.trim() || `Exported '${pp.name}'`, 80) }))
+        .catch((e: Error) => toast.show({ variant: "error", message: e.message })),
+      remove: () => pDelete(i),
+    })
+  }, [sh, dialog, toast, loadProfiles, pDelete])
 
   const dKill = useCallback(async (i: number) => {
     const r = live.current.active[i]
@@ -405,71 +483,94 @@ export const Agents = memo((props: Props) => {
     dialog.replace(
       <CreateProfile
         existing={live.current.profiles.map(p => p.name)}
-        onSubmit={(name, cloneFrom) => {
+        onSubmit={(name, cloneFrom, alias) => {
           dialog.clear()
-          try {
-            createProfile(name, cloneFrom)
-            toast.show({ variant: "success", message: `Created '${name}'` })
-            loadProfiles()
-          } catch (e) {
-            toast.show({ variant: "error", message: (e as Error).message })
-          }
+          const flags = [
+            cloneFrom ? `--clone --clone-from ${cloneFrom}` : "",
+            alias ? "" : "--no-alias",
+          ].filter(Boolean).join(" ")
+          toast.show({ variant: "info", message: `Creating '${name}'…` })
+          sh(`hermes profile create ${name} ${flags}`.trim())
+            .then(() => {
+              toast.show({ variant: "success", message: `Created '${name}'` })
+              loadProfiles()
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
         }}
         onCancel={() => dialog.clear()}
       />,
     )
-  }, [dialog, toast, loadProfiles])
+  }, [sh, dialog, toast, loadProfiles])
+
+  const dims = useTerminalDimensions()
+  const wide = dims.width >= 130
+  const pWide = dims.width >= 170 || (!wide && dims.width >= 90)
 
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
     if (key.name === "tab") return setPane(p => p === "profiles" ? "deleg" : "profiles")
     if (key.raw === "r") { loadProfiles(); loadDeleg(); return }
     if (pane === "profiles") {
+      if (key.name === "escape" && !pWide && pView === "detail") return setPView("list")
       if (key.name === "up") return setPSel(s => Math.max(0, s - 1))
       if (key.name === "down") return setPSel(s => Math.min(profiles.length - 1, s + 1))
       if (key.raw === "n") return create()
       if (key.raw === "d" || key.name === "delete") return pDelete(pSel)
-    } else {
-      if (key.name === "up") return setDSel(s => Math.max(0, s - 1))
-      if (key.name === "down") return setDSel(s => Math.min(active.length - 1, s + 1))
-      if (key.raw === "p") return togglePause()
-      if (key.raw === "k" || key.name === "delete") return dKill(dSel)
-      if (key.raw === "h") return openSpawnHistory(dialog, gw, props.sessionId)
+      if (key.name === "return") {
+        if (!pWide && pView === "list") return setPView("detail")
+        return pEnter(pSel)
+      }
+      return
     }
+    if (key.name === "up") return setDSel(s => Math.max(0, s - 1))
+    if (key.name === "down") return setDSel(s => Math.min(active.length - 1, s + 1))
+    if (key.raw === "p") return togglePause()
+    if (key.raw === "k" || key.name === "delete") return dKill(dSel)
+    if (key.raw === "h") return openSpawnHistory(dialog, gw, props.sessionId)
   })
 
   const selected = profiles[pSel]
-  const dims = useTerminalDimensions()
-  const wide = dims.width >= 130
   const showProfiles = wide || pane === "profiles"
   const showDeleg = wide || pane === "deleg"
+  const showList = pWide || pView === "list"
+  const showDetail = pWide || pView === "detail"
 
+  const sticky = stickyDefault()
   const limits = deleg
     ? `depth≤${deleg.max_spawn_depth} · conc≤${deleg.max_concurrent_children}` : ""
   const pauseTag = deleg?.paused ? " · PAUSED" : ""
+
+  const pHint = pWide
+    ? "↑↓ nav  Enter actions  n new  d delete  r refresh"
+    : pView === "list" ? "↑↓ nav  Enter detail  n new  d delete"
+    : "Enter actions  Esc back  d delete"
 
   return (
     <box flexDirection="row" flexGrow={1}>
       {/* ── Profiles ── */}
       {showProfiles ? (
-      <TabShell title={`Profiles (${profiles.length})`}
-                hint={`↑↓ nav  n new  d delete  r refresh  Tab ${wide ? "→" : "↔"} delegation`}
+      <TabShell title={`Profiles (${profiles.length})${sticky ? `  ·  ★ ${sticky}` : ""}`}
+                hint={`${pHint}  Tab ${wide ? "→" : "↔"} delegation`}
                 error={err || null}
                 focus={pane === "profiles"} grow={3}>
         <box flexDirection="row" flexGrow={1} minWidth={0}>
+          {showList ? (
           <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={14}>
             <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
               {profiles.map((p, i) => (
                 <ProfileRow key={p.name} p={p} idx={i} selected={i === pSel}
-                  onHover={pHover} onDelete={pDelete} />
+                  onHover={pHover} onEnter={pEnter} onDelete={pDelete} />
               ))}
             </scrollbox>
           </box>
-          <box width={2} />
+          ) : null}
+          {showList && showDetail ? <box width={2} /> : null}
+          {showDetail ? (
           <box flexDirection="column" flexGrow={2} flexBasis={0} minWidth={0}>
             {selected ? <ProfileDetail p={selected} />
               : <box height={1}><text fg={theme.textMuted}>No profiles</text></box>}
           </box>
+          ) : null}
         </box>
       </TabShell>
       ) : null}

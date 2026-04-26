@@ -88,10 +88,15 @@ export const openUsage = (dialog: DialogContext, gw: Gateway) =>
 
 // ── /profile ─────────────────────────────────────────────────────────
 
-export function openProfile(dialog: DialogContext) {
+const ProfileDialog = () => {
+  const [p, setP] = useState<import("../utils/hermes-profiles").ProfileInfo | null | undefined>(undefined)
   const active = activeProfileName()
-  const p = listProfiles().find(x => x.name === active)
-  dialog.replace(
+  useEffect(() => {
+    listProfiles().then(ps => setP(ps.find(x => x.name === active) ?? null))
+      .catch(() => setP(null))
+  }, [])
+  if (p === undefined) return <InfoDialog title="Profile" rows={[["", "…"]]} />
+  return (
     <InfoDialog title="Profile" note={p ? undefined : "profile directory not found"} rows={[
       ["Active",   active],
       ["Home",     p?.path ?? hermesPath("")],
@@ -99,8 +104,12 @@ export function openProfile(dialog: DialogContext) {
       ["Provider", p?.provider ?? "—"],
       ["Skills",   p ? String(p.skill_count) : undefined],
       ["Gateway",  p?.gateway_running ? "running" : "stopped"],
+      ["Sticky",   p?.is_sticky ? "yes" : undefined],
       ["Alias",    p?.is_default ? undefined : p?.has_alias ? `~/.local/bin/${active}` : "—"],
       [".env",     p?.has_env ? "present" : "—"],
-    ]} />,
+    ]} />
   )
 }
+
+export const openProfile = (dialog: DialogContext) =>
+  dialog.replace(<ProfileDialog />)

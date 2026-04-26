@@ -5,19 +5,28 @@
 // *default* hermes home (`~/.hermes` in the common case, even when
 // herm itself is running under a named profile).
 //
-// Write ops (create/delete) live in src/tabs/Agents.tsx and go
-// through `shell.exec` → `hermes profile …` so the authoritative
-// CLI handles alias/gateway cleanup.
+// `is_active` is NOT a property of a profile on disk — it depends on
+// which HERMES_HOME the *gateway* was launched under, which may differ
+// from herm's own process env. Callers pass the gateway-reported home
+// (from `config.get key=profile`) and this module compares paths.
+//
+// All write ops (create/delete/rename/export/use) route through
+// `shell.exec → hermes profile <verb>` in src/tabs/Agents.tsx so the
+// authoritative CLI owns validation, skill seeding, wrapper aliases
+// and gateway cleanup.
 
-import { existsSync, readdirSync, mkdirSync, copyFileSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
+import { readdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, basename, dirname } from "node:path"
+import type { Source } from "./hermes-home"
 
 export type ProfileInfo = {
   name: string
   path: string
   is_default: boolean
   is_active: boolean
+  is_sticky: boolean
   gateway_running: boolean
   model: string | null
   provider: string | null
@@ -25,6 +34,12 @@ export type ProfileInfo = {
   skill_count: number
   has_alias: boolean
   soul_preview: string
+  sources: {
+    dir: Source
+    config: Source
+    soul: Source
+    env: Source
+  }
 }
 
 const home = () => process.env.HOME || homedir()
@@ -38,8 +53,24 @@ function root(): string {
   return basename(parent) === "profiles" ? dirname(parent) : hh
 }
 
+// Derive a profile name from an absolute HERMES_HOME path. Accepts
+// the gateway-reported home so "active" reflects the gateway's view,
+// not herm's own process environment.
+export function profileNameFrom(hh: string): string {
+  const parent = dirname(hh)
+  return basename(parent) === "profiles" ? basename(hh) : "default"
+}
+
 export function activeProfileName(): string {
-  return hermesHome() === root() ? "default" : basename(hermesHome())
+  return profileNameFrom(hermesHome())
+}
+
+// `hermes profile use <name>` writes the sticky default here.
+export function stickyDefault(): string | null {
+  try {
+    const raw = readFileSync(join(root(), "active_profile"), "utf-8").trim()
+    return raw || null
+  } catch { return null }
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -58,20 +89,12 @@ function readModel(dir: string): [string | null, string | null] {
   } catch { return [null, null] }
 }
 
-function countSkills(dir: string): number {
-  const sk = join(dir, "skills")
-  if (!existsSync(sk)) return 0
+async function countSkills(dir: string): Promise<number> {
+  const glob = new Bun.Glob("**/SKILL.md")
   let n = 0
-  const walk = (d: string, depth: number) => {
-    if (depth > 4) return
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      if (e.name === ".hub" || e.name === ".git") continue
-      const full = join(d, e.name)
-      if (e.isDirectory()) walk(full, depth + 1)
-      else if (e.name === "SKILL.md") n++
-    }
-  }
-  try { walk(sk, 0) } catch { /* ignore */ }
+  try {
+    for await (const _ of glob.scan({ cwd: join(dir, "skills"), onlyFiles: true })) n++
+  } catch { /* missing dir */ }
   return n
 }
 
@@ -87,12 +110,21 @@ function gatewayRunning(dir: string): boolean {
   } catch { return false }
 }
 
+// Strip the leading H1 (everyone's SOUL.md starts `# <Name>\n\n`) and
+// following blank lines so the preview shows actual content, not the
+// filename repeated as a heading.
 function soul(dir: string): string {
-  try { return readFileSync(join(dir, "SOUL.md"), "utf-8").slice(0, 400) }
-  catch { return "" }
+  try {
+    const raw = readFileSync(join(dir, "SOUL.md"), "utf-8")
+    const body = raw.replace(/^#[^\n]*\n+/, "").replace(/^\s+/, "")
+    return body.slice(0, 400)
+  } catch { return "" }
 }
 
-function info(name: string, dir: string, active: string): ProfileInfo {
+const src = (file: string, label: string): Source =>
+  ({ file, relative: file.replace(home() + "/", "~/"), label })
+
+async function info(name: string, dir: string, active: string, sticky: string | null): Promise<ProfileInfo> {
   const [model, provider] = readModel(dir)
   const alias = join(home(), ".local", "bin", name)
   return {
@@ -100,54 +132,46 @@ function info(name: string, dir: string, active: string): ProfileInfo {
     path: dir,
     is_default: name === "default",
     is_active: name === active,
+    is_sticky: name === sticky,
     gateway_running: gatewayRunning(dir),
     model, provider,
     has_env: existsSync(join(dir, ".env")),
-    skill_count: countSkills(dir),
+    skill_count: await countSkills(dir),
     has_alias: name !== "default" && existsSync(alias),
     soul_preview: soul(dir),
+    sources: {
+      dir: src(dir, dir.replace(home() + "/", "~/")),
+      config: src(join(dir, "config.yaml"), "config.yaml"),
+      soul: src(join(dir, "SOUL.md"), "SOUL.md"),
+      env: src(join(dir, ".env"), ".env"),
+    },
   }
 }
 
-export function listProfiles(): ProfileInfo[] {
+// `activeHome`: the gateway's HERMES_HOME (from `config.get key=profile`).
+// Falls back to this process's env so the list is still usable offline.
+export async function listProfiles(activeHome?: string): Promise<ProfileInfo[]> {
   const r = root()
-  const active = activeProfileName()
-  const out: ProfileInfo[] = []
-  if (existsSync(r)) out.push(info("default", r, active))
+  const active = profileNameFrom(activeHome ?? hermesHome())
+  const sticky = stickyDefault()
+  const jobs: Promise<ProfileInfo>[] = []
+  if (existsSync(r)) jobs.push(info("default", r, active, sticky))
   const pr = join(r, "profiles")
   if (existsSync(pr)) {
-    for (const e of readdirSync(pr, { withFileTypes: true })) {
+    for (const e of await readdir(pr, { withFileTypes: true })) {
       if (!e.isDirectory() || !ID_RE.test(e.name)) continue
-      out.push(info(e.name, join(pr, e.name), active))
+      jobs.push(info(e.name, join(pr, e.name), active, sticky))
     }
   }
-  return out
+  return Promise.all(jobs)
 }
 
+// Pre-flight UX only — the authoritative check is the CLI's own
+// validation when `hermes profile create` runs. This just lets the
+// dialog show inline error text before the user hits Enter.
 export function validateName(name: string, existing: string[]): string | null {
   if (!ID_RE.test(name)) return "must match [a-z0-9][a-z0-9_-]{0,63}"
   if (existing.includes(name)) return "already exists"
   if (["hermes", "default", "test", "tmp", "root", "sudo"].includes(name)) return "reserved name"
   return null
-}
-
-const PROFILE_DIRS = ["memories", "sessions", "skills", "skins", "logs", "plans", "workspace", "cron", "home"]
-const CLONE_FILES = ["config.yaml", ".env", "SOUL.md", "memories/MEMORY.md", "memories/USER.md"]
-
-// Additive-only: mirrors hermes_cli/profiles.py create_profile() minus
-// skill seeding (may exceed shell.exec 30s timeout) and wrapper-script
-// creation (shell-specific). User can run `hermes profile` for those.
-export function createProfile(name: string, cloneFrom: string | null): string {
-  const dest = join(root(), "profiles", name)
-  if (existsSync(dest)) throw new Error(`profile '${name}' already exists`)
-  mkdirSync(dest, { recursive: true })
-  for (const d of PROFILE_DIRS) mkdirSync(join(dest, d), { recursive: true })
-  if (cloneFrom) {
-    const src = cloneFrom === "default" ? root() : join(root(), "profiles", cloneFrom)
-    for (const f of CLONE_FILES) {
-      const s = join(src, f)
-      if (existsSync(s)) try { copyFileSync(s, join(dest, f)) } catch { /* ignore */ }
-    }
-  }
-  return dest
 }
