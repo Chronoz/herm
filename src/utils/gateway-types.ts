@@ -45,6 +45,87 @@ export type SubagentPayload = {
   tool_preview?: string
   summary?: string
   duration_seconds?: number
+  // Spawn-tree identity (upstream delegate_tool threads these through
+  // every subagent.* event). All optional — absence falls back to flat
+  // task_index keying.
+  subagent_id?: string
+  parent_id?: string
+  depth?: number
+  model?: string
+  tool_count?: number
+  toolsets?: string[]
+  // Rollups on subagent.complete
+  input_tokens?: number
+  output_tokens?: number
+  reasoning_tokens?: number
+  api_calls?: number
+  cost_usd?: number
+  files_read?: string[]
+  files_written?: string[]
+  output_tail?: Array<{ tool: string; preview: string; is_error?: boolean }>
+}
+
+// delegation.status response — list_active_subagents() snapshot plus
+// scheduler flags. Records are a copy of the live registry minus the
+// agent handle.
+export type DelegationRecord = {
+  subagent_id: string
+  parent_id?: string | null
+  depth: number
+  goal: string
+  model?: string
+  started_at?: number
+  tool_count?: number
+  status?: string
+}
+
+export type DelegationStatus = {
+  active: DelegationRecord[]
+  paused: boolean
+  max_spawn_depth: number
+  max_concurrent_children: number
+}
+
+export type PluginInfo = {
+  name: string
+  version?: string
+  enabled: boolean
+}
+
+// spawn_tree.list index entries + spawn_tree.load payload
+export type SpawnTreeEntry = {
+  path: string
+  session_id: string
+  label: string
+  count: number
+  started_at?: number | null
+  finished_at: number
+}
+
+export type SpawnTreeSnapshot = {
+  session_id?: string
+  label?: string
+  started_at?: number | null
+  finished_at?: number
+  subagents: SpawnSubagent[]
+}
+
+// Persisted per-subagent record — the shape we save, and the shape
+// spawn_tree.load round-trips. A completed SubagentPayload superset.
+export type SpawnSubagent = {
+  subagent_id: string
+  parent_id?: string | null
+  depth: number
+  goal: string
+  model?: string
+  started_at: number
+  finished_at?: number
+  tool_count: number
+  status: "running" | "completed" | "failed" | "interrupted"
+  input_tokens?: number
+  output_tokens?: number
+  cost_usd?: number
+  trail?: Array<{ name: string; preview?: string }>
 }
 
 export type GatewaySkin = {
@@ -104,17 +185,6 @@ export type SessionListItem = {
 
 export type SessionListResponse = {
   sessions?: SessionListItem[]
-}
-
-export type AgentProcess = {
-  session_id: string
-  command: string
-  status: string
-  uptime: number
-}
-
-export type AgentsListResponse = {
-  processes: AgentProcess[]
 }
 
 export type SessionUsageResponse = {

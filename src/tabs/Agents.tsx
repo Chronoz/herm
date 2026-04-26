@@ -1,29 +1,33 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import { useGateway } from "../app/gateway"
+import { useGateway, useGatewayEvent } from "../app/gateway"
+import { trail } from "../app/spawnHistory"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { openConfirm } from "../dialogs/confirm"
+import { openSpawnHistory } from "../dialogs/spawn-history"
 import { TabShell } from "../ui/shell"
-import { KV } from "../ui/kv"
-import { dur } from "../ui/fmt"
+import { KV, KVBlock } from "../ui/kv"
+import { dur, trunc, fmt } from "../ui/fmt"
 import {
   listProfiles, createProfile, validateName,
   type ProfileInfo,
 } from "../utils/hermes-profiles"
-import type { AgentProcess, AgentsListResponse } from "../utils/gateway-types"
+import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
 
 // Two panes:
-//   Profiles (left)  — filesystem scan of `<root>/profiles/`. Each
+//   Profiles (left)   — filesystem scan of `<root>/profiles/`. Each
 //     profile is an isolated HERMES_HOME (config, env, memory, skills).
 //     Switching profiles = restarting the gateway under a new
 //     HERMES_HOME, which would sever this session — so "switch" is
 //     deliberately NOT offered here. Create is additive (fs only);
 //     delete runs `hermes profile delete -y` via shell.exec so the
 //     authoritative CLI handles gateway stop + wrapper cleanup.
-//   Running (right)  — agents.list RPC: background processes + subagent
-//     tasks. Kill via process.stop.
+//   Delegation (right) — live subagent tree via `delegation.status`
+//     (tools/delegate_tool registry). `p` toggles spawn-pause
+//     (`delegation.pause`), `k` interrupts the selected child
+//     (`subagent.interrupt`).
 
 // ─── Profiles pane ───────────────────────────────────────────────────
 
@@ -147,19 +151,16 @@ const CreateProfile = (props: {
   )
 }
 
-// ─── Running pane ────────────────────────────────────────────────────
+// ─── Delegation pane ─────────────────────────────────────────────────
 
-const ProcRow = memo((props: {
-  proc: AgentProcess; idx: number; selected: boolean
+const DelegRow = memo((props: {
+  r: DelegationRecord; idx: number; selected: boolean; now: number
   onHover: (i: number) => void; onKill: (i: number) => void
 }) => {
   const theme = useTheme().theme
-  const { proc: p, idx: i } = props
+  const { r, idx: i, now } = props
   const [x, setX] = useState(false)
-  const st =
-    p.status === "running" ? theme.success
-    : p.status === "error" ? theme.error
-    : theme.textMuted
+  const up = r.started_at ? dur(now - r.started_at) : "—"
   return (
     <box flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
@@ -167,15 +168,20 @@ const ProcRow = memo((props: {
       <box width={2}><text fg={props.selected ? theme.primary : theme.text}>
         {props.selected ? "▸ " : "  "}
       </text></box>
-      <box width={10} height={1} overflow="hidden">
-        <text fg={theme.textMuted}>{p.session_id}</text>
-      </box>
       <box flexGrow={1} minWidth={8} height={1} overflow="hidden">
-        <text fg={theme.text}>{p.command}</text>
+        <text>
+          <span fg={theme.textMuted}>{"· ".repeat(r.depth)}</span>
+          <span fg={theme.text}>{r.goal.replace(/\s+/g, " ")}</span>
+        </text>
       </box>
-      <box width={9} height={1}><text fg={st}>{p.status}</text></box>
+      <box width={14} height={1} overflow="hidden">
+        <text fg={theme.textMuted}>{trunc(r.model ?? "", 13)}</text>
+      </box>
+      <box width={5} height={1} flexDirection="row" justifyContent="flex-end">
+        <text fg={theme.textMuted}>{String(r.tool_count ?? 0)}</text>
+      </box>
       <box width={8} height={1} flexDirection="row" justifyContent="flex-end">
-        <text fg={theme.textMuted}>{dur(p.uptime)}</text>
+        <text fg={theme.textMuted}>{up}</text>
       </box>
       <box width={3}
            onMouseDown={(e) => { e.stopPropagation(); props.onKill(i) }}
@@ -186,10 +192,90 @@ const ProcRow = memo((props: {
   )
 })
 
+// Sort the flat registry into a parent-before-child pre-order so depth
+// dots draw a coherent tree. Orphans (parent already finished) go last.
+function preorder(recs: DelegationRecord[]): DelegationRecord[] {
+  const byParent = new Map<string | null, DelegationRecord[]>()
+  for (const r of recs) {
+    const k = r.parent_id ?? null
+    ;(byParent.get(k) ?? byParent.set(k, []).get(k)!).push(r)
+  }
+  const out: DelegationRecord[] = []
+  const seen = new Set<string>()
+  const walk = (k: string | null) => {
+    for (const r of byParent.get(k) ?? []) {
+      if (seen.has(r.subagent_id)) continue
+      seen.add(r.subagent_id)
+      out.push(r)
+      walk(r.subagent_id)
+    }
+  }
+  walk(null)
+  for (const r of recs) if (!seen.has(r.subagent_id)) out.push(r)
+  return out
+}
+
+// Live per-subagent enrichment on top of the polled registry snapshot.
+// Fed by subagent.* push events; `tool_count` here is authoritative
+// between polls (the registry value lags).
+type Live = {
+  tool_count: number
+  last_tool?: string
+  last_preview?: string
+  thinking?: string
+  status?: string
+  input_tokens?: number
+  output_tokens?: number
+  cost_usd?: number
+}
+
+const DelegDetail = memo((props: { r: DelegationRecord; live?: Live; now: number }) => {
+  const theme = useTheme().theme
+  const { r, live, now } = props
+  const tc = live?.tool_count ?? r.tool_count ?? 0
+  const tr = trail(r.subagent_id)
+  return (
+    <scrollbox scrollY flexGrow={1}>
+      <box flexDirection="column" width="100%">
+        <box minHeight={1}><text fg={theme.accent} wrapMode="word"><strong>{r.goal}</strong></text></box>
+        <box height={1} />
+        <KVBlock rows={[
+          ["Status",   live?.status ?? r.status ?? "running"],
+          ["Model",    r.model ?? "—"],
+          ["Depth",    String(r.depth)],
+          ["Parent",   r.parent_id ?? "(root)"],
+          ["Uptime",   r.started_at ? dur(now - r.started_at) : "—"],
+          ["Tools",    String(tc)],
+          ["Tokens",   live ? `${fmt(live.input_tokens ?? 0)} in / ${fmt(live.output_tokens ?? 0)} out` : undefined],
+          ["Cost",     live?.cost_usd != null ? `$${live.cost_usd.toFixed(4)}` : undefined],
+        ]} />
+        {live?.thinking ? <>
+          <box height={1} />
+          <box height={1}><text fg={theme.textMuted}>thinking</text></box>
+          <box minHeight={1}><text fg={theme.textMuted} wrapMode="word">{trunc(live.thinking, 200)}</text></box>
+        </> : null}
+        {tr.length > 0 ? <>
+          <box height={1} />
+          <box height={1}><text fg={theme.textMuted}>recent tools</text></box>
+          {tr.slice(-8).map((t, i) => (
+            <box key={i} height={1} overflow="hidden">
+              <text>
+                <span fg={theme.textMuted}>{"┃ "}</span>
+                <span fg={theme.text}>{t.name.padEnd(14)}</span>
+                <span fg={theme.textMuted}>{t.preview ? trunc(t.preview.replace(/\s+/g, " "), 40) : ""}</span>
+              </text>
+            </box>
+          ))}
+        </> : null}
+      </box>
+    </scrollbox>
+  )
+})
+
 // ─── Main ────────────────────────────────────────────────────────────
 
-type Pane = "profiles" | "running"
-type Props = { focused?: boolean }
+type Pane = "profiles" | "deleg"
+type Props = { focused?: boolean; sessionId: string }
 
 export const Agents = memo((props: Props) => {
   const theme = useTheme().theme
@@ -199,31 +285,72 @@ export const Agents = memo((props: Props) => {
 
   const [pane, setPane] = useState<Pane>("profiles")
   const [profiles, setProfiles] = useState<ProfileInfo[]>([])
-  const [procs, setProcs] = useState<AgentProcess[]>([])
+  const [deleg, setDeleg] = useState<DelegationStatus | null>(null)
+  const [liveMap, setLiveMap] = useState<ReadonlyMap<string, Live>>(() => new Map())
+  const [now, setNow] = useState(() => Date.now() / 1000)
   const [pSel, setPSel] = useState(0)
-  const [rSel, setRSel] = useState(0)
+  const [dSel, setDSel] = useState(0)
   const [err, setErr] = useState("")
 
-  const live = useRef({ profiles, procs })
-  live.current = { profiles, procs }
+  const active = preorder(deleg?.active ?? [])
+  const live = useRef({ profiles, active })
+  live.current = { profiles, active }
 
-  const load = useCallback(() => {
-    try {
-      setProfiles(listProfiles())
-      setErr("")
-    } catch (e) {
-      setErr(`profiles: ${(e as Error).message}`)
-    }
-    gw.request<AgentsListResponse>("agents.list")
-      .then(r => setProcs(r.processes ?? []))
-      .catch(() => {})
+  const loadProfiles = useCallback(() => {
+    try { setProfiles(listProfiles()); setErr("") }
+    catch (e) { setErr(`profiles: ${(e as Error).message}`) }
+  }, [])
+
+  const loadDeleg = useCallback(() => {
+    gw.request<DelegationStatus>("delegation.status")
+      .then(r => { setDeleg(r); setNow(Date.now() / 1000) })
+      .catch(() => setDeleg({ active: [], paused: false, max_spawn_depth: 0, max_concurrent_children: 0 }))
   }, [gw])
 
-  useEffect(load, [load])
+  useEffect(loadProfiles, [loadProfiles])
+  useEffect(loadDeleg, [loadDeleg])
+
+  // Poll delegation while focused + agents are live; back off when idle.
+  useEffect(() => {
+    if (!props.focused) return
+    const ms = (deleg?.active.length ?? 0) > 0 ? 1500 : 5000
+    const t = setInterval(loadDeleg, ms)
+    return () => clearInterval(t)
+  }, [props.focused, deleg?.active.length, loadDeleg])
+
+  // Push enrichment: subagent.* events arrive regardless of focus; we
+  // fold them into a per-id map so rows/detail show fresh tool counts
+  // and the last tool/preview between registry polls. start/complete
+  // also trigger an immediate registry refresh so the list is instant.
+  useGatewayEvent(ev => {
+    if (!ev.type.startsWith("subagent.")) return
+    const p = ev.payload as { subagent_id?: string; tool_name?: string; tool_preview?: string;
+      text?: string; status?: string; input_tokens?: number; output_tokens?: number; cost_usd?: number }
+    const id = p.subagent_id
+    if (!id) return
+    setLiveMap(prev => {
+      const next = new Map(prev)
+      const cur = next.get(id) ?? { tool_count: 0 }
+      switch (ev.type) {
+        case "subagent.start":
+          next.set(id, { tool_count: 0 }); break
+        case "subagent.tool":
+          next.set(id, { ...cur, tool_count: cur.tool_count + 1,
+            last_tool: p.tool_name, last_preview: p.tool_preview }); break
+        case "subagent.thinking":
+          next.set(id, { ...cur, thinking: p.text }); break
+        case "subagent.complete":
+          next.set(id, { ...cur, status: p.status,
+            input_tokens: p.input_tokens, output_tokens: p.output_tokens, cost_usd: p.cost_usd }); break
+      }
+      return next
+    })
+    if (ev.type === "subagent.start" || ev.type === "subagent.complete") loadDeleg()
+  })
 
   // ── Stable callbacks ──────────────────────────────────────────────
   const pHover = useCallback((i: number) => setPSel(i), [])
-  const rHover = useCallback((i: number) => setRSel(i), [])
+  const dHover = useCallback((i: number) => setDSel(i), [])
 
   const pDelete = useCallback(async (i: number) => {
     const p = live.current.profiles[i]
@@ -240,18 +367,39 @@ export const Agents = memo((props: Props) => {
       .then(r => {
         if (r.code !== 0) throw new Error((r.stderr || r.stdout || "exit " + r.code).trim())
         toast.show({ variant: "success", message: `Deleted '${p.name}'` })
-        load()
+        loadProfiles()
       })
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-  }, [gw, dialog, toast, load])
+  }, [gw, dialog, toast, loadProfiles])
 
-  const rKill = useCallback((i: number) => {
-    const p = live.current.procs[i]
-    if (!p) return
-    gw.request("process.stop", { session_id: p.session_id })
-      .then(() => { toast.show({ variant: "success", message: `Stopped ${p.session_id}` }); load() })
+  const dKill = useCallback(async (i: number) => {
+    const r = live.current.active[i]
+    if (!r) return
+    const ok = await openConfirm(dialog, {
+      title: "Interrupt subagent?",
+      body: `${trunc(r.goal, 120)}\n\nThe child returns whatever partial result it has so far.`,
+      yes: "interrupt", danger: true,
+    })
+    if (!ok) return
+    gw.request<{ found: boolean }>("subagent.interrupt", { subagent_id: r.subagent_id })
+      .then(res => {
+        toast.show(res.found
+          ? { variant: "success", message: `Interrupted ${r.subagent_id}` }
+          : { variant: "info", message: "Already finished" })
+        loadDeleg()
+      })
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-  }, [gw, toast, load])
+  }, [gw, dialog, toast, loadDeleg])
+
+  const togglePause = useCallback(() => {
+    const next = !(deleg?.paused ?? false)
+    gw.request<{ paused: boolean }>("delegation.pause", { paused: next })
+      .then(r => {
+        toast.show({ variant: "info", message: r.paused ? "Spawn paused — new subagents queue" : "Spawn resumed" })
+        loadDeleg()
+      })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+  }, [gw, toast, deleg?.paused, loadDeleg])
 
   const create = useCallback(() => {
     dialog.replace(
@@ -262,7 +410,7 @@ export const Agents = memo((props: Props) => {
           try {
             createProfile(name, cloneFrom)
             toast.show({ variant: "success", message: `Created '${name}'` })
-            load()
+            loadProfiles()
           } catch (e) {
             toast.show({ variant: "error", message: (e as Error).message })
           }
@@ -270,21 +418,23 @@ export const Agents = memo((props: Props) => {
         onCancel={() => dialog.clear()}
       />,
     )
-  }, [dialog, toast, load])
+  }, [dialog, toast, loadProfiles])
 
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
-    if (key.name === "tab") return setPane(p => p === "profiles" ? "running" : "profiles")
-    if (key.raw === "r") return load()
+    if (key.name === "tab") return setPane(p => p === "profiles" ? "deleg" : "profiles")
+    if (key.raw === "r") { loadProfiles(); loadDeleg(); return }
     if (pane === "profiles") {
       if (key.name === "up") return setPSel(s => Math.max(0, s - 1))
       if (key.name === "down") return setPSel(s => Math.min(profiles.length - 1, s + 1))
       if (key.raw === "n") return create()
       if (key.raw === "d" || key.name === "delete") return pDelete(pSel)
     } else {
-      if (key.name === "up") return setRSel(s => Math.max(0, s - 1))
-      if (key.name === "down") return setRSel(s => Math.min(procs.length - 1, s + 1))
-      if (key.raw === "k" || key.name === "delete") return rKill(rSel)
+      if (key.name === "up") return setDSel(s => Math.max(0, s - 1))
+      if (key.name === "down") return setDSel(s => Math.min(active.length - 1, s + 1))
+      if (key.raw === "p") return togglePause()
+      if (key.raw === "k" || key.name === "delete") return dKill(dSel)
+      if (key.raw === "h") return openSpawnHistory(dialog, gw, props.sessionId)
     }
   })
 
@@ -292,14 +442,18 @@ export const Agents = memo((props: Props) => {
   const dims = useTerminalDimensions()
   const wide = dims.width >= 130
   const showProfiles = wide || pane === "profiles"
-  const showRunning = wide || pane === "running"
+  const showDeleg = wide || pane === "deleg"
+
+  const limits = deleg
+    ? `depth≤${deleg.max_spawn_depth} · conc≤${deleg.max_concurrent_children}` : ""
+  const pauseTag = deleg?.paused ? " · PAUSED" : ""
 
   return (
     <box flexDirection="row" flexGrow={1}>
       {/* ── Profiles ── */}
       {showProfiles ? (
       <TabShell title={`Profiles (${profiles.length})`}
-                hint={`↑↓ nav  n new  d delete  r refresh  Tab ${wide ? "→" : "↔"} running`}
+                hint={`↑↓ nav  n new  d delete  r refresh  Tab ${wide ? "→" : "↔"} delegation`}
                 error={err || null}
                 focus={pane === "profiles"} grow={3}>
         <box flexDirection="row" flexGrow={1} minWidth={0}>
@@ -320,22 +474,34 @@ export const Agents = memo((props: Props) => {
       </TabShell>
       ) : null}
 
-      {/* ── Running ── */}
-      {showRunning ? (
-      <TabShell title={`Running (${procs.length})`}
-                hint={`↑↓ nav  k kill  r refresh  Tab ${wide ? "→" : "↔"} profiles`}
-                focus={pane === "running"} grow={2}>
-        {procs.length === 0 ? (
+      {/* ── Delegation ── */}
+      {showDeleg ? (
+      <TabShell title={`Delegation (${active.length})${pauseTag}`}
+                hint={`↑↓ nav  k interrupt  p ${deleg?.paused ? "resume" : "pause"}  h history  r refresh  ·  ${limits}`}
+                focus={pane === "deleg"} grow={2}>
+        {active.length === 0 ? (
           <box key="empty" flexGrow={1}>
-            <text fg={theme.textMuted}>No background processes or subagents</text>
+            <text fg={theme.textMuted}>
+              {deleg?.paused ? "Paused — new subagents will queue" : "No subagents running  ·  h for history"}
+            </text>
           </box>
         ) : (
-          <scrollbox key="list" scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
-            {procs.map((p, i) => (
-              <ProcRow key={p.session_id} proc={p} idx={i} selected={i === rSel}
-                onHover={rHover} onKill={rKill} />
-            ))}
-          </scrollbox>
+          <box key="body" flexDirection="column" flexGrow={1} minHeight={0}>
+            <scrollbox scrollY flexGrow={3} flexBasis={0} verticalScrollbarOptions={{ visible: true }}>
+              {active.map((r, i) => {
+                const lv = liveMap.get(r.subagent_id)
+                const row = lv ? { ...r, tool_count: lv.tool_count } : r
+                return <DelegRow key={r.subagent_id} r={row} idx={i} selected={i === dSel} now={now}
+                  onHover={dHover} onKill={dKill} />
+              })}
+            </scrollbox>
+            <box height={1}><text fg={theme.border}>{"─".repeat(4)}</text></box>
+            <box flexGrow={2} flexBasis={0} minHeight={0}>
+              {active[dSel]
+                ? <DelegDetail r={active[dSel]} live={liveMap.get(active[dSel].subagent_id)} now={now} />
+                : null}
+            </box>
+          </box>
         )}
       </TabShell>
       ) : null}

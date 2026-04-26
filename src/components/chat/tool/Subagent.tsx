@@ -37,7 +37,7 @@ export const Subagent = memo(({ tool }: { tool: Part }) => {
     : `└ ${trail.length} toolcall${trail.length === 1 ? "" : "s"}${tool.duration ? ` · ${dur(tool.duration)}` : ""}`
 
   return (
-    <box flexDirection="column" paddingLeft={3}
+    <box flexDirection="column" paddingLeft={3 + (tool.depth ?? 0) * 2}
          onMouseDown={trail.length ? () => setOpen(o => !o) : undefined}>
       <box height={1}>
         <text>

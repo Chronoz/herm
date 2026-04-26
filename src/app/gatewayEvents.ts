@@ -1,6 +1,7 @@
 // Maps a GatewayEvent to a turn-reducer Action plus fire-and-forget side effects.
 
 import * as perf from "../utils/perf"
+import * as spawnHistory from "./spawnHistory"
 import type { GatewayEvent, SessionInfo } from "../utils/gateway-types"
 import type { Action } from "./turnReducer"
 import type { Usage } from "../types/message"
@@ -104,15 +105,17 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
     }
 
     case "subagent.start":
-      return { kind: "subagent", event: "start", payload: ev.payload }
     case "subagent.thinking":
-      return { kind: "subagent", event: "thinking", payload: ev.payload }
     case "subagent.tool":
-      return { kind: "subagent", event: "tool", payload: ev.payload }
     case "subagent.progress":
-      return { kind: "subagent", event: "progress", payload: ev.payload }
-    case "subagent.complete":
-      return { kind: "subagent", event: "complete", payload: ev.payload }
+    case "subagent.complete": {
+      const sub = ev.type.slice(9) as "start" | "thinking" | "tool" | "progress" | "complete"
+      // Feed the turn-wide accumulator so the completed tree can be
+      // persisted (spawn_tree.save) and the Agents tab can read live
+      // tool trails without its own event listener.
+      spawnHistory.record(sub, ev.payload)
+      return { kind: "subagent", event: sub, payload: ev.payload }
+    }
 
     case "error":
       return { kind: "error", text: ev.payload?.message ?? "Unknown error" }

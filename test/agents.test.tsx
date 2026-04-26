@@ -8,7 +8,7 @@ import { Agents } from "../src/tabs/Agents"
 import {
   listProfiles, createProfile, validateName, activeProfileName,
 } from "../src/utils/hermes-profiles"
-import type { AgentProcess } from "../src/utils/gateway-types"
+import type { DelegationRecord, DelegationStatus } from "../src/utils/gateway-types"
 
 // ─── fixture ─────────────────────────────────────────────────────────
 
@@ -91,25 +91,39 @@ describe("hermes-profiles", () => {
 
 // ─── Agents tab ──────────────────────────────────────────────────────
 
-const PROCS: AgentProcess[] = [
-  { session_id: "bg_abc123", command: "npm test", status: "running", uptime: 95 },
+const T0 = () => Date.now() / 1000 - 95
+// Intentionally out of tree order to exercise preorder().
+const RECS = (): DelegationRecord[] => [
+  { subagent_id: "s2", parent_id: "s1", depth: 1, goal: "sub: scan repo",
+    model: "haiku", started_at: T0(), tool_count: 2 },
+  { subagent_id: "s1", parent_id: null, depth: 0, goal: "root: refactor",
+    model: "sonnet", started_at: T0(), tool_count: 7 },
+  { subagent_id: "s3", parent_id: null, depth: 0, goal: "root: docs",
+    model: "sonnet", started_at: T0(), tool_count: 1 },
 ]
+const STATUS = (over: Partial<DelegationStatus> = {}): DelegationStatus => ({
+  active: RECS(), paused: false, max_spawn_depth: 2, max_concurrent_children: 3, ...over,
+})
 
 describe("Agents tab", () => {
-  test("loads profiles (fs) + running (RPC)", async () => {
-    const gw = new MockGateway({ "agents.list": () => ({ processes: PROCS }) })
-    const t = await mountNode(<Agents focused />, { gw })
+  test("loads profiles (fs) + delegation (RPC), preorder sort", async () => {
+    const gw = new MockGateway({ "delegation.status": () => STATUS() })
+    const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw })
     await until(t, () => t.frame().includes("Profiles (2)"))
 
     const f = t.frame()
     expect(f).toContain("default")
     expect(f).toContain("coder")
     expect(f).toContain(" you")
-    expect(f).toContain("Running (1)")
-    expect(f).toContain("npm test")
-    expect(f).toContain("1m35s")
     expect(f).toContain("I am default.")
-    expect(t.gw.last("agents.list")).toBeDefined()
+    expect(f).toContain("Delegation (3)")
+    expect(f).toContain("root: refactor")
+    expect(f).toContain("· sub: scan repo")
+    expect(f).toContain("1m35s")
+    // Tree order: root s1, its child s2, then root s3.
+    expect(f.indexOf("root: refactor")).toBeLessThan(f.indexOf("sub: scan repo"))
+    expect(f.indexOf("sub: scan repo")).toBeLessThan(f.indexOf("root: docs"))
+    expect(t.gw.last("delegation.status")).toBeDefined()
     t.destroy()
   })
 
@@ -117,7 +131,7 @@ describe("Agents tab", () => {
     const gw = new MockGateway({
       "shell.exec": () => ({ stdout: "deleted", stderr: "", code: 0 }),
     })
-    const t = await mountNode(<Agents focused />, { gw })
+    const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw })
     await until(t, () => t.frame().includes("Profiles (2)"))
 
     await act(async () => { await t.keys.typeText("d") })
@@ -138,7 +152,7 @@ describe("Agents tab", () => {
   })
 
   test("n opens create dialog; validates; Enter scaffolds profile on disk", async () => {
-    const t = await mountNode(<Agents focused />, { gw: new MockGateway() })
+    const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw: new MockGateway() })
     await until(t, () => t.frame().includes("Profiles (2)"))
 
     await act(async () => { await t.keys.typeText("n") })
@@ -163,41 +177,71 @@ describe("Agents tab", () => {
     t.destroy()
   })
 
-  test("Tab switches pane; k kills via process.stop", async () => {
-    let stopped = ""
+  test("Tab switches pane; k confirms → subagent.interrupt; p → delegation.pause", async () => {
+    let paused = false
+    let killed = ""
     const gw = new MockGateway({
-      "agents.list": () => ({ processes: PROCS }),
-      "process.stop": p => { stopped = p.session_id as string; return {} },
+      "delegation.status": () => STATUS({ paused }),
+      "delegation.pause": p => { paused = p.paused as boolean; return { paused } },
+      "subagent.interrupt": p => { killed = p.subagent_id as string; return { found: true } },
     })
-    const t = await mountNode(<Agents focused />, { gw })
-    await until(t, () => t.frame().includes("Running (1)"))
+    const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw, width: 200 })
+    await until(t, () => t.frame().includes("Delegation (3)"))
 
     act(() => t.keys.pressTab())
     await t.settle()
+    // Profiles-pane keys are now inert.
     await act(async () => { await t.keys.typeText("d") })
     await t.settle()
     expect(t.frame()).not.toContain("Delete Profile?")
 
+    // First row after preorder is s1; k → confirm → interrupt.
     await act(async () => { await t.keys.typeText("k") })
+    await until(t, () => t.frame().includes("Interrupt subagent?"))
+    await act(async () => { await t.keys.typeText("y") })
     await t.settle()
-    expect(stopped).toBe("bg_abc123")
+    expect(killed).toBe("s1")
+
+    // p toggles spawn-pause and the refreshed status paints PAUSED.
+    await act(async () => { await t.keys.typeText("p") })
+    await t.settle()
+    expect(t.gw.last("delegation.pause")?.params.paused).toBe(true)
+    await until(t, () => t.frame().includes("PAUSED"))
     t.destroy()
   })
 
   test("narrow width: single pane, Tab swaps between them", async () => {
-    const gw = new MockGateway({ "agents.list": () => ({ processes: PROCS }) })
-    const t = await mountNode(<Agents focused />, { gw, width: 100 })
+    const gw = new MockGateway({ "delegation.status": () => STATUS() })
+    const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw, width: 100 })
     await until(t, () => t.frame().includes("Profiles (2)"))
-    expect(t.frame()).not.toContain("Running (")
-    expect(t.frame()).toContain("Tab ↔ running")
+    expect(t.frame()).not.toContain("Delegation (")
+    expect(t.frame()).toContain("Tab ↔ delegation")
 
     act(() => t.keys.pressTab())
-    await until(t, () => t.frame().includes("Running (1)"))
+    await until(t, () => t.frame().includes("Delegation (3)"))
     expect(t.frame()).not.toContain("Profiles (")
+    expect(t.frame()).toContain("depth≤2 · conc≤3")
 
     act(() => t.resize(160, 48))
     await t.settle()
-    await until(t, () => t.frame().includes("Profiles (2)") && t.frame().includes("Running (1)"))
+    await until(t, () => t.frame().includes("Profiles (2)") && t.frame().includes("Delegation (3)"))
+    t.destroy()
+  })
+
+  test("empty delegation shows placeholder; paused variant", async () => {
+    let paused = false
+    const gw = new MockGateway({
+      "delegation.status": () => STATUS({ active: [], paused }),
+      "delegation.pause": p => { paused = p.paused as boolean; return { paused } },
+    })
+    const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw })
+    await until(t, () => t.frame().includes("Delegation (0)"))
+    expect(t.frame()).toContain("No subagents running")
+
+    act(() => t.keys.pressTab())
+    await act(async () => { await t.keys.typeText("p") })
+    await until(t, () => t.frame().includes("PAUSED"))
+    expect(t.frame()).toContain("new subagents will queue")
     t.destroy()
   })
 })

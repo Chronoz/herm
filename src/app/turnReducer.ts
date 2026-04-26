@@ -297,13 +297,16 @@ function renderSubagent(
   event: "start" | "thinking" | "tool" | "progress" | "complete",
   p: SubagentPayload,
 ): Message[] {
-  const id = `sub-${p.task_index}`
+  // Prefer the stable subagent_id threaded by delegate_tool; fall back
+  // to task_index for older gateways. task_index alone collides when
+  // orchestrator children spawn their own batch (same index, new depth).
+  const id = p.subagent_id ? `sub-${p.subagent_id}` : `sub-${p.task_index}`
 
   if (event === "start") {
     const part: ToolPart = {
       type: "tool", id, name: "delegate_task", args: "",
       status: "running", startedAt: Date.now(),
-      preview: p.goal, goal: p.goal, trail: [],
+      preview: p.goal, goal: p.goal, depth: p.depth ?? 0, trail: [],
     }
     return appendPart(messages, part, true)
   }
@@ -317,11 +320,13 @@ function renderSubagent(
   }
 
   if (event === "complete") {
+    const tokens = (p.input_tokens ?? 0) + (p.output_tokens ?? 0)
+    const extra = tokens ? ` · ${(tokens / 1000).toFixed(1)}k tok` : ""
     return updateToolById(messages, id, t => ({
       ...t,
       status: (p.status === "failed" ? "error" : "done") as ToolPart["status"],
       duration: p.duration_seconds ? p.duration_seconds * 1000 : (t.startedAt ? Date.now() - t.startedAt : undefined),
-      result: p.summary,
+      result: p.summary ? p.summary + extra : undefined,
       preview: t.goal ?? t.preview,
     }))
   }

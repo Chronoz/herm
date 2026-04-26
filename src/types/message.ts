@@ -22,6 +22,8 @@ export type ToolPart = {
   trail?: Array<{ name: string; preview?: string }>
   /** Subagent only — goal text from subagent.start. */
   goal?: string
+  /** Subagent only — spawn depth, 0 = direct child of the main agent. */
+  depth?: number
 }
 
 export type ThinkingPart = {

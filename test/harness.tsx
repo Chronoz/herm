@@ -40,6 +40,7 @@ export class MockGateway extends EventEmitter implements Gateway {
     this.on$("session.resume", p => ({ session_id: p.session_id ?? "test-sid", messages: [] }))
     this.on$("session.list", () => ({ sessions: [] }))
     this.on$("agents.list", () => ({ processes: [] }))
+    this.on$("delegation.status", () => ({ active: [], paused: false, max_spawn_depth: 2, max_concurrent_children: 3 }))
     this.on$("complete.path", () => ({ items: [] }))
     this.on$("paste.collapse", p => ({
       placeholder: `[Pasted text #1: ${String(p.text).split("\n").length} lines → /tmp/p.txt]`,

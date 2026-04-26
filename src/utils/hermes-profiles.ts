@@ -77,7 +77,10 @@ function countSkills(dir: string): number {
 
 function gatewayRunning(dir: string): boolean {
   try {
-    const pid = Number(readFileSync(join(dir, "gateway.pid"), "utf-8").trim())
+    // Upstream moved to JSON pidfiles ({"pid":N,"kind":…}); older builds
+    // wrote a bare integer. Accept either.
+    const raw = readFileSync(join(dir, "gateway.pid"), "utf-8").trim()
+    const pid = raw.startsWith("{") ? Number((JSON.parse(raw) as { pid?: number }).pid) : Number(raw)
     if (!Number.isFinite(pid) || pid <= 0) return false
     process.kill(pid, 0)
     return true

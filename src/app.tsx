@@ -1,6 +1,7 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "react"
 import * as perf from "./utils/perf"
+import * as spawnHistory from "./app/spawnHistory"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
 import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
@@ -257,6 +258,23 @@ const AppInner = () => {
         case "status": openStatus(dialog, info, sid); return
         case "usage": openUsage(dialog, gw); return
         case "profile": openProfile(dialog); return
+        case "steer":
+          openTextPrompt(dialog, { title: "Steer", label: "Note to inject on next tool result" })
+            .then(text => {
+              if (!text) return
+              gw.request<{ accepted: boolean }>("session.steer", { text })
+                .then(r => toast.show(r.accepted
+                  ? { variant: "success", message: "Queued — lands on next tool result" }
+                  : { variant: "info", message: "No turn running; send as a normal message" }))
+                .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+            })
+          return
+        case "reload-mcp":
+          toast.show({ variant: "info", message: "Reloading MCP servers…" })
+          gw.request<{ status: string }>("reload.mcp")
+            .then(() => toast.show({ variant: "success", message: "MCP servers reloaded" }))
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
         case "save":
           gw.request<{ file: string }>("session.save")
             .then(r => toast.show({ variant: "success", message: `Saved → ${r.file}` }))
@@ -362,7 +380,10 @@ const AppInner = () => {
         gw.request<{ title: string }>("session.title").then(r => setTitle(r.title ?? "")).catch(() => {})
       },
       onUsage: (u) => setUsage(u),
-      onTurnComplete: () => { setMsgCount(c => c + 1); setStatus(""); pollUsage() },
+      onTurnComplete: () => {
+        setMsgCount(c => c + 1); setStatus(""); pollUsage()
+        spawnHistory.flush(gw, sid)
+      },
       onClarify: (req) => dialog.replace(<ClarifyPrompt req={req} />),
       onApproval: (req) => dialog.replace(<ApprovalPrompt req={req} />),
       onSudo: (req) => dialog.replace(<SudoPrompt req={req} />),
@@ -499,7 +520,7 @@ const AppInner = () => {
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} />
         case 2: return <Sessions onSwitch={switchSession} focused={contentFocused} />
-        case 3: return <Agents focused={contentFocused} />
+        case 3: return <Agents focused={contentFocused} sessionId={sid} />
         case 4: return <Analytics focused={contentFocused} />
         case 5: return <Skills focused={contentFocused} />
         case 6: return <Cron focused={contentFocused} />

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, memo, type ReactNode } from "react"
+import { useGateway } from "../../app/gateway"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
 import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
-import type { SessionInfo } from "../../utils/gateway-types"
+import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
 import type { HermesHomeSnapshot, MemoryFileInfo } from "../../utils/hermes-home"
 import { snapshot } from "../../utils/cache"
 import { Tail } from "../chat/ThoughtCloud"
@@ -14,7 +15,7 @@ import { Tail } from "../chat/ThoughtCloud"
 // ~/.hermes snapshot. Snapshot is re-read on section toggle — no
 // polling timer.
 
-type SectionId = "identity" | "stats" | "memory" | "recent" | "warnings" | "mcp"
+type SectionId = "identity" | "stats" | "memory" | "recent" | "warnings" | "mcp" | "plugins"
 
 const WIDTH = 48
 const PAD_L = 12
@@ -119,9 +120,16 @@ export const Sidebar = memo((props: {
   const info = props.info
 
   const [snap, setSnap] = useState<HermesHomeSnapshot | null>(null)
+  const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [open, setOpen] = useState<Set<SectionId>>(() => new Set(["identity"]))
 
-  const load = useCallback(() => { snapshot().then(setSnap).catch(() => {}) }, [])
+  const gw = useGateway()
+  const load = useCallback(() => {
+    snapshot().then(setSnap).catch(() => {})
+    gw.request<{ plugins: PluginInfo[] }>("plugins.list")
+      .then(r => setPlugins(r.plugins ?? []))
+      .catch(() => setPlugins([]))
+  }, [gw])
   useEffect(load, [load])
 
   const toggle = useCallback((id: SectionId) => {
@@ -191,6 +199,27 @@ export const Sidebar = memo((props: {
                     <span fg={theme.hermBodyTextMuted}>
                       {s.connected ? ` ${s.transport} · ${s.tools}t` : " failed"}
                     </span>
+                  </text>
+                </box>
+              ))}
+            </Section>
+          )
+        })() : null}
+
+        {plugins.length > 0 ? (() => {
+          const on = plugins.filter(p => p.enabled).length
+          return (
+            <Section id="plugins" title="Plugins"
+                     hint={`${on}/${plugins.length} on`}
+                     open={open.has("plugins")} onToggle={toggle}>
+              {plugins.map(p => (
+                <box key={p.name} height={1}>
+                  <text>
+                    <span fg={theme.hermBodyTextMuted}>{"  "}</span>
+                    <span fg={p.enabled ? theme.hermBodyText : theme.hermBodyTextMuted}>
+                      {(p.enabled ? "● " : "○ ") + trunc(p.name, 16).padEnd(16)}
+                    </span>
+                    <span fg={theme.hermBodyTextMuted}>{` v${p.version ?? "?"}`}</span>
                   </text>
                 </box>
               ))}
