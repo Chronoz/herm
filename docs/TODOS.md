@@ -111,11 +111,11 @@ Polish:
 
 [x] G10 SOUL preview: strip first `#` heading + leading blank lines
         instead of raw `slice(0, 400)`.
-[ ] G11 Detail panel: add session count, cron job count. Skip the
-        systemctl probe — pidfile check (G2) is the better signal
-        and doesn't spawn a process per row. Counts need opening
-        each profile's state.db / cron dir; do lazily on selection,
-        not in listProfiles().
+[x] G11 Detail panel: session count (msg_count>0), total msgs, cron
+        job count. profileStats(dir) opens that profile's state.db
+        + cron/jobs.json on demand; fetched on selection, cached by
+        path, cleared on `r`. systemctl probe dropped — pidfile (G2)
+        is the better signal and doesn't spawn a process per row.
 [x] G12 Narrow layout: Enter on a row swaps list→detail (Sessions
         tab already does this). Today detail is invisible <130 cols.
 [x] G13 `listProfiles()` does sync `readdirSync` skill-walk per
@@ -177,7 +177,9 @@ against sections above; dedupe as they're picked up.
 
 [ ] C1  Create-new-cron flow (dialog → `cron.create` RPC).
 [ ] C2  Existing crons as card rows (name/schedule/enabled/last-run).
-[ ] C3  Time-to-next-activation per row.
+[x] C3  Time-to-next-activation per row. (Was a bug: `ago()` on
+        future ts → "just now". New `fmt.until()`; row shows
+        "in Nm" / "due" / "paused".)
 [ ] C4  Summary of last run's output (expand row → tail/summary).
 
 ### Memory tab
@@ -199,7 +201,9 @@ against sections above; dedupe as they're picked up.
 ### Sessions tab
 
 [ ] E1  "Summarize this session" action on selected row.
-[ ] E2  Titles for sessions (gateway already emits; render + edit).
+[x] E2  Titles already render. `t` → rename via direct state.db
+        UPDATE (`session.title` RPC is current-session-only —
+        UPSTREAM.md tracks wanting a `{session_id,title}` variant).
 [x] E3  Confirmation prompt before loading/resuming a session.
 [ ] E4  Combine sessions — forward a slice of one into another.
 
