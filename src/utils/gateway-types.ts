@@ -152,7 +152,20 @@ export type SessionInfo = {
   tools?: Record<string, string[]>
   skills?: Record<string, string[]>
   version?: string
-  usage?: Usage
+  /**
+   * Wire usage payload for the current session. Server builds this via
+   * `_get_usage(agent)` (tui_gateway/server.py:826), which extends the
+   * base Usage with ctx/compression fields when a ContextCompressor is
+   * attached — so `compressions`/`context_used`/`context_max`/
+   * `context_percent` may be present. Intersection type keeps both
+   * shapes satisfied.
+   */
+  usage?: Usage & {
+    context_used?: number
+    context_max?: number
+    context_percent?: number
+    compressions?: number
+  }
   context_max?: number
   context_used?: number
   credential_warning?: string

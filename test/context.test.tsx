@@ -47,4 +47,47 @@ describe("Context tab", () => {
     expect(strip(t.frame())).toContain("Context")
     t.destroy()
   })
+
+  // herm-1ng: threshold marker + compression counter badge.
+  describe("threshold marker (herm-1ng)", () => {
+    test("renders '×N compressed' badge when compressions > 0", async () => {
+      const info: SessionInfo = {
+        model: "claude-opus-4-7",
+        context_max: 200_000,
+        usage: { input: 100, output: 50, total: 150, compressions: 3 },
+      }
+      const t = await mountNode(<Context info={info} />)
+      expect(strip(t.frame())).toContain("×3")
+      t.destroy()
+    })
+
+    test("no badge when compressions = 0", async () => {
+      const info: SessionInfo = {
+        model: "claude-opus-4-7",
+        context_max: 200_000,
+        usage: { input: 100, output: 50, total: 150, compressions: 0 },
+      }
+      const t = await mountNode(<Context info={info} />)
+      const f = strip(t.frame())
+      // No '×0' or '×N' should appear in the ruler
+      expect(f).not.toMatch(/×\d/)
+      t.destroy()
+    })
+
+    test("no badge when usage absent", async () => {
+      const info: SessionInfo = { model: "claude-opus-4-7", context_max: 200_000 }
+      const t = await mountNode(<Context info={info} />)
+      expect(strip(t.frame())).not.toMatch(/×\d/)
+      t.destroy()
+    })
+
+    test("threshold marker glyph (│) present in ruler", async () => {
+      const info: SessionInfo = { model: "claude-opus-4-7", context_max: 200_000 }
+      const t = await mountNode(<Context info={info} />)
+      // Ruler renders │ exactly at the threshold column. Default threshold
+      // 0.5 → col 8 of 16 → the glyph appears above the grid.
+      expect(strip(t.frame())).toContain("│")
+      t.destroy()
+    })
+  })
 })

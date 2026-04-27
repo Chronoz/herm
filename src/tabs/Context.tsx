@@ -336,6 +336,14 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   const st = status(pct, theme)
   const gateway = home?.gateway?.platforms?.api_server?.state === "connected"
 
+  // Threshold marker inputs (herm-1ng). All client-side — no upstream needed.
+  // `home.config.compression.threshold` is the single source of truth; server
+  // reads the same key at run_agent.py:1736.
+  const thresholdPct = home?.config?.compression?.threshold ?? 0.5
+  const thresholdCol = Math.min(COLS - 1, Math.max(0, Math.round(thresholdPct * COLS)))
+  const overThreshold = pct >= Math.round(thresholdPct * 100)
+  const compressions = info?.usage?.compressions ?? 0
+
   // Parse + build
   const sections = useMemo(() => parse(home?.systemPrompt?.text ?? ""), [home?.systemPrompt?.text])
   const convTok = useMemo(() => est(messages.filter(m => m.role !== "system").map(m => msgText(m)).join("")), [messages])
@@ -522,6 +530,22 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
               <text fg={theme.info}>◀ Back to overview</text>
             </box>
           ) : null}
+          {/* Threshold ruler — marker at threshold_col with over-threshold tint
+              and '×N compressed' badge when compressions > 0. Aligned to the
+              grid below via +1 left margin (matching the border inset) and
+              paddingX=2 + 2-cell column width (matching grid paddingX). */}
+          <box flexDirection="row" height={1} paddingX={2} marginLeft={1}>
+            {[...Array(COLS)].map((_, col) => (
+              <box key={col} width={2}>
+                <text fg={col === thresholdCol ? (overThreshold ? theme.error : theme.warning) : theme.textMuted}>
+                  {col === thresholdCol ? "│ " : "  "}
+                </text>
+              </box>
+            ))}
+            {compressions > 0 ? (
+              <text fg={theme.warning}> ×{compressions}</text>
+            ) : null}
+          </box>
           <box borderStyle="single" paddingTop={1} paddingX={2}>
             {[...Array(COLS)].map((_, row) => (
               <box key={row} flexDirection="row" height={1}>
