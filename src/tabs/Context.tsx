@@ -17,7 +17,6 @@ import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
 import {
   type HermesHomeSnapshot,
-  type SessionRow,
   type ToolInfo,
 } from "../utils/hermes-home"
 import type { SessionInfo } from "../utils/gateway-types"
@@ -56,8 +55,6 @@ type Wire = { input: number; output: number; total: number; calls: number }
 // SessionInfo.context_max — see herm-sre.
 const DEFAULT_CTX = 128_000
 const COLS = 16
-const WARN = 80
-const CRIT = 95
 
 // ─── Colors ──────────────────────────────────────────────────────────
 
@@ -111,13 +108,6 @@ const est = (s: string) => s ? count(s) : 0
 const bar = (pct: number, w = 20) => {
   const f = Math.round((Math.max(0, Math.min(100, pct)) / 100) * w)
   return `[${"█".repeat(f)}${"░".repeat(Math.max(0, w - f))}]`
-}
-
-const status = (pct: number, theme: Theme) => {
-  if (pct >= CRIT) return { label: "CRITICAL", color: theme.error }
-  if (pct >= WARN) return { label: "HIGH", color: theme.error }
-  if (pct >= 50) return { label: "MODERATE", color: theme.warning }
-  return { label: "HEALTHY", color: theme.success }
 }
 
 // ─── Detail Panels ──────────────────────────────────────────────────
@@ -304,7 +294,6 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   const [hovered, setHovered] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [drilled, setDrilled] = useState<string | null>(null)
-  const [sidx, setSidx] = useState(0)
 
   const refresh = useCallback(async () => {
     try { setHome(await snapshot()) } catch { /* partial */ }
@@ -333,8 +322,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   }, [messages])
 
   // Derived
-  const sessions = home?.recentSessions ?? []
-  const session: SessionRow | undefined = sessions[sidx]
+  const session = home?.recentSessions?.[0]
   // Gateway's context_max is the authoritative runtime value. Fall back
   // to DEFAULT_CTX only during the fresh-session window before
   // session.info lands (herm-sre).
@@ -349,8 +337,6 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   const cumulative = wire.calls === 0 && lastPrompt === 0 && (session?.input_tokens ?? 0) > 0
   const output = wire.calls > 0 ? wire.output : (session?.output_tokens ?? 0)
   const pct = ctxLen > 0 ? Math.round((fill / ctxLen) * 100) : 0
-  const st = status(pct, theme)
-  const gateway = home?.gateway?.platforms?.api_server?.state === "connected"
 
   // Threshold marker inputs (herm-1ng). All client-side — no upstream needed.
   // `home.config.compression.threshold` is the single source of truth; server
@@ -477,58 +463,10 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
         <text><span fg={theme.success}>◼</span> Output — {fmt(output)} tokens</text>
       ) : null}
       <text>
-        <span fg={theme.textMuted}>◼ past compression threshold ({Math.round(thresholdPct * 100)}%)</span>
+        <span fg={theme.textMuted}>◼ Beyond compression threshold ({Math.round(thresholdPct * 100)}%)</span>
       </text>
     </box>
   )
-
-  // Session panel
-  const sessionPanel = () => (
-    <box borderStyle="single" padding={1}>
-      <text><strong>Session</strong><span fg={theme.textMuted}> ({sidx + 1}/{sessions.length || 1})</span></text>
-      {session ? (
-        <>
-          <text>{session.model?.split("/").pop() ?? "?"} · {session.sessionSource} · {session.message_count} msgs · {session.tool_call_count} tools</text>
-          <text>Total in: {fmt(session.input_tokens)} · out: {fmt(session.output_tokens)} · cache: {fmt(session.cache_read_tokens)}</text>
-          {live ? <text>Context fill: {fmt(live.last_prompt_tokens)}</text> : null}
-          {session.estimated_cost_usd != null ? <text>Cost: ${session.estimated_cost_usd.toFixed(2)}</text> : null}
-        </>
-      ) : null}
-      <text>
-        <span fg={st.color}>{st.label}</span>{" · "}
-        <span fg={gateway ? theme.success : theme.error}>{gateway ? "●" : "○"} gateway</span>
-        {" · "}Skills: {home?.skills?.length ?? "?"}
-      </text>
-      {sessions.length > 1 ? (
-        <box flexDirection="row" height={1} marginTop={1}>
-          <box onMouseDown={() => setSidx(Math.max(0, sidx - 1))}>
-            <text fg={sidx > 0 ? theme.info : theme.textMuted}>◀ prev</text>
-          </box>
-          <text>  </text>
-          <box onMouseDown={() => setSidx(Math.min(sessions.length - 1, sidx + 1))}>
-            <text fg={sidx < sessions.length - 1 ? theme.info : theme.textMuted}>next ▶</text>
-          </box>
-        </box>
-      ) : null}
-    </box>
-  )
-
-  // Overview (no detail selected)
-  const overview = () => (
-    <>
-      {breakdown()}
-      {home?.memory && home?.userProfile ? (
-        <box borderStyle="single" padding={1} marginBottom={1}>
-          <text><strong>Memory</strong></text>
-          <text>Notes: {home.memory.charCount.toLocaleString()} / {home.memory.charLimit.toLocaleString()} ({home.memory.usagePercent}%){home.memory.usagePercent >= 95 ? " ⚠" : ""}</text>
-          <text>Profile: {home.userProfile.charCount.toLocaleString()} / {home.userProfile.charLimit.toLocaleString()} ({home.userProfile.usagePercent}%){home.userProfile.usagePercent >= 95 ? " ⚠" : ""}</text>
-        </box>
-      ) : null}
-      {sessionPanel()}
-    </>
-  )
-
-
 
   const crumb = drilled
     ? `${drilledGroup?.label}${selected ? ` · ${findSeg(selected)?.label}` : ""}`
@@ -585,7 +523,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
         </box>
 
         <box flexDirection="column" flexGrow={1} minWidth={0}>
-          {selected ? detail() : overview()}
+          {selected ? detail() : breakdown()}
         </box>
       </box>
     </TabShell>
