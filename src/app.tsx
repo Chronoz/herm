@@ -85,6 +85,10 @@ const AppInner = () => {
   const [info, setInfo] = useState<SessionInfo | null>(null)
   const [title, setTitle] = useState("")
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
+  const goToTab = useCallback((t: number) => {
+    setTab(t)
+    setFocusRegion(t === CHAT_TAB ? "input" : "content")
+  }, [])
   const [status, setStatus] = useState("")
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
   const [queue, setQueue] = useState<string[]>([])
@@ -284,7 +288,7 @@ const AppInner = () => {
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
     const jump = TAB_SLASH[c.name]
-    if (jump !== undefined) { setTab(jump); setFocusRegion("content"); return }
+    if (jump !== undefined) { goToTab(jump); return }
     dispatch({ kind: "user", text: `/${c.name}` })
     gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
@@ -463,7 +467,7 @@ const AppInner = () => {
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({
-    tab, tabMax: TAB_MAX, setTab, focusRegion, setFocusRegion,
+    tab, tabMax: TAB_MAX, chatTab: CHAT_TAB, setTab, focusRegion, setFocusRegion,
     streaming: turn.streaming,
     composer,
     onInterrupt: () => session.interrupt(),
@@ -545,7 +549,7 @@ const AppInner = () => {
     <Profiler id="shell" onRender={perf.onRender}>
       <box width="100%" height="100%" flexDirection="column"
            backgroundColor={theme.background} onMouseUp={onMouseUp}>
-        <TabBar tabs={TABS} activeTab={tab} onTabChange={setTab} />
+        <TabBar tabs={TABS} activeTab={tab} onTabChange={goToTab} />
         <box flexGrow={1} flexDirection="row">
           <box flexGrow={1} flexDirection="column">
             {content()}

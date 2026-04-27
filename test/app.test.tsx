@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { act } from "react"
 import { mount, until, MockGateway } from "./harness"
+import { DOUBLE_TAB_MS } from "../src/app/useAppKeys"
 import type { GatewayEvent } from "../src/utils/gateway-types"
 
 describe("app", () => {
@@ -32,6 +33,88 @@ describe("app", () => {
     await t.settle()
     // Sandboxed HERMES_HOME has no state.db → empty state
     expect(t.frame()).toContain("No sessions")
+
+    t.destroy()
+  })
+
+  test("tab nav hands focus to content; keys reach the tab", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Ctrl+→ to Env (index 9). Land on content, not the composer.
+    act(() => { for (let i = 0; i < 9; i++) t.keys.pressArrow("right", { ctrl: true }) })
+    await t.settle()
+    await until(t, () => t.frame().includes("Env / API Keys"))
+    expect(t.frame()).not.toContain("Env (searching)")
+
+    // Arrow down moves the row cursor (off the first header, onto row 1).
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    const top = t.frame().split("\n").find(l => l.includes("▸"))!
+    expect(top).not.toMatch(/LLM Providers/)
+
+    // `/` is an Env keybind — it must reach Env, not the composer's slash
+    // popover. If the shell were still bouncing printable chars to input,
+    // this would open the popover instead of flipping Env to search mode.
+    await act(async () => { await t.keys.typeText("/") })
+    await t.settle()
+    expect(t.frame()).toContain("Env (searching)")
+
+    t.destroy()
+  })
+
+  test("non-Chat: double-Tab focuses composer; single Tab stays", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => { for (let i = 0; i < 9; i++) t.keys.pressArrow("right", { ctrl: true }) })
+    await until(t, () => t.frame().includes("Env / API Keys"))
+
+    // Single Tab: content keeps focus (arrow still moves selection).
+    act(() => t.keys.pressTab())
+    await t.settle()
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    const sel = t.frame().split("\n").find(l => l.includes("▸"))!
+    expect(sel).not.toMatch(/LLM Providers/)
+
+    // Slow second Tab (>400ms) is still "single".
+    await Bun.sleep(DOUBLE_TAB_MS + 20)
+    act(() => t.keys.pressTab())
+    await t.settle()
+    await act(async () => { await t.keys.typeText("x") })
+    await t.settle()
+    // Composer didn't receive the "x" (prefix is `> ` then value).
+    expect(t.frame()).not.toMatch(/> x/)
+    expect(t.gw.last("prompt.submit")).toBeUndefined()
+
+    // Double-Tab: composer grabs focus — typing now goes into the input.
+    await Bun.sleep(DOUBLE_TAB_MS + 20)
+    act(() => { t.keys.pressTab(); t.keys.pressTab() })
+    await t.settle()
+    await act(async () => { await t.keys.typeText("hi env") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("hi env")
+
+    t.destroy()
+  })
+
+  test("Chat: typing with transcript focused bounces back to composer", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Tab moves focus to the transcript, then any letter bounces back.
+    act(() => t.keys.pressTab())
+    await t.settle()
+    await act(async () => { await t.keys.typeText("h") })
+    await t.settle()
+    await act(async () => { await t.keys.typeText("ey") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+
+    // First char flips focus (and is consumed); "ey" lands in the input.
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("ey")
 
     t.destroy()
   })

@@ -9,12 +9,14 @@ import { editInEditor } from "../utils/editor"
 import type { ComposerHandle } from "../components/chat/Composer"
 
 const INTERRUPT_MS = 5000
+export const DOUBLE_TAB_MS = 400
 
 type Region = "input" | "content"
 
 type Opts = {
   tab: number
   tabMax: number
+  chatTab: number
   setTab: (fn: (t: number) => number) => void
   focusRegion: Region
   setFocusRegion: (r: Region | ((r: Region) => Region)) => void
@@ -34,6 +36,11 @@ type Opts = {
 export function useAppKeys(o: Opts) {
   const renderer = useRenderer()
   const lastEsc = useRef(0)
+  const lastTab = useRef(0)
+
+  // Tabs with their own keyboard surface own focus on entry; Chat keeps
+  // the composer since its content region has no keybinds.
+  const regionFor = (t: number): Region => t === o.chatTab ? "input" : "content"
 
   useKeyboard((key) => {
     const c = o.composer.current
@@ -69,13 +76,11 @@ export function useAppKeys(o: Opts) {
     }
 
     if (key.ctrl && key.name === "left") {
-      o.setTab(t => Math.max(0, t - 1))
-      o.setFocusRegion("input")
+      o.setTab(t => { const n = Math.max(0, t - 1); o.setFocusRegion(regionFor(n)); return n })
       return
     }
     if (key.ctrl && key.name === "right") {
-      o.setTab(t => Math.min(o.tabMax, t + 1))
-      o.setFocusRegion("input")
+      o.setTab(t => { const n = Math.min(o.tabMax, t + 1); o.setFocusRegion(regionFor(n)); return n })
       return
     }
 
@@ -101,7 +106,24 @@ export function useAppKeys(o: Opts) {
     }
 
     if (key.name === "tab" && !o.streaming) {
-      o.setFocusRegion(r => r === "input" ? "content" : "input")
+      if (o.tab === o.chatTab) {
+        o.setFocusRegion(r => r === "input" ? "content" : "input")
+        return
+      }
+      if (o.focusRegion === "input") {
+        o.setFocusRegion("content")
+        return
+      }
+      // Content-focused on a non-Chat tab: single Tab stays (tab owns it as a
+      // nav key); double-tap within the window jumps to the composer.
+      const now = Date.now()
+      if (now - lastTab.current < DOUBLE_TAB_MS) {
+        o.setFocusRegion("input")
+        lastTab.current = 0
+        key.stopPropagation()
+      } else {
+        lastTab.current = now
+      }
       return
     }
 
@@ -117,7 +139,7 @@ export function useAppKeys(o: Opts) {
         o.onInterruptNotice()
         return
       }
-      if (o.focusRegion === "content") o.setFocusRegion("input")
+      if (o.tab === o.chatTab && o.focusRegion === "content") o.setFocusRegion("input")
       return
     }
 
@@ -142,10 +164,10 @@ export function useAppKeys(o: Opts) {
       if (key.name === "down") return c?.historyDown()
     }
 
-    // Printable char while content has focus → bounce to input. Stop
-    // propagation so tab-level handlers (d=delete, /=search, etc.) don't
-    // also fire on the same keystroke.
-    if (o.focusRegion === "content" && !o.streaming && !key.ctrl && !key.meta) {
+    // Printable char while Chat transcript has focus → bounce to composer.
+    // Other tabs own their printable keys (v=reveal, d=delete, etc.), so the
+    // shell must not intercept there.
+    if (o.tab === o.chatTab && o.focusRegion === "content" && !o.streaming && !key.ctrl && !key.meta) {
       if (key.name.length === 1 && key.name !== " ") {
         o.setFocusRegion("input")
         key.stopPropagation()
