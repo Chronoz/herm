@@ -85,6 +85,5 @@ describe("hermes-home snapshot additions", () => {
     expect(typeof redactedKey).toBe("string")
     expect(redactedKey).not.toContain("abcdef1234567890")
     expect(redactedKey.endsWith("...")).toBe(true)
-    home.close()
   })
 })
