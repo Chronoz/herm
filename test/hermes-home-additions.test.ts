@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll } from "bun:test"
 import { mkdirSync, writeFileSync } from "fs"
 import { join } from "path"
+import { count as tokenCount } from "../src/utils/tokens"
 
 const home = process.env.HERMES_HOME!
 
@@ -33,10 +34,12 @@ beforeAll(() => {
     "memory:\n  provider: mem0\n  memory_char_limit: 2200\n  user_char_limit: 1375\n",
   )
 
-  // mem0.json with a redactable secret
+  // mem0.json with a realistic-length api key so redaction produces
+  // a distinguishable value (seed "***" would slice to itself and
+  // hide redaction bugs).
   writeFileSync(
     join(home, "mem0.json"),
-    JSON.stringify({ api_key: "sk-abcdef12345", user_id: "test", foo: 42 }),
+    JSON.stringify({ api_key: "sk-abcdef1234567890", user_id: "test", foo: 42 }),
   )
 })
 
@@ -47,7 +50,7 @@ describe("hermes-home snapshot additions (herm-krb)", () => {
     expect(s).not.toBeNull()
     expect(s!.content).toContain("You are a test agent")
     expect(s!.charCount).toBe(s!.content.length)
-    expect(s!.tokenEstimate).toBe(Math.ceil(s!.content.length / 4))
+    expect(s!.tokenEstimate).toBe(tokenCount(s!.content))
   })
 
   test("SkillInfo.tokenEstimate computed from index-entry shape", async () => {
@@ -56,14 +59,14 @@ describe("hermes-home snapshot additions (herm-krb)", () => {
     const alpha = sk.find(s => s.name === "alpha")
     expect(alpha).toBeDefined()
     expect(alpha!.tokenEstimate).toBeGreaterThan(0)
-    // Index entry ~= "alpha: A test skill [t1,t2]" → 27 chars → 7 tokens
-    const expected = Math.ceil(`${alpha!.name}: ${alpha!.description} [${alpha!.tags.join(",")}]`.length / 4)
+    // Index entry ~= "alpha: A test skill [t1,t2]"
+    const expected = tokenCount(`${alpha!.name}: ${alpha!.description} [${alpha!.tags.join(",")}]`)
     expect(alpha!.tokenEstimate).toBe(expected)
 
     // Skill without tags should not include the brackets in its estimate
     const beta = sk.find(s => s.name === "beta")
     expect(beta).toBeDefined()
-    const betaExpected = Math.ceil(`${beta!.name}: ${beta!.description}`.length / 4)
+    const betaExpected = tokenCount(`${beta!.name}: ${beta!.description}`)
     expect(beta!.tokenEstimate).toBe(betaExpected)
   })
 
@@ -77,9 +80,11 @@ describe("hermes-home snapshot additions (herm-krb)", () => {
     const mem0 = snap.memoryProviders.find(p => p.name === "mem0")
     expect(mem0).toBeDefined()
     expect(mem0!.active).toBe(true)
-    // api_key redacted
+    // api_key redacted — full secret must be gone, only 4-char prefix remains
     expect(typeof mem0!.config.api_key).toBe("string")
-    expect(mem0!.config.api_key as string).not.toContain("abcdef12345")
-    expect(mem0!.config.api_key as string).toContain("sk-a")
+    const redactedKey = mem0!.config.api_key as string
+    expect(redactedKey).not.toContain("abcdef1234567890")
+    expect(redactedKey.endsWith("...")).toBe(true)
+    expect(redactedKey.length).toBeLessThan("sk-abcdef1234567890".length)
   })
 })

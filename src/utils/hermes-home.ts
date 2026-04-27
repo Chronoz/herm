@@ -743,7 +743,7 @@ export async function listSkills(): Promise<SkillInfo[]> {
         name,
         description: fm.description,
         tags: fm.tags,
-        tokenEstimate: Math.ceil(indexEntry.length / 4),
+        tokenEstimate: tokenCount(indexEntry),
       });
     }
     return skills.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
@@ -760,7 +760,7 @@ export async function readSoul(): Promise<SoulInfo | null> {
     return {
       source: makeSource("SOUL.md"),
       charCount: text.length,
-      tokenEstimate: Math.ceil(text.length / 4),
+      tokenEstimate: tokenCount(text),
       content: text,
     };
   } catch {
