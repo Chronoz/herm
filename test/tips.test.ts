@@ -10,8 +10,9 @@ describe("tips", () => {
       expect(tip.length).toBeGreaterThan(0)
       expect(tip).not.toContain("\n")
     }
-    // Known stable entry (first slash-command tip in corpus).
-    expect(t.some(s => s.startsWith("/btw "))).toBe(true)
+    // Corpus contains slash-command tips (structural, not pinned to a
+    // specific command — upstream rewords entries).
+    expect(t.some(s => /^\/[a-z]+ /.test(s))).toBe(true)
     // Escaped quotes round-trip.
     expect(t.some(s => s.includes('/title "my project"'))).toBe(true)
   })
