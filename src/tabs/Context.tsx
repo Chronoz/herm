@@ -1,7 +1,8 @@
 /**
  * Context tab — two-level drill-down context window visualizer.
  *
- * Level 0: System & Prompt | Tools | Conversation | Free
+ * Level 0: System Prompt | System Tools | MCP Tools | Memory |
+ *          Skills | Conversation | Free
  * Level 1: Click a group → grid expands to show children
  * Detail:  Click a leaf → right panel shows content
  *
@@ -28,6 +29,7 @@ import {
   drill,
   cells as buildCells,
   classifyTools,
+  toolTokens,
   type Segment,
 } from "../utils/context-segments"
 import { FileLink } from "../components/ui/FileLink"
@@ -48,17 +50,10 @@ type Wire = { input: number; output: number; total: number; calls: number }
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-const CTX: Record<string, number> = {
-  "claude-opus-4-6": 1_000_000, "claude-sonnet-4-6": 1_000_000,
-  "claude-opus-4.6": 1_000_000, "claude-sonnet-4.6": 1_000_000,
-  "claude-opus-4": 200_000, "claude-sonnet-4": 200_000,
-  "claude-3.5-sonnet": 200_000, "claude-3-opus": 200_000,
-  "claude-3-sonnet": 200_000, "claude-3-haiku": 200_000,
-  "gpt-4.1": 1_047_576, "gpt-4o": 128_000, "gpt-4": 128_000,
-  gemini: 1_048_576, deepseek: 128_000, llama: 131_072, qwen: 131_072,
-}
+// Conservative fallback when gateway hasn't surfaced info.context_max
+// yet (fresh session, pre-session.info). Real value comes from
+// SessionInfo.context_max — see herm-sre.
 const DEFAULT_CTX = 128_000
-const CPT = 4
 const COLS = 16
 const WARN = 80
 const CRIT = 95
@@ -100,13 +95,6 @@ const est = (s: string) => s ? count(s) : 0
 const bar = (pct: number, w = 20) => {
   const f = Math.round((Math.max(0, Math.min(100, pct)) / 100) * w)
   return `[${"█".repeat(f)}${"░".repeat(Math.max(0, w - f))}]`
-}
-
-const resolveCtx = (model: string) => {
-  const bare = (model.includes("/") ? model.split("/").pop()! : model).toLowerCase()
-  if (CTX[bare]) return CTX[bare]
-  for (const [k, v] of Object.entries(CTX)) { if (bare.startsWith(k)) return v }
-  return DEFAULT_CTX
 }
 
 const status = (pct: number, theme: Theme) => {
@@ -216,7 +204,7 @@ const ToolsPanel = memo(({ seg, theme, tools, kind }: {
       <text> </text>
       {sorted.map(t => (
         <text key={t.name} fg={theme.text}>
-          · {t.name} ({fmt(Math.ceil((t.descriptionLength + t.paramsLength) / CPT))} tok)
+          · {t.name} ({fmt(toolTokens(t))} tok)
         </text>
       ))}
     </scrollbox>
@@ -331,12 +319,10 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   // Derived
   const sessions = home?.recentSessions ?? []
   const session: SessionRow | undefined = sessions[sidx]
-  const model = info?.model ?? session?.model ?? home?.config?.model?.default ?? "unknown"
-  // Gateway's context_max is the authoritative runtime value; the CTX
-  // lookup is a fallback for when info isn't wired (e.g. fresh session
-  // before session.info lands) or for historical session rows that
-  // don't carry a live ctx.
-  const ctxLen = info?.context_max ?? resolveCtx(model)
+  // Gateway's context_max is the authoritative runtime value. Fall back
+  // to DEFAULT_CTX only during the fresh-session window before
+  // session.info lands (herm-sre).
+  const ctxLen = info?.context_max ?? DEFAULT_CTX
 
   const live = session
     ? Object.values(home?.liveSessions ?? {}).find(ls => ls.session_id === session.id)
@@ -423,6 +409,22 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     if (selected === "mcp_tools" && home?.toolsInfo) {
       const { mcp } = classifyTools(home.toolsInfo.tools)
       return <ToolsPanel seg={seg} theme={theme} tools={mcp} kind="mcp_tools" />
+    }
+    // SOUL drill: prefer home.soul.content (authoritative read) over the
+    // parsed slice from systemPrompt.text. herm-krb landed this field.
+    if (selected === "soul" && home?.soul) {
+      const soulSeg: Segment = {
+        ...seg,
+        section: {
+          id: "soul",
+          label: "SOUL.md",
+          chars: home.soul.charCount,
+          tokens: home.soul.tokenEstimate,
+          text: home.soul.content,
+          source: home.soul.source,
+        },
+      }
+      return <SectionPanel seg={soulSeg} theme={theme} />
     }
     if (selected === "conversation") return <ConvPanel seg={seg} theme={theme} messages={messages} output={output} />
     if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} home={home} />

@@ -11,7 +11,7 @@
  * to the full context length. At drill level, relative to the parent group.
  */
 
-import type { Source, ToolInfo, MemoryProviderInfo } from "./hermes-home"
+import type { Source, ToolInfo } from "./hermes-home"
 import { makeSource } from "./hermes-home"
 import { count as tok } from "./tokens"
 
@@ -184,10 +184,6 @@ type Opts = {
    *  per skill). When absent, falls back to the "skills" section from parse()
    *  (which reflects what's actually injected into the system prompt). */
   skillsTokens?: number
-  /** External memory providers (mem0/retaindb/etc.). Used for drill detail
-   *  only — token contribution is already captured by the parsed "mem0"
-   *  section when active. */
-  memoryProviders?: ReadonlyArray<MemoryProviderInfo>
 }
 
 /**

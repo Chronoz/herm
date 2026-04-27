@@ -29,19 +29,19 @@ describe("Context tab", () => {
     t.destroy()
   })
 
-  test("info.context_max overrides CTX table entry for known model", async () => {
-    // gpt-4o in CTX table = 128k; info claims 1M. Gateway must win.
+  test("info.context_max overrides DEFAULT_CTX fallback", async () => {
+    // DEFAULT_CTX = 128k; info claims 1M. Gateway must win.
     const info: SessionInfo = { model: "gpt-4o", context_max: 1_000_000 }
     const t = await mountNode(<Context info={info} />)
     const f = strip(t.frame())
     // 1_000_000 formats as "1.0M" via fmt()
     expect(f).toContain("1.0M")
-    // Guard: must NOT fall back to the 128k table value
+    // Guard: must NOT fall back to 128k
     expect(f).not.toContain("128k")
     t.destroy()
   })
 
-  test("falls back to CTX table when info absent", async () => {
+  test("falls back to DEFAULT_CTX when info absent", async () => {
     // No info, no session → DEFAULT_CTX (128k). Verify no crash.
     const t = await mountNode(<Context />)
     expect(strip(t.frame())).toContain("Context")
