@@ -41,7 +41,7 @@ export const DEFAULTS = {
   "editor.open":       def("<leader>e,ctrl+g",     "Open $EDITOR on prompt",             "global"),
   "reply.copy":        def("<leader>y,ctrl+y",     "Copy last assistant reply",          "global"),
   "clipboard.attach":  def("alt+v",                "Attach clipboard image",             "global"), // ø input_paste=ctrl+v
-  "queue.pop":         def("ctrl+u",               "Pop last queued prompt",             "global"), // ☨
+  // "queue.pop":         def("ctrl+u",               "Pop last queued prompt",             "global"), // ☨ k: need to think about this more. defer
   "session.interrupt": def("escape",               "Interrupt (double-tap while streaming)", "global"),
   "session.new":       def("<leader>n",            "New session",                        "global"),
   "session.undo":      def("<leader>u",            "Undo last turn",                     "global"),
@@ -49,7 +49,7 @@ export const DEFAULTS = {
   "session.timeline":  def("<leader>g",            "Session timeline",                   "global"),
   "theme.pick":        def("<leader>t",            "Switch theme",                       "global"),
   "model.pick":        def("<leader>m",            "Switch model",                       "global"),
-  "tool.details":      def("<leader>d",            "Cycle tool-trail detail",            "global"), // ø tool_details=none
+  // "tool.details":      def("<leader>d",            "Cycle tool-trail detail",            "global"), // ø tool_details=none k: I need to see if it warrants a shortcut. defer
   "status.open":       def("<leader>s",            "Show status",                        "global"),
 
   // ── list (shared across tabs + list-shaped dialogs) ─────────────
@@ -63,8 +63,8 @@ export const DEFAULTS = {
   "list.end":          def("end",                  "Last item",                          "list"),
   "list.activate":     def("return",               "Activate / open",                    "list"),
   "list.delete":       def("d,delete",             "Delete item",                        "list"),
-  "list.refresh":      def("r",                    "Reload",                             "list"),
-  "list.new":          def("n",                    "Create",                             "list"),
+  "list.refresh":      def("r",                    "Reload",                             "list"), // k: where is this used?  → 7 tabs; removal tracked in herm-0pg.15 (gated on bqo)
+  "list.new":          def("n",                    "Create",                             "list"), // k: keep
   "list.search":       def("/",                    "Filter",                             "list"),
   "list.toggle":       def("space",                "Toggle item",                        "list"),
 
@@ -74,9 +74,9 @@ export const DEFAULTS = {
   "dialog.cancel":     def("escape",               "Cancel / close",                     "dialog"),
   "dialog.confirm":    def("y",                    "Yes",                                "dialog"),
   "dialog.deny":       def("n",                    "No",                                 "dialog"),
-  "dialog.copy":       def("c",                    "Copy body",                          "dialog"),
+  "dialog.copy":       def("c",                    "Copy body",                          "dialog"), // k: keep  → mouse path herm-9xu
 
-  // ── composer (fed to <textarea keyBindings> via toBindings) ─────
+  // ── composer (fed to <textarea keyBindings> via toBindings) ───── // k: I think you need to ELI5 what you mean here
   "input.submit":      def("return",               "Send",                               "composer"),
   "input.newline":     def("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline", "composer"),
 
@@ -84,13 +84,13 @@ export const DEFAULTS = {
   // ☨ — herm admin tabs (Cron/Env/Skills/Agents/Config) have no oc
   //     counterpart; sessions.rename diverges from oc's session-
   //     dialog ctrl+r.
-  "sessions.rename":   def("t",                    "Retitle session",                    "sessions"), // ø session_rename=ctrl+r
-  "cron.run":          def("x",                    "Run job now",                        "cron"),
-  "env.reveal":        def("v",                    "Reveal value",                       "env"),
-  "agents.pause":      def("p",                    "Pause / resume delegation",          "agents"),
-  "agents.kill":       def("k",                    "Kill subagent",                      "agents"),
-  "agents.history":    def("h",                    "Spawn history",                      "agents"),
-  "skills.inspect":    def("i",                    "Inspect skill",                      "skills"),
+  "sessions.rename":   def("ctrl+r",               "Retitle session",                    "sessions"), // match oc session_rename
+  // "cron.run":          def("x",                    "Run job now",                        "cron"),	// k: I don't think it's needed. remove  → .6 binds list.activate=Enter to run-now instead
+  // "env.reveal":        def("v",                    "Reveal value",                       "env"),	// → absorbed by list.toggle (space) in .6
+  // "agents.pause":      def("p",                    "Pause / resume delegation",          "agents"),	// → header pill, herm-5lc
+  "agents.kill":       def("k",                    "Kill subagent",                      "agents"),	// k: I like this
+  "agents.history":    def("h",                    "Spawn history",                      "agents"),	// k: keep
+  // "skills.inspect":    def("i",                    "Inspect skill",                      "skills"),	// → DetailPanel + FileLink, herm-bs8
   "config.save":       def("ctrl+s",               "Write config",                       "config"),
 } satisfies Record<string, Def>
 
