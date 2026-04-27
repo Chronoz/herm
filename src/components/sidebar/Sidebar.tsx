@@ -1,21 +1,20 @@
-import { useState, useEffect, useCallback, memo, type ReactNode } from "react"
+import { useState, useEffect, useCallback, useMemo, memo, type ReactNode } from "react"
 import { useGateway } from "../../app/gateway"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
 import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
 import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
-import type { HermesHomeSnapshot, MemoryFileInfo } from "../../utils/hermes-home"
-import { snapshot } from "../../utils/cache"
+import type { MemoryFileInfo, SessionRow } from "../../utils/hermes-home"
+import { useHome, home } from "../../home"
 import { Tail } from "../chat/ThoughtCloud"
 
 // The pillar body carries what used to be the Overview tab, broken into
 // collapsible sections. Identity uses live `SessionInfo` from the gateway
-// (model/cwd/tool+skill counts); everything else reads the cached
-// ~/.hermes snapshot. Snapshot is re-read on section toggle — no
-// polling timer.
+// (model/cwd/tool+skill counts); everything else reads per-slice home
+// state, so sections stay fresh without polling or reload-on-toggle.
 
-type SectionId = "identity" | "stats" | "memory" | "recent" | "warnings" | "mcp" | "plugins"
+type SectionId = "identity" | "stats" | "memory" | "recent" | "mcp" | "plugins"
 
 const WIDTH = 48
 const PAD_L = 12
@@ -44,6 +43,8 @@ const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max -
 
 const countToolsets = (d?: Record<string, string[]>) =>
   d ? Object.values(d).reduce((n, a) => n + a.length, 0) : 0
+
+const NO_SESSIONS: readonly SessionRow[] = []
 
 // ─── Primitives (pillar-colored) ─────────────────────────────────────
 
@@ -119,18 +120,20 @@ export const Sidebar = memo((props: {
   const state = props.agentState ?? "idle"
   const info = props.info
 
-  const [snap, setSnap] = useState<HermesHomeSnapshot | null>(null)
+  const config = useHome("config")
+  const memory = useHome("memory")
+  const userProfile = useHome("userProfile")
+  const sessions = useHome("recentSessions") ?? NO_SESSIONS
+
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [open, setOpen] = useState<Set<SectionId>>(() => new Set(["identity"]))
 
   const gw = useGateway()
-  const load = useCallback(() => {
-    snapshot().then(setSnap).catch(() => {})
+  useEffect(() => {
     gw.request<{ plugins: PluginInfo[] }>("plugins.list")
       .then(r => setPlugins(r.plugins ?? []))
       .catch(() => setPlugins([]))
   }, [gw])
-  useEffect(load, [load])
 
   const toggle = useCallback((id: SectionId) => {
     setOpen(prev => {
@@ -138,11 +141,13 @@ export const Sidebar = memo((props: {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
-    load()
-  }, [load])
+    // recentSessions is a pull-only slice; refresh on toggle so
+    // Stats/Recent aren't stale when they open. The extra read on
+    // close is one query under a user click — not worth gating.
+    if (id === "stats" || id === "recent") home.invalidate("recentSessions")
+  }, [])
 
-  const sessions = snap?.recentSessions ?? []
-  const totals = sessions.reduce(
+  const totals = useMemo(() => sessions.reduce(
     (a, r) => {
       a.msgs += r.message_count
       a.tools += r.tool_call_count
@@ -151,8 +156,7 @@ export const Sidebar = memo((props: {
       return a
     },
     { msgs: 0, tools: 0, tok: 0, cost: 0 },
-  )
-  const errs = snap?.errors ?? []
+  ), [sessions])
 
   return (
     <box width={WIDTH} flexDirection="column">
@@ -175,8 +179,8 @@ export const Sidebar = memo((props: {
           <Row label="Agent" value="Hermes" strong />
           <Row label="Profile" value={props.profile ?? "default"}
                strong={!!props.profile && props.profile !== "default"} />
-          <Row label="Model" value={info?.model ?? snap?.config?.model.default ?? "—"} />
-          <Row label="Provider" value={snap?.config?.model.provider ?? "—"} />
+          <Row label="Model" value={info?.model ?? config?.model.default ?? "—"} />
+          <Row label="Provider" value={config?.model.provider ?? "—"} />
           {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
           <Row label="Tools" value={String(countToolsets(info?.tools) || "—")} />
           <Row label="Skills" value={String(countToolsets(info?.skills) || "—")} />
@@ -228,7 +232,7 @@ export const Sidebar = memo((props: {
         })() : null}
 
         <Section id="stats" title="Stats"
-                 hint={snap ? `${sessions.length} sessions` : undefined}
+                 hint={`${sessions.length} sessions`}
                  open={open.has("stats")} onToggle={toggle}>
           <Row label="Sessions" value={String(sessions.length)} />
           <Row label="Messages" value={num(totals.msgs)} />
@@ -238,10 +242,10 @@ export const Sidebar = memo((props: {
         </Section>
 
         <Section id="memory" title="Memory"
-                 hint={snap?.memory ? `${snap.memory.usagePercent}%` : undefined}
+                 hint={memory ? `${memory.usagePercent}%` : undefined}
                  open={open.has("memory")} onToggle={toggle}>
-          {snap?.memory ? <Gauge label="Notes" info={snap.memory} /> : <Row label="Notes" value="—" />}
-          {snap?.userProfile ? <Gauge label="Profile" info={snap.userProfile} /> : <Row label="Profile" value="—" />}
+          {memory ? <Gauge label="Notes" info={memory} /> : <Row label="Notes" value="—" />}
+          {userProfile ? <Gauge label="Profile" info={userProfile} /> : <Row label="Profile" value="—" />}
         </Section>
 
         <Section id="recent" title="Recent"
@@ -259,17 +263,6 @@ export const Sidebar = memo((props: {
                 </box>
               ))}
         </Section>
-
-        {errs.length > 0 ? (
-          <Section id="warnings" title="Warnings" hint={String(errs.length)}
-                   open={open.has("warnings")} onToggle={toggle}>
-            {errs.map((e, i) => (
-              <box key={i} minHeight={1}>
-                <text fg={theme.hermBodyText} wrapMode="word">{`  ⚠ ${e}`}</text>
-              </box>
-            ))}
-          </Section>
-        ) : null}
 
         <box flexGrow={1} />
         <box height={1} alignItems="center">

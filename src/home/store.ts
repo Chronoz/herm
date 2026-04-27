@@ -92,13 +92,16 @@ const SLICES: Slices = {
     read: () => readLiveSessions(),
     watch: [hermesPath("sessions/sessions.json")],
   },
+  // DB-backed slices are pull-only: WAL mode means writes land in
+  // state.db-wal, so watching state.db misses them until checkpoint;
+  // and the query is heavy enough that firing on every checkpoint from
+  // an always-mounted Sidebar is wasteful. Consumers invalidate on
+  // demand (section-open, `r`, post-mutation).
   recentSessions: {
     read: async () => queryRecentSessions(),
-    watch: [hermesPath("state.db")],
   },
   systemPrompt: {
     read: async () => readSystemPromptInfo(),
-    watch: [hermesPath("state.db")],
   },
   toolsInfo: {
     // Scans sessions/ for newest session_*.json — watching the dir picks
