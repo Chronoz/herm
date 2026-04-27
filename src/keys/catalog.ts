@@ -14,6 +14,11 @@
 // `leader` entry). Existing Ctrl-chords are kept as secondary alternates
 // so nothing breaks while the leader pattern settles; print() shows the
 // first alternate, so Help advertises the leader form.
+//
+// Trailing markers cross-reference opencode's config/keybinds.ts:
+//   (blank)  oc has the same action on substantively the same chord
+//   ø        oc has an analogue but herm binds it differently
+//   ☨        no oc equivalent (herm-specific surface or concept)
 
 export type Scope =
   | "global" | "list" | "dialog" | "composer"
@@ -28,15 +33,15 @@ export const DEFAULTS = {
   "leader":            def("ctrl+x",               "Leader prefix",                      "global"),
   "app.exit":          def("ctrl+c",               "Quit (or copy selection)",           "global"),
   "app.suspend":       def("ctrl+z",               "Suspend to shell",                   "global"),
-  "palette.open":      def("ctrl+k",               "Command palette",                    "global"),
-  "help.open":         def("f1",                   "Keyboard shortcuts",                 "global"),
-  "tab.next":          def("ctrl+right",           "Next tab",                           "global"),
-  "tab.prev":          def("ctrl+left",            "Previous tab",                       "global"),
-  "focus.cycle":       def("tab",                  "Cycle focus (double-tap → composer)","global"),
+  "palette.open":      def("ctrl+k",               "Command palette",                    "global"), // ø command_list=ctrl+p
+  "help.open":         def("f1",                   "Keyboard shortcuts",                 "global"), // ☨
+  "tab.next":          def("ctrl+right",           "Next tab",                           "global"), // ☨
+  "tab.prev":          def("ctrl+left",            "Previous tab",                       "global"), // ☨
+  "focus.cycle":       def("tab",                  "Cycle focus (double-tap → composer)","global"), // ☨
   "editor.open":       def("<leader>e,ctrl+g",     "Open $EDITOR on prompt",             "global"),
   "reply.copy":        def("<leader>y,ctrl+y",     "Copy last assistant reply",          "global"),
-  "clipboard.attach":  def("alt+v",                "Attach clipboard image",             "global"),
-  "queue.pop":         def("ctrl+u",               "Pop last queued prompt",             "global"),
+  "clipboard.attach":  def("alt+v",                "Attach clipboard image",             "global"), // ø input_paste=ctrl+v
+  "queue.pop":         def("ctrl+u",               "Pop last queued prompt",             "global"), // ☨
   "session.interrupt": def("escape",               "Interrupt (double-tap while streaming)", "global"),
   "session.new":       def("<leader>n",            "New session",                        "global"),
   "session.undo":      def("<leader>u",            "Undo last turn",                     "global"),
@@ -44,10 +49,12 @@ export const DEFAULTS = {
   "session.timeline":  def("<leader>g",            "Session timeline",                   "global"),
   "theme.pick":        def("<leader>t",            "Switch theme",                       "global"),
   "model.pick":        def("<leader>m",            "Switch model",                       "global"),
-  "tool.details":      def("<leader>d",            "Cycle tool-trail detail",            "global"),
+  "tool.details":      def("<leader>d",            "Cycle tool-trail detail",            "global"), // ø tool_details=none
   "status.open":       def("<leader>s",            "Show status",                        "global"),
 
   // ── list (shared across tabs + list-shaped dialogs) ─────────────
+  // ☨ — oc has no generic list surface; nearest are per-dialog
+  //     session_*/stash_* bindings and messages_* scroll.
   "list.up":           def("up",                   "Move selection up",                  "list"),
   "list.down":         def("down",                 "Move selection down",                "list"),
   "list.pageUp":       def("pageup",               "Page up",                            "list"),
@@ -62,6 +69,7 @@ export const DEFAULTS = {
   "list.toggle":       def("space",                "Toggle item",                        "list"),
 
   // ── dialog ──────────────────────────────────────────────────────
+  // ☨ — oc dialogs hardcode return/escape/y/n per-component.
   "dialog.accept":     def("return",               "Accept",                             "dialog"),
   "dialog.cancel":     def("escape",               "Cancel / close",                     "dialog"),
   "dialog.confirm":    def("y",                    "Yes",                                "dialog"),
@@ -73,7 +81,10 @@ export const DEFAULTS = {
   "input.newline":     def("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline", "composer"),
 
   // ── tab-specific ────────────────────────────────────────────────
-  "sessions.rename":   def("t",                    "Retitle session",                    "sessions"),
+  // ☨ — herm admin tabs (Cron/Env/Skills/Agents/Config) have no oc
+  //     counterpart; sessions.rename diverges from oc's session-
+  //     dialog ctrl+r.
+  "sessions.rename":   def("t",                    "Retitle session",                    "sessions"), // ø session_rename=ctrl+r
   "cron.run":          def("x",                    "Run job now",                        "cron"),
   "env.reveal":        def("v",                    "Reveal value",                       "env"),
   "agents.pause":      def("p",                    "Pause / resume delegation",          "agents"),
