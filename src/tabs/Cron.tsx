@@ -16,7 +16,7 @@ type CronJob = {
   id: string
   name: string
   prompt: string
-  schedule: { kind: string; expr: string; display: string }
+  schedule: string
   enabled: boolean
   state: string
   deliver: string
@@ -44,7 +44,7 @@ const normalize = (j: RawJob): CronJob => ({
   id: j.job_id ?? j.id ?? "",
   name: j.name ?? "",
   prompt: j.prompt ?? j.prompt_preview ?? "",
-  schedule: { kind: "", expr: j.schedule ?? "", display: j.schedule ?? "" },
+  schedule: j.schedule ?? "",
   enabled: j.enabled ?? true,
   state: j.state ?? "scheduled",
   deliver: j.deliver ?? "local",
@@ -79,7 +79,7 @@ const JobRow = memo((props: {
         <span fg={props.selected ? theme.accent : theme.text}>
           {trunc(j.name || j.id, 20).padEnd(22)}
         </span>
-        <span fg={theme.textMuted}>{(j.schedule?.display ?? j.schedule?.expr ?? "—").padEnd(18)}</span>
+        <span fg={theme.textMuted}>{(j.schedule || "—").padEnd(18)}</span>
         <span fg={theme.textMuted}>{` last: ${last(j.last_run).padEnd(10)}`}</span>
         <span fg={j.enabled ? theme.text : theme.textMuted}>{` next: ${(j.enabled ? next(j.next_run) : "paused").padEnd(10)}`}</span>
         {j.state === "error" ? <span fg={theme.error}>{"  ERR"}</span> : null}
@@ -106,7 +106,7 @@ const DetailPanel = memo((props: { job: CronJob }) => {
       <KVBlock rows={[
         ["ID", j.id],
         ["State", j.enabled ? "active" : "paused", j.enabled ? theme.success : theme.warning],
-        ["Schedule", j.schedule?.display ?? j.schedule?.expr ?? "—"],
+        ["Schedule", j.schedule || "—"],
         ["Deliver", j.deliver ?? "local"],
         ["Last Run", j.last_run ?? "—"],
         ["Next Run", j.next_run ?? "—"],
