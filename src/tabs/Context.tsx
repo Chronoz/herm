@@ -11,16 +11,13 @@
  * At level 1, cells are proportional to the drilled group's total.
  */
 
-import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react"
+import { useEffect, useState, useRef, useMemo, memo } from "react"
 
 import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
-import {
-  type HermesHomeSnapshot,
-  type ToolInfo,
-} from "../utils/hermes-home"
+import type { ToolInfo, HermesConfig } from "../utils/hermes-home"
 import type { SessionInfo } from "../utils/gateway-types"
-import { snapshot } from "../utils/cache"
+import { useHome } from "../home"
 import { count } from "../utils/tokens"
 import {
   parse,
@@ -252,11 +249,10 @@ const ConvPanel = memo(({ seg, theme, messages, output }: {
 })
 
 /** Free space detail */
-const FreePanel = memo(({ seg, theme, ctxLen, home }: {
-  seg: Segment; theme: Theme; ctxLen: number; home: HermesHomeSnapshot | null
+const FreePanel = memo(({ seg, theme, ctxLen, comp }: {
+  seg: Segment; theme: Theme; ctxLen: number; comp: HermesConfig["compression"] | undefined
 }) => {
   const used = ctxLen - seg.tokens
-  const comp = home?.config?.compression
   const threshold = Math.round(ctxLen * (comp?.threshold ?? 0.5))
   const pct = threshold > 0 ? Math.min(100, Math.round((used / threshold) * 100)) : 0
   return (
@@ -287,23 +283,21 @@ const NO_MESSAGES: readonly Message[] = Object.freeze([])
 // ─── Main Component ──────────────────────────────────────────────────
 
 export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Props) => {
-  const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
+  const config = useHome("config")
+  const memory = useHome("memory")
+  const userProfile = useHome("userProfile")
+  const systemPrompt = useHome("systemPrompt")
+  const toolsInfo = useHome("toolsInfo")
+  const soul = useHome("soul")
+  const recentSessions = useHome("recentSessions")
+  const liveSessions = useHome("liveSessions")
+
   const [wire, setWire] = useState<Wire>({ input: 0, output: 0, total: 0, calls: 0 })
   const wireRef = useRef(wire)
   const theme = useTheme().theme
   const [hovered, setHovered] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [drilled, setDrilled] = useState<string | null>(null)
-
-  const refresh = useCallback(async () => {
-    try { setHome(await snapshot()) } catch { /* partial */ }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-    const iv = setInterval(refresh, 10_000)
-    return () => clearInterval(iv)
-  }, [refresh])
 
   // Track wire usage from messages
   useEffect(() => {
@@ -322,14 +316,14 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   }, [messages])
 
   // Derived
-  const session = home?.recentSessions?.[0]
+  const session = recentSessions?.[0]
   // Gateway's context_max is the authoritative runtime value. Fall back
   // to DEFAULT_CTX only during the fresh-session window before
   // session.info lands.
   const ctxLen = info?.context_max ?? DEFAULT_CTX
 
   const live = session
-    ? Object.values(home?.liveSessions ?? {}).find(ls => ls.session_id === session.id)
+    ? Object.values(liveSessions ?? {}).find(ls => ls.session_id === session.id)
     : undefined
 
   const lastPrompt = live?.last_prompt_tokens ?? 0
@@ -338,15 +332,15 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   const output = wire.calls > 0 ? wire.output : (session?.output_tokens ?? 0)
   const pct = ctxLen > 0 ? Math.round((fill / ctxLen) * 100) : 0
 
-  // Threshold marker inputs. `home.config.compression.threshold` is the
+  // Threshold marker inputs. `config.compression.threshold` is the
   // single source of truth; server reads the same key.
-  const thresholdPct = home?.config?.compression?.threshold ?? 0.5
+  const thresholdPct = config?.compression?.threshold ?? 0.5
   // Linear cell index (0..255) at threshold; cells at/past render ◼ in textMuted.
   const thresholdIdx = Math.min(COLS * COLS, Math.max(0, Math.round(thresholdPct * COLS * COLS)))
   const compressions = info?.usage?.compressions ?? 0
 
   // Parse + build
-  const sections = useMemo(() => parse(home?.systemPrompt?.text ?? ""), [home?.systemPrompt?.text])
+  const sections = useMemo(() => parse(systemPrompt?.text ?? ""), [systemPrompt?.text])
   const convTok = useMemo(() => est(messages.filter(m => m.role !== "system").map(m => msgText(m)).join("")), [messages])
 
   const top = useMemo(() => build({
@@ -354,8 +348,8 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     inputTokens: fill,
     sections,
     conversationTokens: convTok,
-    tools: home?.toolsInfo?.tools ?? [],
-  }), [ctxLen, fill, sections, convTok, home?.toolsInfo?.tools])
+    tools: toolsInfo?.tools ?? [],
+  }), [ctxLen, fill, sections, convTok, toolsInfo?.tools])
 
   // Current view: top-level or drilled
   const drilledGroup = drilled ? top.find(s => s.id === drilled) : null
@@ -371,8 +365,8 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     return top.find(s => s.id === id)
   }
 
-  const memEntries = useMemo(() => (home?.memory?.content ?? "").split("§").map(s => s.trim()).filter(Boolean), [home?.memory?.content])
-  const userEntries = useMemo(() => (home?.userProfile?.content ?? "").split("§").map(s => s.trim()).filter(Boolean), [home?.userProfile?.content])
+  const memEntries = useMemo(() => (memory?.content ?? "").split("§").map(s => s.trim()).filter(Boolean), [memory?.content])
+  const userEntries = useMemo(() => (userProfile?.content ?? "").split("§").map(s => s.trim()).filter(Boolean), [userProfile?.content])
 
   // Click handler
   const click = (id: string) => {
@@ -404,39 +398,39 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     if (!seg) return null
 
     // Memory children (accessible when drilled into memory group)
-    if (selected === "memory" && drilled === "memory" && home?.memory) {
-      return <MemoryPanel seg={seg} theme={theme} label="Agent Notes" chars={home.memory.charCount} limit={home.memory.charLimit} pct={home.memory.usagePercent} entries={memEntries} source={home.memory.source} />
+    if (selected === "memory" && drilled === "memory" && memory) {
+      return <MemoryPanel seg={seg} theme={theme} label="Agent Notes" chars={memory.charCount} limit={memory.charLimit} pct={memory.usagePercent} entries={memEntries} source={memory.source} />
     }
-    if (selected === "user" && home?.userProfile) {
-      return <MemoryPanel seg={seg} theme={theme} label="User Profile" chars={home.userProfile.charCount} limit={home.userProfile.charLimit} pct={home.userProfile.usagePercent} entries={userEntries} source={home.userProfile.source} />
+    if (selected === "user" && userProfile) {
+      return <MemoryPanel seg={seg} theme={theme} label="User Profile" chars={userProfile.charCount} limit={userProfile.charLimit} pct={userProfile.usagePercent} entries={userEntries} source={userProfile.source} />
     }
     if (selected === "skills") return <SkillsPanel seg={seg} theme={theme} />
-    if (selected === "system_tools" && home?.toolsInfo) {
-      const { system } = classifyTools(home.toolsInfo.tools)
+    if (selected === "system_tools" && toolsInfo) {
+      const { system } = classifyTools(toolsInfo.tools)
       return <ToolsPanel seg={seg} theme={theme} tools={system} kind="system_tools" />
     }
-    if (selected === "mcp_tools" && home?.toolsInfo) {
-      const { mcp } = classifyTools(home.toolsInfo.tools)
+    if (selected === "mcp_tools" && toolsInfo) {
+      const { mcp } = classifyTools(toolsInfo.tools)
       return <ToolsPanel seg={seg} theme={theme} tools={mcp} kind="mcp_tools" />
     }
-    // SOUL drill: prefer home.soul.content (authoritative read) over the
-    // parsed slice from systemPrompt.text.
-    if (selected === "soul" && home?.soul) {
+    // SOUL drill: prefer the file-backed slice (authoritative read) over
+    // the parsed segment from systemPrompt.text.
+    if (selected === "soul" && soul) {
       const soulSeg: Segment = {
         ...seg,
         section: {
           id: "soul",
           label: "SOUL.md",
-          chars: home.soul.charCount,
-          tokens: home.soul.tokenEstimate,
-          text: home.soul.content,
-          source: home.soul.source,
+          chars: soul.charCount,
+          tokens: soul.tokenEstimate,
+          text: soul.content,
+          source: soul.source,
         },
       }
       return <SectionPanel seg={soulSeg} theme={theme} />
     }
     if (selected === "conversation") return <ConvPanel seg={seg} theme={theme} messages={messages} output={output} />
-    if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} home={home} />
+    if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} comp={config?.compression} />
     return <SectionPanel seg={seg} theme={theme} />
   }
 
