@@ -43,7 +43,7 @@ beforeAll(() => {
   )
 })
 
-describe("hermes-home snapshot additions (herm-krb)", () => {
+describe("hermes-home snapshot additions", () => {
   test("SoulInfo.content exposes raw SOUL.md body", async () => {
     const { readSoul } = await import("../src/utils/hermes-home")
     const s = await readSoul()

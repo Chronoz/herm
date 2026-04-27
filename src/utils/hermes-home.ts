@@ -185,7 +185,6 @@ export interface SkillInfo {
    * Token cost of this skill's index entry in the system prompt
    * (name + description + tags). Body content is NOT included — it
    * only loads on skill_view() and shows up as a tool result.
-   * Chars/4 heuristic pending gpt-tokenizer swap (herm-hxv).
    */
   tokenEstimate: number;
 }

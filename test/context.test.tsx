@@ -10,15 +10,15 @@ describe("Context tab", () => {
   // Regression: Context used to infinite-loop when mounted without a stable
   // `messages` prop — the `= []` default on every render triggered a
   // messages-dep useEffect → setWire → re-render storm. Now guarded via a
-  // module-level frozen NO_MESSAGES reference (herm-cf8).
+  // module-level frozen NO_MESSAGES reference.
   test("mounts without infinite-loop when messages prop absent", async () => {
     const t = await mountNode(<Context />)
     expect(t.frame().length).toBeGreaterThan(0)
     t.destroy()
   })
 
-  // herm-sre: info.context_max (from gateway session.usage) overrides the
-  // hardcoded CTX table fallback, so contexts on models not in CTX render
+  // info.context_max (from gateway session.usage) overrides the hardcoded
+  // CTX table fallback, so contexts on models not in CTX render
   // proportionally correctly.
   test("uses info.context_max for ctxLen", async () => {
     const info: SessionInfo = { model: "gpt-4.1", context_max: 500_000 }
@@ -48,8 +48,8 @@ describe("Context tab", () => {
     t.destroy()
   })
 
-  // herm-1ng: in-grid threshold marker (◼ in textMuted past threshold) + ×N badge.
-  describe("threshold marker (herm-1ng)", () => {
+  // In-grid threshold marker (◼ in textMuted past threshold) + ×N badge.
+  describe("threshold marker", () => {
     test("renders '×N compressed' badge when compressions > 0", async () => {
       const info: SessionInfo = {
         model: "claude-opus-4-7",
@@ -91,10 +91,10 @@ describe("Context tab", () => {
     })
   })
 
-  // herm-end.8: categorical palette must never assign the same RGBA to two
-  // category ids, on any built-in theme, in either mode. `free` intentionally
-  // sits outside the ramp and is allowed to collide with nothing-but-itself.
-  describe("categorical palette (herm-end.8)", () => {
+  // Categorical palette must never assign the same RGBA to two category ids,
+  // on any built-in theme, in either mode. `free` intentionally sits outside
+  // the ramp and is allowed to collide with nothing-but-itself.
+  describe("categorical palette", () => {
     test("all category ids map to unique RGBA across every built-in theme", async () => {
       const { clr, SLOTS } = await import("../src/tabs/Context")
       const { DEFAULT_THEMES, resolveTheme } = await import("../src/theme")

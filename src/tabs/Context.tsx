@@ -52,7 +52,7 @@ type Wire = { input: number; output: number; total: number; calls: number }
 
 // Conservative fallback when gateway hasn't surfaced info.context_max
 // yet (fresh session, pre-session.info). Real value comes from
-// SessionInfo.context_max — see herm-sre.
+// SessionInfo.context_max on the wire.
 const DEFAULT_CTX = 128_000
 const COLS = 16
 
@@ -325,7 +325,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   const session = home?.recentSessions?.[0]
   // Gateway's context_max is the authoritative runtime value. Fall back
   // to DEFAULT_CTX only during the fresh-session window before
-  // session.info lands (herm-sre).
+  // session.info lands.
   const ctxLen = info?.context_max ?? DEFAULT_CTX
 
   const live = session
@@ -338,9 +338,8 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   const output = wire.calls > 0 ? wire.output : (session?.output_tokens ?? 0)
   const pct = ctxLen > 0 ? Math.round((fill / ctxLen) * 100) : 0
 
-  // Threshold marker inputs (herm-1ng). All client-side — no upstream needed.
-  // `home.config.compression.threshold` is the single source of truth; server
-  // reads the same key at run_agent.py:1736.
+  // Threshold marker inputs. `home.config.compression.threshold` is the
+  // single source of truth; server reads the same key.
   const thresholdPct = home?.config?.compression?.threshold ?? 0.5
   // Linear cell index (0..255) at threshold; cells at/past render ◼ in textMuted.
   const thresholdIdx = Math.min(COLS * COLS, Math.max(0, Math.round(thresholdPct * COLS * COLS)))
@@ -421,7 +420,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
       return <ToolsPanel seg={seg} theme={theme} tools={mcp} kind="mcp_tools" />
     }
     // SOUL drill: prefer home.soul.content (authoritative read) over the
-    // parsed slice from systemPrompt.text. herm-krb landed this field.
+    // parsed slice from systemPrompt.text.
     if (selected === "soul" && home?.soul) {
       const soulSeg: Segment = {
         ...seg,
