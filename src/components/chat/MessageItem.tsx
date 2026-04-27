@@ -1,7 +1,8 @@
-import { memo, useRef, useState } from "react"
+import { memo, useMemo, useRef, useState } from "react"
 import type { RGBA, MouseEvent } from "@opentui/core"
 import type { Message, Part, TextPart } from "../../types/message"
 import { ErrorBlock } from "./ErrorBlock"
+import { MediaChip, splitMedia } from "./MediaChip"
 import { useTheme } from "../../theme"
 
 export type { Message }
@@ -128,6 +129,14 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
   const err = !!message.error
   const trail = message.parts.filter(p => p.type !== "text")
 
+  // Split once per parts identity so hover (which re-renders this
+  // component) doesn't re-scan text. parts identity changes per
+  // streaming delta and stabilizes on completion.
+  const segs = useMemo(
+    () => message.parts.map(p => p.type === "text" && p.content ? splitMedia(p.content) : null),
+    [message.parts],
+  )
+
   const header = [
     message.model ?? "assistant",
     message.usage ? `${tokens(message.usage.input)}→${tokens(message.usage.output)} tok` : null,
@@ -135,7 +144,9 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
   ].filter(Boolean).join(" · ")
 
   const part = (p: Part, i: number) => {
-    if (p.type !== "text" || !p.content) return null
+    const seg = segs[i]
+    if (!seg) return null
+    const k = (p as TextPart).key ?? i
     // Fenced code blocks inside assistant markdown are rendered by
     // OpenTUI's MarkdownRenderable → CodeRenderable, which uses the
     // process-global TreeSitterClient singleton for syntax highlighting
@@ -144,16 +155,18 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
     // TODO: override renderNode for `code` tokens to wrap them in a
     // backgroundElement box with a top-right language label once
     // OpenTUI exposes a React-safe renderNode hook.
-    return (
-      <box key={p.key ?? `x-${i}`}>
-        <markdown
-          content={p.content}
-          fg={theme.markdownText}
-          syntaxStyle={ctx.syntaxStyle}
-          streaming={streaming && p.streaming}
-        />
-      </box>
-    )
+    return seg.map((s, j) => "media" in s
+      ? <box key={`${k}-m${j}`} marginTop={1}>
+          <MediaChip path={s.media} />
+        </box>
+      : <box key={`${k}-${j}`}>
+          <markdown
+            content={s.md}
+            fg={theme.markdownText}
+            syntaxStyle={ctx.syntaxStyle}
+            streaming={streaming && (p as TextPart).streaming && j === seg.length - 1}
+          />
+        </box>)
   }
 
   return (

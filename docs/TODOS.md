@@ -219,13 +219,17 @@ against sections above; dedupe as they're picked up.
 
 ### Chat tab
 
-[ ] H1  Thinking rendered in thought-cloud (eikon overlay already
-        does burst; extend to full stream).
-[ ] H2  `/btw` renders in a chat bubble, not system strip.
-[ ] H3  Tool calls in right-hand gutter (not inline).
+> Superseded by beads (herm-mzb) + docs/CHAT_PARITY.md. H-items were
+> title-only stubs predating the ThoughtCloud design; see bead close
+> reasons for reconciliation.
+
+[x] H1  Thinking rendered in thought-cloud — done via c0d341c.
+[-] H2  `/btw` renders in a chat bubble — C4 pattern covers it (P4).
+[-] H3  Tool calls in right-hand gutter — conflicts with ThoughtCloud.
 [x] H4  Default-to-resume last session on launch. Already the
         behavior via `boot()`; added `resumeOnLaunch` pref to
         opt out (tui.json).
-[ ] H5  opencode-style multiline composer behavior.
+[-] H5  opencode-style multiline composer — Ctrl+G is the path (D3).
 [ ] H6  ASCII image representation in chat (eikon/chafa pipeline).
-[ ] H7  Subagent chat in a "sub-herm" nested view.
+[-] H7  Subagent chat in a "sub-herm" — A6 accordion is the pragmatic
+        version; nested-TUI deferred as speculative.

@@ -117,6 +117,13 @@ Herm workaround: `src/utils/tips.ts` scrapes string literals out of
 `hermes_cli/tips.py` via `hermesAgentRoot()`. Brittle; breaks if the
 file moves or the list becomes non-literal.
 
+### `message.complete` usage.reasoning
+`_get_usage()` (server.py L826) omits reasoning-token count. It's
+tracked for `subagent.complete` (L1111 `reasoning_tokens`) but not
+the main turn. Blocks CHAT_PARITY B3 (reasoning segment in assistant
+header). Workaround: none — can't derive count from `reasoning.delta`
+text length. Want: `usage.reasoning: int` alongside input/output.
+
 ### `platforms.list` (or equivalent)
 `/platforms` falls through to `slash.exec` and renders raw CLI output
 as a system line. A structured `{name, configured, running}[]` would
