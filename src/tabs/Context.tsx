@@ -35,6 +35,7 @@ import {
 import { FileLink } from "../components/ui/FileLink"
 import { useTheme, type Theme } from "../theme"
 import { TabShell } from "../ui/shell"
+import { categorical } from "../utils/categorical"
 import type { RGBA } from "@opentui/core"
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -60,26 +61,41 @@ const CRIT = 95
 
 // ─── Colors ──────────────────────────────────────────────────────────
 
-const PALETTE: Record<string, (t: Theme) => RGBA> = {
-  // Top-level groups
-  system_prompt: t => t.info,
-  system_tools: t => t.error,
-  mcp_tools: t => t.warning,
-  memory: t => t.accent,
-  skills: t => t.primary,
-  conversation: t => t.secondary,
-  free: t => t.borderSubtle,
-  // Memory children
-  soul: t => t.info,
-  mem0: t => t.warning,
-  user: t => t.accent,
-  // System prompt children
-  project: t => t.success,
-  meta: t => t.textMuted,
-  other: t => t.textMuted,
+// Slot assignment for the categorical ramp. Order matters only in that it
+// fixes each id to a stable hue family across themes; `free` is not a slot
+// (it renders as borderSubtle since it's absence-of-content, not a category).
+export const SLOTS = [
+  "system_prompt",
+  "system_tools",
+  "mcp_tools",
+  "memory",
+  "skills",
+  "conversation",
+  "soul",
+  "mem0",
+  "user",
+  "project",
+  "meta",
+  "other",
+] as const
+
+const SLOT: Record<string, number> = Object.fromEntries(SLOTS.map((id, i) => [id, i]))
+
+// Ramp is deterministic per theme; cache on theme identity so every clr()
+// call across all panels resolves from one array. Theme objects are stable
+// (resolved once in ThemeProvider), so WeakMap keying is safe.
+const rampCache = new WeakMap<Theme, RGBA[]>()
+
+function ramp(theme: Theme): RGBA[] {
+  let r = rampCache.get(theme)
+  if (!r) rampCache.set(theme, r = categorical(theme.primary, theme.background, SLOTS.length))
+  return r
 }
 
-const clr = (id: string, theme: Theme) => (PALETTE[id] ?? PALETTE.other)(theme)
+export function clr(id: string, theme: Theme): RGBA {
+  if (id === "free") return theme.borderSubtle
+  return ramp(theme)[SLOT[id] ?? SLOT.other]
+}
 
 // ─── Utilities ───────────────────────────────────────────────────────
 

@@ -90,4 +90,36 @@ describe("Context tab", () => {
       t.destroy()
     })
   })
+
+  // herm-end.8: categorical palette must never assign the same RGBA to two
+  // category ids, on any built-in theme, in either mode. `free` intentionally
+  // sits outside the ramp and is allowed to collide with nothing-but-itself.
+  describe("categorical palette (herm-end.8)", () => {
+    test("all category ids map to unique RGBA across every built-in theme", async () => {
+      const { clr, SLOTS } = await import("../src/tabs/Context")
+      const { DEFAULT_THEMES, resolveTheme } = await import("../src/theme")
+      const key = (c: { r: number; g: number; b: number }) =>
+        `${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)}`
+      for (const [name, json] of Object.entries(DEFAULT_THEMES)) {
+        for (const mode of ["dark", "light"] as const) {
+          const theme = resolveTheme(json, mode)
+          const seen = new Map<string, string>()
+          for (const id of SLOTS) {
+            const k = key(clr(id, theme))
+            if (seen.has(k)) {
+              throw new Error(`${name}/${mode}: '${id}' collides with '${seen.get(k)}' at ${k}`)
+            }
+            seen.set(k, id)
+          }
+        }
+      }
+    })
+
+    test("unknown id falls through to 'other' slot", async () => {
+      const { clr } = await import("../src/tabs/Context")
+      const { DEFAULT_THEMES, DEFAULT_THEME, resolveTheme } = await import("../src/theme")
+      const theme = resolveTheme(DEFAULT_THEMES[DEFAULT_THEME], "dark")
+      expect(clr("does_not_exist", theme)).toEqual(clr("other", theme))
+    })
+  })
 })
