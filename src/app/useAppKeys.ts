@@ -66,8 +66,7 @@ export function useAppKeys(o: Opts) {
             o.onNotice("Set $EDITOR or $VISUAL to use Ctrl+G")
           return
         }
-        c?.set("")
-        c?.insert(out)
+        c?.set(out)
         o.setFocusRegion("input")
       })
       return
@@ -147,9 +146,15 @@ export function useAppKeys(o: Opts) {
       return
     }
 
+    // ↑/↓ with a single-line buffer cycles prompt history; with a multi-line
+    // buffer historyUp/Down return false so the keystroke falls through to
+    // the textarea renderable's move-up/move-down. No stopPropagation — on a
+    // single-line buffer the textarea's move-up/down is a no-op anyway, and
+    // swallowing the key would starve dialog/select renderables that share
+    // the global key bus while focusRegion is still "input".
     if (o.focusRegion === "input" && !o.streaming) {
-      if (key.name === "up") return c?.historyUp()
-      if (key.name === "down") return c?.historyDown()
+      if (key.name === "up") return void c?.historyUp()
+      if (key.name === "down") return void c?.historyDown()
     }
 
     // Printable char while Chat transcript has focus → bounce to composer.

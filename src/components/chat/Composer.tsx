@@ -2,8 +2,8 @@
 // and prompt history. The shell (app.tsx) drives keyboard routing through
 // the imperative handle so there is exactly one global useKeyboard.
 
-import { forwardRef, memo, useImperativeHandle, useRef, useState, useCallback } from "react"
-import type { SubmitEvent, PasteEvent } from "@opentui/core"
+import { forwardRef, memo, useImperativeHandle, useRef, useState, useCallback, useMemo } from "react"
+import type { TextareaRenderable, KeyBinding, PasteEvent } from "@opentui/core"
 import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
 import { useGateway } from "../../app/gateway"
@@ -21,14 +21,17 @@ import { trunc } from "../../ui/fmt"
 export type ComposerHandle = {
   value: () => string
   set: (v: string) => void
-  /** Insert multi-line text: ≥2 lines collapses via gateway. */
+  /** Insert text at the cursor (verbatim, multi-line ok). */
   insert: (text: string) => void
+  /** Logical line count of the current buffer. */
+  lines: () => number
   popOpen: () => boolean
   popNav: (d: -1 | 1) => void
   popAccept: () => void
   popCancel: () => void
-  historyUp: () => void
-  historyDown: () => void
+  /** Returns false when not applicable (multi-line buffer → caller lets textarea own ↑/↓). */
+  historyUp: () => boolean
+  historyDown: () => boolean
 }
 
 type Props = {
@@ -51,6 +54,19 @@ type Props = {
   onDequeue?: (i: number) => void
 }
 
+const MAX_ROWS = 6
+
+// Enter submits; Shift/Ctrl/Alt+Enter and Ctrl+J insert a newline. Merged
+// over the renderable's defaults (which have bare return → newline), so
+// this must override that entry by exact modifier match.
+const KEYS: KeyBinding[] = [
+  { name: "return", action: "submit" },
+  { name: "return", shift: true, action: "newline" },
+  { name: "return", ctrl: true, action: "newline" },
+  { name: "return", meta: true, action: "newline" },
+  { name: "j", ctrl: true, action: "newline" },
+]
+
 function fmt(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
@@ -60,12 +76,29 @@ function fmt(n: number): string {
 export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   const theme = useTheme().theme
   const gw = useGateway()
+  const ta = useRef<TextareaRenderable | null>(null)
+  // Mirror of the textarea buffer. The renderable is the source of truth;
+  // this drives React-side derivations (popover matching, row count, hints).
   const [input, setInput] = useState("")
 
+  // Slash and @-ref popovers key off the first line only — both grammars
+  // are single-line prefixes, and a newline is a hard boundary.
+  const head = useMemo(() => {
+    const i = input.indexOf("\n")
+    return i < 0 ? input : input.slice(0, i)
+  }, [input])
+
   const cmds = useSlashCommands().cmds
-  const pop = useSlashPopover(input, cmds)
-  const at = useAtRefPopover(input)
-  const hist = useInputHistory(input, setInput)
+  const pop = useSlashPopover(head, cmds)
+  const at = useAtRefPopover(head)
+
+  const write = useCallback((v: string) => {
+    ta.current?.setText(v)
+    ta.current?.gotoBufferEnd()
+    setInput(v)
+  }, [])
+
+  const hist = useInputHistory(input, write)
 
   // Hold latest pop/props in a ref so the imperative handle is stable.
   const live = useRef({ pop, at, props, input })
@@ -74,35 +107,28 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   // Selecting a popover entry: subcommand synthetics (name contains a
   // space) complete the input for further typing; real commands dispatch.
   const select = (c: SlashCommand) => {
-    if (c.name.includes(" ")) { setInput(`/${c.name} `); return }
-    setInput("")
+    if (c.name.includes(" ")) { write(`/${c.name} `); return }
+    write("")
     live.current.props.onSlash(c)
   }
 
   const atAccept = (idx?: number) => {
     const next = live.current.at.accept(live.current.input, idx)
-    if (next !== null) setInput(next)
+    if (next !== null) write(next)
   }
 
-  // Multi-line insert: ≥`limit` lines → gateway writes a temp file and
-  // hands back a `[Pasted #N …]` placeholder (hermes CLI convention;
-  // expanded server-side in prompt.submit). Below limit: flatten
-  // newlines to spaces (single-line <input>).
-  const insert = useCallback((text: string, limit: number) => {
-    const lines = text.split("\n").length
-    const flat = () => setInput(v => v + text.replace(/\s*\n\s*/g, " "))
-    if (lines < limit) return flat()
-    gw.request<{ placeholder: string }>("paste.collapse", { text })
-      .then(r => setInput(v => v + r.placeholder + " "))
-      .catch(flat)
-  }, [gw])
-
+  // ≥5 pasted lines → gateway writes a temp file and hands back a
+  // `[Pasted #N …]` placeholder (hermes CLI convention; expanded server-side
+  // in prompt.submit). Below the limit the textarea's default handler
+  // inserts the text verbatim, newlines preserved.
   const paste = useCallback((e: PasteEvent) => {
     const text = decodePasteBytes(e.bytes)
-    if (!text.includes("\n")) return // let Input.handlePaste do it
+    if (text.split("\n").length < 5) return
     e.preventDefault()
-    insert(text, 5)
-  }, [insert])
+    gw.request<{ placeholder: string }>("paste.collapse", { text })
+      .then(r => ta.current?.insertText(r.placeholder + " "))
+      .catch(() => ta.current?.insertText(text))
+  }, [gw])
 
   const submit = () => {
     // While streaming, slash/at popovers are suppressed; anything
@@ -111,7 +137,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       const text = live.current.input.trim()
       if (!text || !live.current.props.ready) return
       hist.push(text)
-      setInput("")
+      write("")
       live.current.props.onEnqueue?.(text)
       return
     }
@@ -126,14 +152,17 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     const text = live.current.input.trim()
     if (!text || !live.current.props.ready) return
     hist.push(text)
-    setInput("")
+    write("")
     live.current.props.onSend(text)
   }
 
+  const multi = () => live.current.input.includes("\n")
+
   useImperativeHandle(ref, () => ({
     value: () => live.current.input,
-    set: setInput,
-    insert: (text) => insert(text, 2),
+    set: write,
+    insert: (text) => ta.current?.insertText(text),
+    lines: () => (ta.current?.lineCount ?? 1),
     popOpen: () => live.current.pop.open || live.current.at.open,
     popNav: (d) => {
       const a = live.current.at
@@ -146,16 +175,16 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       if (a.open) return atAccept()
       const p = live.current.pop
       const c = p.popover?.[p.cursor]
-      if (c) setInput(`/${c.name}${c.name.includes(" ") ? " " : ""}`)
+      if (c) write(`/${c.name}${c.name.includes(" ") ? " " : ""}`)
     },
     popCancel: () => {
       const a = live.current.at
       if (a.open) return a.dismiss()
-      setInput("")
+      write("")
     },
-    historyUp: hist.up,
-    historyDown: hist.down,
-  }), [hist.up, hist.down, pop.setCursor, insert])
+    historyUp: () => { if (multi()) return false; hist.up(); return true },
+    historyDown: () => { if (multi()) return false; hist.down(); return true },
+  }), [hist.up, hist.down, pop.setCursor, write])
 
   const active = props.focused && !props.streaming
   const label = !props.ready ? "Connecting..."
@@ -180,17 +209,23 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     : pct >= 50 ? theme.accent
     : theme.textMuted
 
+  // Logical-line row count (wrap-induced growth ignored; yoga sizes the
+  // textarea, this only positions the absolute popover above the border).
+  const rows = Math.min(MAX_ROWS, Math.max(1, input.split("\n").length))
+  const lift = rows + 3
+
   const hint = props.streaming
     ? (input ? "Enter: Queue · " : "") + "Esc×2: Interrupt" + ((props.queue?.length ?? 0) > 0 ? " · Ctrl+U: Pop queued" : "")
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
     : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
-    : props.focused ? "Enter: Send · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor"
-    : "Tab: Focus input · Esc: Focus input"
+    : !props.focused ? "Tab: Focus input · Esc: Focus input"
+    : rows > 1 ? "Enter: Send · Shift+Enter: Newline · ↑↓: Move · Ctrl+G: Editor"
+    : "Enter: Send · Shift+Enter: Newline · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor"
 
   return (
     <box flexDirection="column" position="relative">
       {active && pop.open ? (
-        <box position="absolute" bottom={4} left={0} right={0}>
+        <box position="absolute" bottom={lift} left={0} right={0}>
           <SlashPopover
             commands={pop.popover!}
             cursor={pop.cursor}
@@ -199,7 +234,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           />
         </box>
       ) : active && at.open ? (
-        <box position="absolute" bottom={4} left={0} right={0}>
+        <box position="absolute" bottom={lift} left={0} right={0}>
           <AtRefPopover
             items={at.items}
             cursor={at.cursor}
@@ -244,26 +279,31 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
         borderStyle="single"
         borderColor={active ? theme.borderActive : theme.border}
         flexDirection="row"
-        height={3}
         position="relative"
       >
-        <box width={2} height={1}>
+        <box width={2}>
           <text fg={theme.primary}>{">"} </text>
         </box>
-        <input
-          value={input}
-          onInput={setInput}
-          onSubmit={submit as unknown as (e: SubmitEvent) => void}
+        <textarea
+          ref={ta}
+          onContentChange={() => setInput(ta.current?.plainText ?? "")}
+          onSubmit={submit}
           onPaste={paste}
-          placeholder={props.streaming ? "Type to queue... (Enter queues, Ctrl+U pops)" : "Message Hermes... (/ for commands)"}
+          keyBindings={KEYS}
+          wrapMode="word"
+          minHeight={1}
+          maxHeight={MAX_ROWS}
+          placeholder={props.streaming ? "Type to queue... (Enter queues, Ctrl+U pops)" : "Message Hermes... (/ for commands, Shift+Enter for newline)"}
           focused={props.focused}
           textColor={theme.text}
+          focusedTextColor={theme.text}
           placeholderColor={theme.textMuted}
+          cursorColor={theme.text}
           backgroundColor="transparent"
           focusedBackgroundColor="transparent"
           flexGrow={1}
         />
-        {pop.ghost && active ? (
+        {pop.ghost && active && rows === 1 ? (
           <box position="absolute" top={0} left={2 + input.length} height={1}>
             <text fg={theme.textMuted}>{pop.ghost}</text>
           </box>
@@ -271,7 +311,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       </box>
 
       <box height={1} flexDirection="row" paddingX={1}>
-        <box flexGrow={1}>
+        <box flexShrink={0}>
           <text>
             <span fg={dot}>● </span>
             <span fg={theme.textMuted}>{label}</span>
@@ -279,7 +319,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
             {pct != null ? <span fg={ctxFg}> · ctx {Math.round(pct)}%</span> : null}
           </text>
         </box>
-        <box>
+        <box flexGrow={1} minWidth={0} height={1} overflow="hidden" justifyContent="flex-end">
           <text fg={theme.textMuted}>{hint}</text>
         </box>
       </box>

@@ -15,8 +15,11 @@ const FILE = join(DIR, "history")
 // append-only newest-last, so load() reverses.
 function load() {
   if (!existsSync(FILE)) return []
-  return readFileSync(FILE, "utf-8").split("\n").filter(Boolean).slice(-MAX).reverse()
+  return readFileSync(FILE, "utf-8").split("\n").filter(Boolean)
+    .map(l => l.replace(/\0/g, "\n")).slice(-MAX).reverse()
 }
+
+function enc(s: string) { return s.replace(/\n/g, "\0") }
 
 export function useInputHistory(input: string, setInput: (v: string) => void) {
   const hist = useRef<string[]>(null)
@@ -34,9 +37,9 @@ export function useInputHistory(input: string, setInput: (v: string) => void) {
     if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true })
     if (h.length > MAX) {
       h.length = MAX
-      writeFileSync(FILE, [...h].reverse().join("\n") + "\n", "utf-8")
+      writeFileSync(FILE, [...h].reverse().map(enc).join("\n") + "\n", "utf-8")
     } else {
-      appendFileSync(FILE, msg + "\n", "utf-8")
+      appendFileSync(FILE, enc(msg) + "\n", "utf-8")
     }
     bump(n => n + 1)
   }, [])

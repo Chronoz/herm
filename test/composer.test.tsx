@@ -35,7 +35,7 @@ describe("composer", () => {
         <Composer focused ready streaming={false} model="m" contextPct={73}
           onSend={() => {}} onSlash={() => {}} />
       </box>,
-      { width: 100, height: 20 },
+      { width: 120, height: 20 },
     )
     await until(t, () => t.frame().includes("Ready"))
     expect(t.frame()).toContain("ctx 73%")
@@ -53,6 +53,63 @@ describe("composer", () => {
     await t.settle()
     expect(sent).toEqual(["hello there"])
     expect(ref.current?.value()).toBe("")
+    t.destroy()
+  })
+
+  test("Shift+Enter inserts newline; Enter submits the multi-line buffer", async () => {
+    const { t, ref, sent } = await setup()
+    await act(async () => { await t.keys.typeText("line one") })
+    act(() => t.keys.pressEnter({ shift: true }))
+    await t.settle()
+    expect(ref.current?.value()).toBe("line one\n")
+    expect(ref.current?.lines()).toBe(2)
+    expect(sent).toEqual([])
+
+    // box auto-grew (two content rows inside border)
+    const rows = t.frame().split("\n")
+    const top = rows.findIndex(l => l.startsWith("┌"))
+    const bot = rows.findIndex(l => l.startsWith("└"))
+    expect(bot - top).toBe(3)
+    // hint switched to multi-line mode
+    expect(t.frame()).toContain("↑↓: Move")
+
+    await act(async () => { await t.keys.typeText("line two") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("line one\nline two")
+
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(sent).toEqual(["line one\nline two"])
+    expect(ref.current?.value()).toBe("")
+    // collapsed back to one row
+    const r2 = t.frame().split("\n")
+    expect(r2.findIndex(l => l.startsWith("└")) - r2.findIndex(l => l.startsWith("┌"))).toBe(2)
+    t.destroy()
+  })
+
+  test("Ctrl+J and Alt+Enter also insert newline", async () => {
+    const { t, ref } = await setup()
+    await act(async () => { await t.keys.typeText("a") })
+    act(() => t.keys.pressKey("j", { ctrl: true }))
+    await t.settle()
+    await act(async () => { await t.keys.typeText("b") })
+    act(() => t.keys.pressEnter({ meta: true }))
+    await t.settle()
+    await act(async () => { await t.keys.typeText("c") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("a\nb\nc")
+    t.destroy()
+  })
+
+  test("height caps at 6 rows", async () => {
+    const { t, ref } = await setup()
+    act(() => ref.current?.set(Array.from({ length: 10 }, (_, i) => `l${i}`).join("\n")))
+    await t.settle()
+    const rows = t.frame().split("\n")
+    const top = rows.findIndex(l => l.startsWith("┌"))
+    const bot = rows.findIndex(l => l.startsWith("└"))
+    expect(bot - top).toBe(7) // 6 content rows + bottom border offset
+    expect(ref.current?.lines()).toBe(10)
     t.destroy()
   })
 
@@ -81,6 +138,19 @@ describe("composer", () => {
     act(() => ref.current?.historyDown())
     await t.settle()
     expect(ref.current?.value()).toBe("second")
+    t.destroy()
+  })
+
+  test("history: multi-line buffer → up/down no-op (returned false)", async () => {
+    const { t, ref } = await setup()
+    await act(async () => { await t.keys.typeText("seed") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+
+    act(() => ref.current?.set("a\nb"))
+    await t.settle()
+    expect(ref.current?.historyUp()).toBe(false)
+    expect(ref.current?.value()).toBe("a\nb")
     t.destroy()
   })
 
@@ -237,12 +307,13 @@ describe("composer", () => {
     t.destroy()
   })
 
-  test("paste: short multi-line flattens inline; ≥5 lines → paste.collapse placeholder", async () => {
+  test("paste: short multi-line inserts verbatim; ≥5 lines → paste.collapse placeholder", async () => {
     const { t, ref } = await setup()
 
     await act(async () => { await t.keys.pasteBracketedText("a\nb\nc") })
     await t.settle()
-    expect(ref.current?.value()).toBe("a b c")
+    expect(ref.current?.value()).toBe("a\nb\nc")
+    expect(ref.current?.lines()).toBe(3)
     expect(t.gw.last("paste.collapse")).toBeUndefined()
 
     act(() => ref.current?.set(""))
