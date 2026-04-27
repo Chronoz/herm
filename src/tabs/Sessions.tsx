@@ -18,7 +18,7 @@ import { KVBlock } from "../ui/kv"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
-import { invalidate } from "../utils/cache"
+import { home } from "../home"
 
 // List comes from the gateway (session.list) so rows are resumable
 // under profiles/remote gateways; detail is enriched best-effort from
@@ -407,7 +407,7 @@ export const Sessions = memo((props: Props) => {
       if (!ok) return
       try {
         if (!io.remove(r.id)) throw new Error("not found")
-        invalidate()
+        home.invalidate("recentSessions")
         toast.show({ variant: "success", message: "Session deleted" })
         setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
         void load()
@@ -428,7 +428,7 @@ export const Sessions = memo((props: Props) => {
     Promise.resolve()
       .then(() => {
         if (!io.rename(r.id, title)) throw new Error("not found")
-        invalidate()
+        home.invalidate("recentSessions")
         // Patch in place so the row updates without a full RPC reload
         // (session.list is the slow path). reload still happens next r.
         setRows(prev => prev.map(row => row.id === r.id ? { ...row, title } : row))

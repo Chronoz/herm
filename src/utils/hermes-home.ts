@@ -194,20 +194,6 @@ export interface ToolsInfo {
   tools: ToolInfo[];
 }
 
-/** Aggregated snapshot of everything useful from ~/.hermes/ */
-export interface HermesHomeSnapshot {
-  config: HermesConfig | null;
-  memory: MemoryFileInfo | null;
-  userProfile: MemoryFileInfo | null;
-  liveSessions: Record<string, LiveSession>;
-  recentSessions: SessionRow[];
-  toolsInfo: ToolsInfo | null;
-  soul: SoulInfo | null;
-  systemPrompt: SystemPromptInfo | null;
-  readAt: number;
-  errors: string[];
-}
-
 // ─── Readers ─────────────────────────────────────────────────────────
 
 /** Read and parse config.yaml */
@@ -665,82 +651,6 @@ export function readSystemPromptInfo(): SystemPromptInfo | null {
   } catch {
     return null;
   }
-}
-
-// ─── Composite Reader ────────────────────────────────────────────────
-
-/**
- * Read a full snapshot of ~/.hermes/ state.
- * Resilient — individual read failures are logged but don't block others.
- */
-export async function readHermesHome(): Promise<HermesHomeSnapshot> {
-  const end = perf.mark("io:readHermesHome")
-  const errors: string[] = [];
-  const snapshot: HermesHomeSnapshot = {
-    config: null,
-    memory: null,
-    userProfile: null,
-    liveSessions: {},
-    recentSessions: [],
-    toolsInfo: null,
-    soul: null,
-    systemPrompt: null,
-    readAt: Date.now(),
-    errors,
-  };
-
-  // Read config first — other reads depend on limits from it
-  try {
-    snapshot.config = await readConfig();
-  } catch (e: unknown) {
-    errors.push(`config: ${(e as Error).message}`);
-  }
-
-  const memLimit = snapshot.config?.memory?.memory_char_limit ?? 2200;
-  const userLimit = snapshot.config?.memory?.user_char_limit ?? 1375;
-
-  // Run independent reads in parallel
-  const [memory, userProfile, liveSessions, soul, toolsInfo] =
-    await Promise.allSettled([
-      readMemoryFile("MEMORY.md", memLimit),
-      readMemoryFile("USER.md", userLimit),
-      readLiveSessions(),
-      readSoul(),
-      readToolsFromLatestSession(),
-    ]);
-
-  if (memory.status === "fulfilled") snapshot.memory = memory.value;
-  else errors.push(`memory: ${memory.reason}`);
-
-  if (userProfile.status === "fulfilled")
-    snapshot.userProfile = userProfile.value;
-  else errors.push(`userProfile: ${userProfile.reason}`);
-
-  if (liveSessions.status === "fulfilled")
-    snapshot.liveSessions = liveSessions.value;
-  else errors.push(`liveSessions: ${liveSessions.reason}`);
-
-  if (soul.status === "fulfilled") snapshot.soul = soul.value;
-  else errors.push(`soul: ${soul.reason}`);
-
-  if (toolsInfo.status === "fulfilled") snapshot.toolsInfo = toolsInfo.value;
-  else errors.push(`toolsInfo: ${toolsInfo.reason}`);
-
-  // SQLite is sync in bun:sqlite, run separately
-  try {
-    snapshot.recentSessions = queryRecentSessions();
-  } catch (e: unknown) {
-    errors.push(`stateDb: ${(e as Error).message}`);
-  }
-
-  try {
-    snapshot.systemPrompt = readSystemPromptInfo();
-  } catch (e: unknown) {
-    errors.push(`systemPrompt: ${(e as Error).message}`);
-  }
-
-  end()
-  return snapshot;
 }
 
 // ─── Env File CRUD ──────────────────────────────────────────────────
