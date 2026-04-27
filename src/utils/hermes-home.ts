@@ -10,7 +10,7 @@
 
 import { Database } from "bun:sqlite";
 import { homedir } from "os";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
 import * as perf from "./perf";
 import { count as tokenCount } from "./tokens";
 
@@ -243,12 +243,6 @@ export async function readConfig(): Promise<HermesConfig | null> {
   } catch {
     return null;
   }
-}
-
-/** Write config object to config.yaml */
-export async function writeConfig(config: Record<string, unknown>): Promise<void> {
-  const text = stringifyYaml(config);
-  await Bun.write(hermesPath("config.yaml"), text);
 }
 
 /** Read a memory file (MEMORY.md or USER.md) with limit context */
@@ -532,46 +526,6 @@ export async function readMemoryProviders(
   }
 
   return providers;
-}
-
-/** Parse YAML frontmatter from a SKILL.md file */
-function parseFrontmatter(text: string): { description: string; tags: string[] } {
-  const match = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return { description: "", tags: [] };
-  const desc = match[1].match(/^description:\s*(.+)/m);
-  const tags = match[1].match(/^tags:\s*\[(.+)\]/m);
-  return {
-    description: desc ? desc[1].trim() : "",
-    tags: tags ? tags[1].split(",").map(t => t.trim()) : [],
-  };
-}
-
-/** List installed skills with category info */
-export async function listSkills(): Promise<SkillInfo[]> {
-  try {
-    const glob = new Bun.Glob("**/SKILL.md");
-    const skills: SkillInfo[] = [];
-    for await (const path of glob.scan({ cwd: hermesPath("skills") })) {
-      const parts = path.replace("/SKILL.md", "").split("/");
-      const name = parts[parts.length - 1];
-      const category = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
-      const fm = await Bun.file(hermesPath(`skills/${path}`)).text()
-        .then(parseFrontmatter)
-        .catch(() => ({ description: "", tags: [] as string[] }));
-      const indexEntry = `${name}: ${fm.description}${fm.tags.length ? ` [${fm.tags.join(",")}]` : ""}`;
-      skills.push({
-        source: makeSource(`skills/${path}`, `${name}/SKILL.md`),
-        category,
-        name,
-        description: fm.description,
-        tags: fm.tags,
-        tokenEstimate: tokenCount(indexEntry),
-      });
-    }
-    return skills.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
-  } catch {
-    return [];
-  }
 }
 
 /** Read SOUL.md */
