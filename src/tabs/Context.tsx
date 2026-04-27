@@ -21,6 +21,7 @@ import {
 } from "../utils/hermes-home"
 import type { SessionInfo } from "../utils/gateway-types"
 import { snapshot } from "../utils/cache"
+import { count } from "../utils/tokens"
 import {
   parse,
   build,
@@ -98,7 +99,7 @@ const fmt = (n: number) => {
   return String(n)
 }
 
-const est = (s: string) => s ? Math.ceil(s.length / CPT) : 0
+const est = (s: string) => s ? count(s) : 0
 
 const bar = (pct: number, w = 20) => {
   const f = Math.round((Math.max(0, Math.min(100, pct)) / 100) * w)

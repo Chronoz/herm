@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { makeSource, type SkillInfo } from "../utils/hermes-home";
+import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";

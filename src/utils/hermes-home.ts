@@ -12,6 +12,7 @@ import { Database } from "bun:sqlite";
 import { homedir } from "os";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import * as perf from "./perf";
+import { count as tokenCount } from "./tokens";
 
 // ─── Path Resolution ─────────────────────────────────────────────────
 
@@ -823,7 +824,7 @@ function readSystemPromptInfo(): SystemPromptInfo | null {
       sessionId: row.id,
       text: row.system_prompt,
       totalChars: row.system_prompt.length,
-      tokenEstimate: Math.ceil(row.system_prompt.length / 4),
+      tokenEstimate: tokenCount(row.system_prompt),
     };
   } catch {
     return null;

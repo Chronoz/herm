@@ -11,6 +11,7 @@
 
 import type { Source, ToolInfo } from "./hermes-home"
 import { makeSource } from "./hermes-home"
+import { count as tok } from "./tokens"
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -39,10 +40,10 @@ export type Cell = { readonly id: string }
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-const CPT = 4 // chars per token estimate
 const GRID = 256
-
-const tok = (s: string) => Math.ceil(s.length / CPT)
+// Chars-per-token fallback for cases where only a char count is known
+// (e.g. ToolInfo exposes description/param lengths, not the text itself).
+const CPT = 4
 
 /** Which parsed section IDs belong to the "system" group */
 const SYSTEM_IDS = new Set([
