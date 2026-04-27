@@ -16,6 +16,7 @@ import { App } from "../src/app"
 import type { Gateway } from "../src/app/gateway"
 import { GatewayProvider } from "../src/app/gateway"
 import { ThemeProvider } from "../src/theme"
+import { KeysProvider } from "../src/keys"
 import { DialogProvider } from "../src/ui/dialog"
 import { ToastProvider } from "../src/ui/toast"
 import { CommandProvider } from "../src/ui/command"
@@ -139,9 +140,11 @@ export async function mountNode(node: ReactNode, opts: Opts = {}): Promise<Harne
     <ThemeProvider>
       <GatewayProvider client={gw}>
         <ToastProvider>
-          <DialogProvider>
-            <CommandProvider>{node}</CommandProvider>
-          </DialogProvider>
+          <KeysProvider>
+            <DialogProvider>
+              <CommandProvider>{node}</CommandProvider>
+            </DialogProvider>
+          </KeysProvider>
         </ToastProvider>
       </GatewayProvider>
     </ThemeProvider>,

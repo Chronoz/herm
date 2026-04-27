@@ -45,6 +45,8 @@ interface TuiPreferences {
   animations?: boolean
   /** Thought-cloud tool trail verbosity */
   toolDetails?: DetailMode
+  /** User keybinding overrides (ActionId → chord string) */
+  keys?: Record<string, string>
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {

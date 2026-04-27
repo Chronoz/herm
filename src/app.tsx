@@ -27,6 +27,7 @@ import { ThemeProvider, useTheme } from "./theme"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { ToastProvider, useToast } from "./ui/toast"
 import { CommandProvider, useCommand } from "./ui/command"
+import { KeysProvider } from "./keys"
 import { HelpDialog } from "./dialogs/help"
 import { openLogs } from "./dialogs/logs"
 import { openThemePicker } from "./dialogs/theme-picker"
@@ -54,11 +55,13 @@ export const App = (props: { initialTheme?: string; gateway?: Gateway }) => (
   <ThemeProvider initial={props.initialTheme}>
     <GatewayProvider client={props.gateway}>
       <ToastProvider>
-        <DialogProvider>
-          <CommandProvider>
-            <AppInner />
-          </CommandProvider>
-        </DialogProvider>
+        <KeysProvider>
+          <DialogProvider>
+            <CommandProvider>
+              <AppInner />
+            </CommandProvider>
+          </DialogProvider>
+        </KeysProvider>
       </ToastProvider>
     </GatewayProvider>
   </ThemeProvider>
