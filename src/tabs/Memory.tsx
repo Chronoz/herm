@@ -1,18 +1,11 @@
-import { useState, useEffect, useCallback, memo } from "react"
-import {
-  readMemoryProviders,
-  type HermesHomeSnapshot,
-  type MemoryProviderInfo,
-  type MemoryFileInfo,
-} from "../utils/hermes-home"
-import { snapshot } from "../utils/cache"
+import { useState, useMemo, memo } from "react"
+import type { MemoryProviderInfo, MemoryFileInfo } from "../utils/hermes-home"
+import { useHome } from "../home"
 import { useTheme, type Theme } from "../theme"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 
 // ─── Helpers ──────────────────────────────────────────────────────────
-
-const REFRESH = 15_000
 
 function usageColor(pct: number, theme: Theme): string {
   if (pct >= 95) return theme.error.toString()
@@ -43,30 +36,25 @@ const ALL = ["builtin", "mem0", "honcho", "hindsight", "holographic", "openvikin
 
 export const Memory = memo(() => {
   const theme = useTheme().theme
-  const [home, setHome] = useState<HermesHomeSnapshot | null>(null)
-  const [providers, setProviders] = useState<MemoryProviderInfo[]>([])
   const [sel, setSel] = useState(0)
 
-  const refresh = useCallback(async () => {
-    const snap = await snapshot()
-    setHome(snap)
-    const active = snap.config?.memory?.provider || ""
-    const found = await readMemoryProviders(active)
-    setProviders(ALL.map(name =>
-      found.find(p => p.name === name)
-        ?? { name, active: name === "builtin" || name === active, config: {} },
-    ))
-  }, [])
+  const config = useHome("config")
+  const memory = useHome("memory")
+  const userProfile = useHome("userProfile")
+  const found = useHome("memoryProviders")
 
-  useEffect(() => {
-    refresh()
-    const id = setInterval(refresh, REFRESH)
-    return () => clearInterval(id)
-  }, [refresh])
-
-  const cfg = home?.config?.memory
-  const cur = providers[sel]
+  const cfg = config?.memory
   const active = cfg?.provider || ""
+
+  const providers = useMemo(
+    () => ALL.map(name =>
+      found?.find(p => p.name === name)
+        ?? { name, active: name === "builtin" || name === active, config: {} },
+    ),
+    [found, active],
+  )
+
+  const cur = providers[sel]
   const on = !!cur && (cur.name === "builtin" || cur.name === active)
 
   return (
@@ -104,7 +92,7 @@ export const Memory = memo(() => {
         grow={2}
       >
         {cur ? (
-          <ProviderDetail provider={cur} active={active} cfg={cfg} home={home} />
+          <ProviderDetail provider={cur} active={active} cfg={cfg} memory={memory} userProfile={userProfile} />
         ) : (
           <text fg={theme.textMuted}>Select a provider</text>
         )}
@@ -129,7 +117,8 @@ const ProviderDetail = memo((props: {
   provider: MemoryProviderInfo
   active: string
   cfg: MemoryCfg | undefined
-  home: HermesHomeSnapshot | null
+  memory: MemoryFileInfo | null | undefined
+  userProfile: MemoryFileInfo | null | undefined
 }) => {
   const theme = useTheme().theme
   const p = props.provider
@@ -156,9 +145,9 @@ const ProviderDetail = memo((props: {
                 <box height={1} />
               </>
             ) : null}
-            <CapacityBar title="Notes (MEMORY.md)" info={props.home?.memory ?? null} />
+            <CapacityBar title="Notes (MEMORY.md)" info={props.memory ?? null} />
             <box height={1} />
-            <CapacityBar title="Profile (USER.md)" info={props.home?.userProfile ?? null} />
+            <CapacityBar title="Profile (USER.md)" info={props.userProfile ?? null} />
           </box>
         ) : null}
 
