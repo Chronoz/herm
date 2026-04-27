@@ -1,7 +1,9 @@
-import { describe, expect, it } from "bun:test"
-import { trunc, fmt, cost, span, dur, until } from "../src/ui/fmt"
+import { describe, expect, it, setSystemTime, afterEach } from "bun:test"
+import { trunc, fmt, cost, span, dur, until, ago } from "../src/ui/fmt"
 
 describe("fmt", () => {
+  afterEach(() => setSystemTime())
+
   it("trunc", () => {
     expect(trunc("hello", 5)).toBe("hello")
     expect(trunc("hello world", 5)).toBe("hell…")
@@ -27,11 +29,22 @@ describe("fmt", () => {
     expect(dur(3661)).toBe("1h1m")
   })
   it("until", () => {
+    setSystemTime(new Date("2026-04-27T00:00:00Z"))
     const now = Date.now() / 1000
     expect(until(now - 5)).toBe("due")
-    expect(until(now + 30)).toMatch(/^in \d+s$/)
+    expect(until(now)).toBe("due")
+    expect(until(now + 30)).toBe("in 30s")
     expect(until(now + 120)).toBe("in 2m")
     expect(until(now + 7200)).toBe("in 2h")
     expect(until(now + 172800)).toBe("in 2d")
+  })
+  it("ago", () => {
+    setSystemTime(new Date("2026-04-27T00:00:00Z"))
+    const now = Date.now() / 1000
+    expect(ago(now)).toBe("just now")
+    expect(ago(now - 59)).toBe("just now")
+    expect(ago(now - 120)).toBe("2m ago")
+    expect(ago(now - 7200)).toBe("2h ago")
+    expect(ago(now - 172800)).toBe("2d ago")
   })
 })
