@@ -29,7 +29,6 @@ import {
   cells as buildCells,
   classifyTools,
   type Segment,
-  type Section,
 } from "../utils/context-segments"
 import { FileLink } from "../components/ui/FileLink"
 import { useTheme, type Theme } from "../theme"
@@ -46,12 +45,6 @@ type Props = {
 }
 
 type Wire = { input: number; output: number; total: number; calls: number }
-
-type TokenUsage = {
-  prompt_tokens: number
-  completion_tokens: number
-  total_tokens: number
-}
 
 // ─── Constants ───────────────────────────────────────────────────────
 
