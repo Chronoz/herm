@@ -462,6 +462,11 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
       {output > 0 && !drilled ? (
         <text><span fg={theme.success}>◼</span> Output — {fmt(output)} tokens</text>
       ) : null}
+      {/* Glyph legend — documents the ⊠ threshold overlay used in the grid.
+          Color is muted so the row reads as a footnote, not a data line. */}
+      <text>
+        <span fg={theme.textMuted}>⊠ past compression threshold ({Math.round(thresholdPct * 100)}%)</span>
+      </text>
     </box>
   )
 
