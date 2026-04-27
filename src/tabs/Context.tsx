@@ -27,6 +27,7 @@ import {
   build,
   drill,
   cells as buildCells,
+  classifyTools,
   type Segment,
   type Section,
 } from "../utils/context-segments"
@@ -73,16 +74,18 @@ const CRIT = 95
 
 const PALETTE: Record<string, (t: Theme) => RGBA> = {
   // Top-level groups
-  system: t => t.info,
-  tools: t => t.error,
+  system_prompt: t => t.info,
+  system_tools: t => t.error,
+  mcp_tools: t => t.warning,
+  memory: t => t.accent,
+  skills: t => t.primary,
   conversation: t => t.secondary,
   free: t => t.borderSubtle,
-  // System children
+  // Memory children
   soul: t => t.info,
-  memory: t => t.warning,
-  user: t => t.accent,
   mem0: t => t.warning,
-  skills: t => t.primary,
+  user: t => t.accent,
+  // System prompt children
   project: t => t.success,
   meta: t => t.textMuted,
   other: t => t.textMuted,
@@ -198,20 +201,25 @@ const SkillsPanel = memo(({ seg, theme }: { seg: Segment; theme: Theme }) => {
   )
 })
 
-/** Tools detail */
-const ToolsPanel = memo(({ seg, theme, tools }: {
+/** Tools detail — handles system builtins or MCP depending on `kind` */
+const ToolsPanel = memo(({ seg, theme, tools, kind }: {
   seg: Segment; theme: Theme; tools: ReadonlyArray<ToolInfo>
+  kind: "system_tools" | "mcp_tools"
 }) => {
   const sorted = [...tools].sort((a, b) =>
     (b.descriptionLength + b.paramsLength) - (a.descriptionLength + a.paramsLength),
   )
+  const label = kind === "mcp_tools" ? "MCP Tools" : "System Tools"
+  const blurb = kind === "mcp_tools"
+    ? "MCP-loaded tools — schemas injected via mcp_ prefix."
+    : "Built-in tool schemas sent with every API call."
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
-        <strong><span fg={clr("tools", theme)}>◼</span> Tool Schemas — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
+        <strong><span fg={clr(kind, theme)}>◼</span> {label} — {fmt(seg.tokens)} tokens ({seg.percent.toFixed(1)}%)</strong>
       </text>
       <text> </text>
-      <text>{tools.length} tools — JSON schemas sent with every API call.</text>
+      <text>{tools.length} tools — {blurb}</text>
       <text> </text>
       {sorted.map(t => (
         <text key={t.name} fg={theme.text}>
@@ -407,14 +415,22 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     const seg = findSeg(selected)
     if (!seg) return null
 
-    if (selected === "memory" && home?.memory) {
+    // Memory children (accessible when drilled into memory group)
+    if (selected === "memory" && drilled === "memory" && home?.memory) {
       return <MemoryPanel seg={seg} theme={theme} label="Agent Notes" chars={home.memory.charCount} limit={home.memory.charLimit} pct={home.memory.usagePercent} entries={memEntries} source={home.memory.source} />
     }
     if (selected === "user" && home?.userProfile) {
       return <MemoryPanel seg={seg} theme={theme} label="User Profile" chars={home.userProfile.charCount} limit={home.userProfile.charLimit} pct={home.userProfile.usagePercent} entries={userEntries} source={home.userProfile.source} />
     }
     if (selected === "skills") return <SkillsPanel seg={seg} theme={theme} />
-    if (selected === "tools" && home?.toolsInfo) return <ToolsPanel seg={seg} theme={theme} tools={home.toolsInfo.tools} />
+    if (selected === "system_tools" && home?.toolsInfo) {
+      const { system } = classifyTools(home.toolsInfo.tools)
+      return <ToolsPanel seg={seg} theme={theme} tools={system} kind="system_tools" />
+    }
+    if (selected === "mcp_tools" && home?.toolsInfo) {
+      const { mcp } = classifyTools(home.toolsInfo.tools)
+      return <ToolsPanel seg={seg} theme={theme} tools={mcp} kind="mcp_tools" />
+    }
     if (selected === "conversation") return <ConvPanel seg={seg} theme={theme} messages={messages} output={output} />
     if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} home={home} />
     return <SectionPanel seg={seg} theme={theme} />

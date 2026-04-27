@@ -2,14 +2,16 @@
  * context-segments.ts — Parse the Hermes system prompt into sections,
  * group them into a two-level hierarchy, and generate grids.
  *
- * Level 0 (top):  System & Prompt | Tools | Conversation | Free
- * Level 1 (drill): Children of a group, e.g. SOUL | Memory | Skills | ...
+ * Level 0 (top):  System Prompt | System Tools | MCP Tools | Memory |
+ *                 Skills | Conversation | Free
+ * Level 1 (drill): Children of a group, e.g. Memory → SOUL | Notes |
+ *                 User Profile | Mem0 | Providers
  *
  * The grid always fills 256 cells. At top level, percentages are relative
  * to the full context length. At drill level, relative to the parent group.
  */
 
-import type { Source, ToolInfo } from "./hermes-home"
+import type { Source, ToolInfo, MemoryProviderInfo } from "./hermes-home"
 import { makeSource } from "./hermes-home"
 import { count as tok } from "./tokens"
 
@@ -41,14 +43,16 @@ export type Cell = { readonly id: string }
 // ─── Constants ───────────────────────────────────────────────────────
 
 const GRID = 256
-// Chars-per-token fallback for cases where only a char count is known
-// (e.g. ToolInfo exposes description/param lengths, not the text itself).
+// Chars-per-token fallback for ToolInfo (description/param lengths are
+// char counts; the text itself is not retained in the snapshot — so we
+// can't run the real tokenizer until upstream ToolInfo carries text).
 const CPT = 4
 
-/** Which parsed section IDs belong to the "system" group */
-const SYSTEM_IDS = new Set([
-  "soul", "memory", "user", "mem0", "skills", "project", "meta", "other",
-])
+/** Parsed-section IDs that belong to the Memory top-level category */
+const MEMORY_IDS = new Set(["soul", "memory", "user", "mem0"])
+
+/** Parsed-section IDs that are residual system-prompt framing */
+const SYSTEM_PROMPT_IDS = new Set(["project", "meta", "other"])
 
 // ─── System Prompt Parser ────────────────────────────────────────────
 
@@ -146,6 +150,28 @@ export function parse(text: string): Section[] {
   return sections.sort((a, b) => text.indexOf(a.text) - text.indexOf(b.text))
 }
 
+// ─── Tool Classification ─────────────────────────────────────────────
+
+/** Classify tools by origin. MCP tools always have `mcp_` prefix — this is
+ *  a guaranteed convention (mcp_tool.py:2394 collision guard). */
+export function classifyTools(
+  tools: ReadonlyArray<ToolInfo>,
+): { system: ToolInfo[]; mcp: ToolInfo[] } {
+  const system: ToolInfo[] = []
+  const mcp: ToolInfo[] = []
+  for (const t of tools) {
+    if (t.name.startsWith("mcp_")) mcp.push(t)
+    else system.push(t)
+  }
+  return { system, mcp }
+}
+
+/** Token estimate for a tool's schema entry. chars/4 fallback — ToolInfo
+ *  only carries lengths, not text. */
+export function toolTokens(tool: ToolInfo): number {
+  return Math.ceil((tool.descriptionLength + tool.paramsLength) / CPT)
+}
+
 // ─── Segment Builder ─────────────────────────────────────────────────
 
 type Opts = {
@@ -154,20 +180,33 @@ type Opts = {
   sections: ReadonlyArray<Section>
   conversationTokens: number
   tools: ReadonlyArray<ToolInfo>
+  /** Optional — total tokens consumed by installed skills (name+description
+   *  per skill). When absent, falls back to the "skills" section from parse()
+   *  (which reflects what's actually injected into the system prompt). */
+  skillsTokens?: number
+  /** External memory providers (mem0/retaindb/etc.). Used for drill detail
+   *  only — token contribution is already captured by the parsed "mem0"
+   *  section when active. */
+  memoryProviders?: ReadonlyArray<MemoryProviderInfo>
 }
 
 /**
  * Build the two-level segment hierarchy.
- * Returns top-level groups. The "system" group contains children
- * that can be drilled into.
+ * Returns top-level groups. Groups with children can be drilled into.
+ *
+ * Top-level categories (in display order):
+ *   system_prompt | system_tools | mcp_tools | memory | skills | conversation | free
  */
 export function build(opts: Opts): Segment[] {
-  const pct = (t: number) => (t / opts.contextLength) * 100
+  const pct = (t: number) => opts.contextLength > 0 ? (t / opts.contextLength) * 100 : 0
   const result: Segment[] = []
 
-  // System prompt children
-  const children = opts.sections
-    .filter(sec => SYSTEM_IDS.has(sec.id) && sec.tokens > 0)
+  const byId = new Map<string, Section>()
+  for (const s of opts.sections) byId.set(s.id, s)
+
+  // ── 1. System Prompt (framing only — project + meta + other) ──
+  const promptChildren: Segment[] = opts.sections
+    .filter(sec => SYSTEM_PROMPT_IDS.has(sec.id) && sec.tokens > 0)
     .map(sec => ({
       id: sec.id,
       label: sec.label,
@@ -175,34 +214,81 @@ export function build(opts: Opts): Segment[] {
       percent: pct(sec.tokens),
       section: sec,
     }))
-
-  // System group
-  const sysTok = children.reduce((s, c) => s + c.tokens, 0)
-  if (sysTok > 0) {
+  const promptTok = promptChildren.reduce((s, c) => s + c.tokens, 0)
+  if (promptTok > 0) {
     result.push({
-      id: "system",
-      label: "System & Prompt",
-      tokens: sysTok,
-      percent: pct(sysTok),
-      children,
+      id: "system_prompt",
+      label: "System Prompt",
+      tokens: promptTok,
+      percent: pct(promptTok),
+      children: promptChildren,
     })
   }
 
-  // Tools
-  const toolTok = opts.tools.reduce(
-    (s, t) => s + Math.ceil((t.descriptionLength + t.paramsLength) / CPT), 0,
-  )
-  if (toolTok > 0) {
-    result.push({ id: "tools", label: "Tool Schemas", tokens: toolTok, percent: pct(toolTok) })
+  // ── 2. System Tools (non-MCP) ──
+  const { system: sysTools, mcp: mcpTools } = classifyTools(opts.tools)
+  const sysToolsTok = sysTools.reduce((s, t) => s + toolTokens(t), 0)
+  if (sysToolsTok > 0) {
+    result.push({
+      id: "system_tools",
+      label: "System Tools",
+      tokens: sysToolsTok,
+      percent: pct(sysToolsTok),
+    })
   }
 
-  // Conversation
+  // ── 3. MCP Tools ──
+  const mcpToolsTok = mcpTools.reduce((s, t) => s + toolTokens(t), 0)
+  if (mcpToolsTok > 0) {
+    result.push({
+      id: "mcp_tools",
+      label: "MCP Tools",
+      tokens: mcpToolsTok,
+      percent: pct(mcpToolsTok),
+    })
+  }
+
+  // ── 4. Memory (SOUL + Notes + Profile + Mem0) ──
+  const memChildren: Segment[] = opts.sections
+    .filter(sec => MEMORY_IDS.has(sec.id) && sec.tokens > 0)
+    .map(sec => ({
+      id: sec.id,
+      label: sec.label,
+      tokens: sec.tokens,
+      percent: pct(sec.tokens),
+      section: sec,
+    }))
+  const memTok = memChildren.reduce((s, c) => s + c.tokens, 0)
+  if (memTok > 0) {
+    result.push({
+      id: "memory",
+      label: "Memory",
+      tokens: memTok,
+      percent: pct(memTok),
+      children: memChildren,
+    })
+  }
+
+  // ── 5. Skills (catalog injected into system prompt) ──
+  const skillsSec = byId.get("skills")
+  const skillsTok = skillsSec?.tokens ?? opts.skillsTokens ?? 0
+  if (skillsTok > 0) {
+    result.push({
+      id: "skills",
+      label: "Skills",
+      tokens: skillsTok,
+      percent: pct(skillsTok),
+      section: skillsSec,
+    })
+  }
+
+  // ── 6. Conversation ──
   if (opts.conversationTokens > 0) {
-    const ct = Math.min(opts.conversationTokens, opts.inputTokens)
+    const ct = Math.min(opts.conversationTokens, opts.inputTokens || opts.conversationTokens)
     result.push({ id: "conversation", label: "Conversation", tokens: ct, percent: pct(ct) })
   }
 
-  // Free
+  // ── 7. Free ──
   const taken = result.reduce((s, g) => s + g.tokens, 0)
   const free = Math.max(0, opts.contextLength - taken)
   result.push({ id: "free", label: "Free", tokens: free, percent: pct(free) })
