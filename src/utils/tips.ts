@@ -21,7 +21,7 @@ const FALLBACK = [
 // `code`, "quoted".
 const HL = /(\/[a-z][\w-]*|@[\w:./-]+|(?:Ctrl|Alt|Shift)\+\S+|`[^`]+`|"[^"]+")/g
 
-export type TipPart = { t: string; hl: boolean }
+type TipPart = { t: string; hl: boolean }
 
 export function splitTip(tip: string): TipPart[] {
   const out: TipPart[] = []

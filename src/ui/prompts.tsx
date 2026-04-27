@@ -65,7 +65,7 @@ const Pill = (p: { on: boolean; hot: string; label: string; onPick: () => void }
   )
 }
 
-export type ApprovalReq = { command: string; description: string }
+type ApprovalReq = { command: string; description: string }
 
 export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
   const theme = useTheme().theme
@@ -139,7 +139,7 @@ export const ApprovalPrompt = ({ req }: { req: ApprovalReq }) => {
 
 // ── Clarify ──────────────────────────────────────────────────────────
 
-export type ClarifyReq = { request_id: string; question: string; choices: string[] | null }
+type ClarifyReq = { request_id: string; question: string; choices: string[] | null }
 
 export const ClarifyPrompt = ({ req }: { req: ClarifyReq }) => {
   const theme = useTheme().theme

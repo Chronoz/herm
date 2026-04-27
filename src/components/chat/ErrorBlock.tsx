@@ -3,7 +3,7 @@
 // panel grammar as BlockTool (┃ left bar, backgroundPanel) so it
 // reads as "a block in the trail that happens to be red."
 
-import { memo, useState } from "react"
+import { memo, useEffect, useState } from "react"
 import { useTheme } from "../../theme"
 import { copy } from "../../utils/clipboard"
 
@@ -20,10 +20,15 @@ export const ErrorBlock = memo(({ text }: { text: string }) => {
   const over = body.length > CAP
   const shown = open || !over ? body : body.slice(0, CAP)
 
+  useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1500)
+    return () => clearTimeout(t)
+  }, [copied])
+
   const doCopy = () => {
     void copy(text)
     setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
   }
 
   return (

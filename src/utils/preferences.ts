@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 
 // ─── Schema ──────────────────────────────────────────────────────────
 
-export interface TuiPreferences {
+interface TuiPreferences {
   /** JSON schema reference (for editor autocomplete) */
   $schema?: string
   /** Theme name — must match a built-in or custom theme */

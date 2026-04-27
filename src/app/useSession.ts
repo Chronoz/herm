@@ -7,7 +7,7 @@ import { transcriptToMessages } from "./turnReducer"
 import type { SessionResumeResponse, SessionCreateResponse } from "../utils/gateway-types"
 import type { Message } from "../types/message"
 
-export type SessionOps = {
+type SessionOps = {
   /** Resume last session from prefs, or create a new one. */
   boot: () => Promise<{ id: string; messages: Message[] }>
   create: () => Promise<string>

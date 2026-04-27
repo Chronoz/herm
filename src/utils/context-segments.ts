@@ -38,7 +38,7 @@ export type Segment = {
 }
 
 /** Grid cell */
-export type Cell = { readonly id: string }
+type Cell = { readonly id: string }
 
 // ─── Constants ───────────────────────────────────────────────────────
 

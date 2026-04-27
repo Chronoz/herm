@@ -148,42 +148,6 @@ const SearchDetail = memo((props: { result: SessionHit }) => {
     </TabShell>
   )
 })
-
-// ─── Confirm Delete ──────────────────────────────────────────────────
-
-const ConfirmDelete = (props: { title: string; onConfirm: () => void; onCancel: () => void }) => {
-  const theme = useTheme().theme
-  const [hover, setHover] = useState<"y" | "n" | null>(null)
-
-  useKeyboard((key) => {
-    if (key.name === "y") props.onConfirm()
-    if (key.name === "n" || key.name === "escape") props.onCancel()
-  })
-
-  return (
-    <box flexDirection="column" width={50}>
-      <text><span fg={theme.warning}><strong>Delete Session?</strong></span></text>
-      <text> </text>
-      <text wrapMode="word"><span fg={theme.text}>{trunc(props.title, 46)}</span></text>
-      <text> </text>
-      <box flexDirection="row" gap={2}>
-        <box onMouseDown={props.onConfirm} onMouseOver={() => setHover("y")} onMouseOut={() => setHover(null)}>
-          <text>
-            <span fg={hover === "y" ? theme.error : theme.textMuted}>{hover === "y" ? "▸ " : "  "}</span>
-            <span fg={hover === "y" ? theme.error : theme.text}>[y] Delete</span>
-          </text>
-        </box>
-        <box onMouseDown={props.onCancel} onMouseOver={() => setHover("n")} onMouseOut={() => setHover(null)}>
-          <text>
-            <span fg={hover === "n" ? theme.accent : theme.textMuted}>{hover === "n" ? "▸ " : "  "}</span>
-            <span fg={hover === "n" ? theme.accent : theme.text}>[n] Cancel</span>
-          </text>
-        </box>
-      </box>
-    </box>
-  )
-}
-
 // ─── Rows ────────────────────────────────────────────────────────────
 //
 // Columns are flex boxes, not padded strings — the title column takes
@@ -434,25 +398,23 @@ export const Sessions = memo((props: Props) => {
 
   const confirmDeleteRef = useRef<(r: Row) => void>(() => {})
   const confirmDelete = useCallback((r: Row) => {
-    dialog.replace(
-      <ConfirmDelete
-        title={r.title || "Untitled"}
-        onConfirm={() => {
-          dialog.clear()
-          Promise.resolve()
-            .then(() => {
-              if (!io.remove(r.id)) throw new Error("not found")
-              invalidate()
-              toast.show({ variant: "success", message: "Session deleted" })
-              setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
-              return load()
-            })
-            .catch((e: Error) =>
-              toast.show({ variant: "error", message: `Delete failed: ${e.message}` }))
-        }}
-        onCancel={() => dialog.clear()}
-      />,
-    )
+    openConfirm(dialog, {
+      title: "Delete Session?",
+      body: trunc(r.title || "Untitled", 46),
+      yes: "Delete",
+      danger: true,
+    }).then(ok => {
+      if (!ok) return
+      try {
+        if (!io.remove(r.id)) throw new Error("not found")
+        invalidate()
+        toast.show({ variant: "success", message: "Session deleted" })
+        setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
+        void load()
+      } catch (e) {
+        toast.show({ variant: "error", message: `Delete failed: ${(e as Error).message}` })
+      }
+    })
   }, [dialog, toast, load, rows.length])
   confirmDeleteRef.current = confirmDelete
 

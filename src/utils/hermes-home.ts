@@ -98,25 +98,6 @@ export interface MemoryFileInfo {
   entryCount: number;
 }
 
-/** Gateway platform state */
-export interface GatewayPlatformState {
-  state: "connected" | "fatal" | "disconnected" | string;
-  error_code?: string;
-  error_message?: string;
-  updated_at: string;
-}
-
-/** Gateway runtime state from gateway_state.json */
-export interface GatewayState {
-  source: Source;
-  pid: number;
-  kind: string;
-  start_time: number;
-  gateway_state: string;
-  platforms: Record<string, GatewayPlatformState>;
-  updated_at: string;
-}
-
 /** A row from the sessions table in state.db */
 export interface SessionRow {
   source: Source;
@@ -218,11 +199,8 @@ export interface HermesHomeSnapshot {
   config: HermesConfig | null;
   memory: MemoryFileInfo | null;
   userProfile: MemoryFileInfo | null;
-  memoryProviders: MemoryProviderInfo[];
-  gateway: GatewayState | null;
   liveSessions: Record<string, LiveSession>;
   recentSessions: SessionRow[];
-  skills: SkillInfo[];
   toolsInfo: ToolsInfo | null;
   soul: SoulInfo | null;
   systemPrompt: SystemPromptInfo | null;
@@ -305,21 +283,6 @@ export async function readMemoryFile(
       usagePercent:
         charLimit > 0 ? Math.round((content.length / charLimit) * 100) : 0,
       entryCount,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** Read gateway_state.json */
-export async function readGatewayState(): Promise<GatewayState | null> {
-  try {
-    const file = Bun.file(hermesPath("gateway_state.json"));
-    const text = await file.text();
-    const raw = JSON.parse(text);
-    return {
-      source: makeSource("gateway_state.json"),
-      ...raw,
     };
   } catch {
     return null;
@@ -585,132 +548,6 @@ export async function readMemoryProviders(
   return providers;
 }
 
-// ─── Analytics ────────────────────────────────────────────────────────
-
-export interface DailyRow {
-  day: string;
-  input: number;
-  output: number;
-  cache: number;
-  reasoning: number;
-  cost: number;
-  sessions: number;
-}
-
-export interface ModelRow {
-  model: string;
-  input: number;
-  output: number;
-  cost: number;
-  sessions: number;
-}
-
-interface TotalsRow {
-  input: number;
-  output: number;
-  cache: number;
-  reasoning: number;
-  estimated: number;
-  actual: number;
-  sessions: number;
-}
-
-export interface AnalyticsData {
-  daily: DailyRow[];
-  models: ModelRow[];
-  totals: TotalsRow;
-}
-
-/** Query analytics aggregates from state.db for the last N days */
-export function queryAnalytics(days: number): AnalyticsData {
-  const endTiming = perf.mark("io:queryAnalytics")
-  const cutoff = Math.floor(Date.now() / 1000) - days * 86400;
-  const empty: AnalyticsData = {
-    daily: [],
-    models: [],
-    totals: { input: 0, output: 0, cache: 0, reasoning: 0, estimated: 0, actual: 0, sessions: 0 },
-  };
-  try {
-    const db = new Database(hermesPath("state.db"), { readonly: true });
-
-    const daily = db
-      .query(
-        `SELECT date(started_at, 'unixepoch') as day,
-                SUM(input_tokens), SUM(output_tokens),
-                SUM(cache_read_tokens), SUM(reasoning_tokens),
-                COALESCE(SUM(estimated_cost_usd),0), COUNT(*)
-         FROM sessions WHERE started_at > ?
-         GROUP BY day ORDER BY day`,
-      )
-      .all(cutoff) as Array<Record<string, unknown>>;
-
-    const models = db
-      .query(
-        `SELECT model, SUM(input_tokens), SUM(output_tokens),
-                COALESCE(SUM(estimated_cost_usd),0), COUNT(*)
-         FROM sessions WHERE started_at > ? AND model IS NOT NULL
-         GROUP BY model ORDER BY SUM(input_tokens)+SUM(output_tokens) DESC`,
-      )
-      .all(cutoff) as Array<Record<string, unknown>>;
-
-    const totals = db
-      .query(
-        `SELECT SUM(input_tokens), SUM(output_tokens),
-                SUM(cache_read_tokens), SUM(reasoning_tokens),
-                COALESCE(SUM(estimated_cost_usd),0),
-                COALESCE(SUM(actual_cost_usd),0), COUNT(*)
-         FROM sessions WHERE started_at > ?`,
-      )
-      .all(cutoff) as Array<Record<string, unknown>>;
-
-    db.close();
-
-    const vals = (row: Record<string, unknown>) => Object.values(row);
-
-    const data = {
-      daily: daily.map((r) => {
-        const v = vals(r);
-        return {
-          day: String(v[0]),
-          input: Number(v[1]) || 0,
-          output: Number(v[2]) || 0,
-          cache: Number(v[3]) || 0,
-          reasoning: Number(v[4]) || 0,
-          cost: Number(v[5]) || 0,
-          sessions: Number(v[6]) || 0,
-        };
-      }),
-      models: models.map((r) => {
-        const v = vals(r);
-        return {
-          model: String(v[0]),
-          input: Number(v[1]) || 0,
-          output: Number(v[2]) || 0,
-          cost: Number(v[3]) || 0,
-          sessions: Number(v[4]) || 0,
-        };
-      }),
-      totals: (() => {
-        const v = totals[0] ? vals(totals[0]) : [];
-        return {
-          input: Number(v[0]) || 0,
-          output: Number(v[1]) || 0,
-          cache: Number(v[2]) || 0,
-          reasoning: Number(v[3]) || 0,
-          estimated: Number(v[4]) || 0,
-          actual: Number(v[5]) || 0,
-          sessions: Number(v[6]) || 0,
-        };
-      })(),
-    };
-    endTiming()
-    return data
-  } catch {
-    endTiming()
-    return empty;
-  }
-}
-
 /** Parse YAML frontmatter from a SKILL.md file */
 function parseFrontmatter(text: string): { description: string; tags: string[] } {
   const match = text.match(/^---\n([\s\S]*?)\n---/);
@@ -830,50 +667,6 @@ function readSystemPromptInfo(): SystemPromptInfo | null {
   }
 }
 
-// ─── Toolsets ─────────────────────────────────────────────────────────
-
-/** Known toolset → tool name mapping */
-const TOOLSET_MAP: Record<string, string[]> = {
-  terminal: ["terminal", "process"],
-  file: ["read_file", "write_file", "search_files", "patch"],
-  web: ["browser_navigate", "browser_click", "browser_type", "browser_snapshot", "browser_scroll", "browser_press", "browser_back", "browser_vision", "browser_console", "browser_get_images"],
-  code: ["execute_code"],
-  delegate: ["delegate_task"],
-  memory: ["memory", "session_search", "skill_manage", "skill_view", "skills_list"],
-  productivity: ["todo", "cronjob", "image_generate", "text_to_speech"],
-  clarify: ["clarify"],
-};
-
-/** Info about a single toolset */
-export interface ToolsetInfo {
-  name: string;
-  tools: string[];
-  enabled: boolean;
-  active: string[];
-}
-
-/** Read toolsets: parse config.yaml for enabled list, cross-ref with session tools */
-export async function readToolsets(): Promise<ToolsetInfo[]> {
-  let enabled: string[] = [];
-  try {
-    const text = await Bun.file(hermesPath("config.yaml")).text();
-    const raw = parseYaml(text);
-    if (Array.isArray(raw?.toolsets)) enabled = raw.toolsets;
-  } catch {
-    // no config — treat all as enabled
-  }
-
-  const info = await readToolsFromLatestSession();
-  const live = new Set(info?.tools.map(t => t.name) ?? []);
-
-  return Object.entries(TOOLSET_MAP).map(([name, tools]) => ({
-    name,
-    tools,
-    enabled: enabled.length === 0 || enabled.includes(name),
-    active: tools.filter(t => live.has(t)),
-  }));
-}
-
 // ─── Composite Reader ────────────────────────────────────────────────
 
 /**
@@ -887,11 +680,8 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
     config: null,
     memory: null,
     userProfile: null,
-    memoryProviders: [],
-    gateway: null,
     liveSessions: {},
     recentSessions: [],
-    skills: [],
     toolsInfo: null,
     soul: null,
     systemPrompt: null,
@@ -910,13 +700,11 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
   const userLimit = snapshot.config?.memory?.user_char_limit ?? 1375;
 
   // Run independent reads in parallel
-  const [memory, userProfile, gateway, liveSessions, skills, soul, toolsInfo] =
+  const [memory, userProfile, liveSessions, soul, toolsInfo] =
     await Promise.allSettled([
       readMemoryFile("MEMORY.md", memLimit),
       readMemoryFile("USER.md", userLimit),
-      readGatewayState(),
       readLiveSessions(),
-      listSkills(),
       readSoul(),
       readToolsFromLatestSession(),
     ]);
@@ -928,15 +716,9 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
     snapshot.userProfile = userProfile.value;
   else errors.push(`userProfile: ${userProfile.reason}`);
 
-  if (gateway.status === "fulfilled") snapshot.gateway = gateway.value;
-  else errors.push(`gateway: ${gateway.reason}`);
-
   if (liveSessions.status === "fulfilled")
     snapshot.liveSessions = liveSessions.value;
   else errors.push(`liveSessions: ${liveSessions.reason}`);
-
-  if (skills.status === "fulfilled") snapshot.skills = skills.value;
-  else errors.push(`skills: ${skills.reason}`);
 
   if (soul.status === "fulfilled") snapshot.soul = soul.value;
   else errors.push(`soul: ${soul.reason}`);
@@ -955,13 +737,6 @@ export async function readHermesHome(): Promise<HermesHomeSnapshot> {
     snapshot.systemPrompt = readSystemPromptInfo();
   } catch (e: unknown) {
     errors.push(`systemPrompt: ${(e as Error).message}`);
-  }
-
-  try {
-    const active = snapshot.config?.memory?.provider ?? "";
-    snapshot.memoryProviders = await readMemoryProviders(active);
-  } catch (e: unknown) {
-    errors.push(`memoryProviders: ${(e as Error).message}`);
   }
 
   end()
@@ -1021,10 +796,6 @@ export async function removeEnvVar(key: string): Promise<void> {
   const lines = text.split("\n").filter(l => !l.startsWith(`${key}=`));
   await Bun.write(ENV_PATH, lines.join("\n"));
 }
-
-/** Redact a value: show first 4 chars + '...' */
-export const redact = (value: string): string =>
-  value.length <= 4 ? value : `${value.slice(0, 4)}...`;
 
 // ─── Provider Catalog ───────────────────────────────────────────────
 

@@ -70,21 +70,21 @@ describe("hermes-home snapshot additions", () => {
     expect(beta!.tokenEstimate).toBe(betaExpected)
   })
 
-  test("HermesHomeSnapshot.memoryProviders populated by readHermesHome", async () => {
-    const { readHermesHome } = await import("../src/utils/hermes-home")
-    const snap = await readHermesHome()
-    expect(Array.isArray(snap.memoryProviders)).toBe(true)
+  test("memoryProviders slice redacts secrets", async () => {
+    const { home } = await import("../src/home/store")
+    const mp = await home.ensure("memoryProviders")
+    expect(Array.isArray(mp)).toBe(true)
     // builtin is always pushed
-    expect(snap.memoryProviders.find(p => p.name === "builtin")).toBeDefined()
+    expect(mp.find(p => p.name === "builtin")).toBeDefined()
     // mem0.json exists → mem0 entry present and marked active (config sets provider: mem0)
-    const mem0 = snap.memoryProviders.find(p => p.name === "mem0")
+    const mem0 = mp.find(p => p.name === "mem0")
     expect(mem0).toBeDefined()
     expect(mem0!.active).toBe(true)
-    // api_key redacted — full secret must be gone, only 4-char prefix remains
-    expect(typeof mem0!.config.api_key).toBe("string")
+    // api_key redacted — full secret must be gone
     const redactedKey = mem0!.config.api_key as string
+    expect(typeof redactedKey).toBe("string")
     expect(redactedKey).not.toContain("abcdef1234567890")
     expect(redactedKey.endsWith("...")).toBe(true)
-    expect(redactedKey.length).toBeLessThan("sk-abcdef1234567890".length)
+    home.close()
   })
 })

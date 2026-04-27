@@ -8,12 +8,13 @@ import { useToast } from "../ui/toast"
 import { openConfirm } from "../dialogs/confirm"
 import { openSpawnHistory } from "../dialogs/spawn-history"
 import { openProfileMenu } from "../dialogs/profile"
+import { openCreateProfile } from "../dialogs/new-profile"
 import { TabShell } from "../ui/shell"
 import { KV, KVBlock } from "../ui/kv"
 import { FileLink } from "../components/ui/FileLink"
 import { dur, trunc, fmt } from "../ui/fmt"
 import {
-  listProfiles, validateName, stickyDefault, profileStats,
+  listProfiles, stickyDefault, profileStats,
   type ProfileInfo, type ProfileStats,
 } from "../utils/hermes-profiles"
 import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
@@ -123,65 +124,6 @@ const KVLink = (props: { label: string; source: import("../utils/hermes-home").S
       <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
         <FileLink source={props.source}>{props.text ?? props.source.label}</FileLink>
       </box>
-    </box>
-  )
-}
-
-const CreateProfile = (props: {
-  existing: string[]
-  onSubmit: (name: string, cloneFrom: string | null, alias: boolean) => void
-  onCancel: () => void
-}) => {
-  const theme = useTheme().theme
-  const [name, setName] = useState("")
-  const [cloneIdx, setCloneIdx] = useState(0)
-  const [alias, setAlias] = useState(true)
-  const options = ["(fresh)", ...props.existing]
-  const err = name ? validateName(name, props.existing) : null
-  const valid = !!name && !err
-
-  useKeyboard((key) => {
-    if (key.name === "escape") return props.onCancel()
-    if (key.name === "return") {
-      if (!valid) return
-      return props.onSubmit(name, cloneIdx === 0 ? null : options[cloneIdx], alias)
-    }
-    if (key.name === "up") return setCloneIdx(i => Math.max(0, i - 1))
-    if (key.name === "down") return setCloneIdx(i => Math.min(options.length - 1, i + 1))
-    if (key.name === "tab") return setAlias(a => !a)
-    if (key.name === "backspace") return setName(n => n.slice(0, -1))
-    if (key.raw && key.raw.length === 1 && /[a-z0-9_-]/.test(key.raw))
-      return setName(n => n + key.raw)
-  })
-
-  return (
-    <box flexDirection="column" width={54}>
-      <box height={1}><text fg={theme.primary}><strong>New Profile</strong></text></box>
-      <box height={1} />
-      <box height={1} flexDirection="row">
-        <box width={11}><text fg={theme.textMuted}>Name</text></box>
-        <text>
-          <span fg={valid || !name ? theme.text : theme.error}>{name}</span>
-          <span fg={theme.accent}>█</span>
-        </text>
-      </box>
-      <box height={1}><text fg={theme.textMuted}>  a-z 0-9 _ -  ·  lowercase</text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>Clone from  (↑↓)</text></box>
-      {options.map((o, i) => (
-        <box key={o} height={1}>
-          <text fg={i === cloneIdx ? theme.accent : theme.text}>
-            {i === cloneIdx ? "▸ " : "  "}{o}
-          </text>
-        </box>
-      ))}
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>
-        {`[Tab] shell alias: ${alias ? "yes" : "no"}`}
-      </text></box>
-      <box height={1}><text fg={theme.textMuted}>
-        {valid ? "Enter create  ·  Esc cancel" : err ?? "type a name"}
-      </text></box>
     </box>
   )
 }
@@ -487,26 +429,21 @@ export const Agents = memo((props: Props) => {
   }, [gw, toast, deleg?.paused, loadDeleg])
 
   const create = useCallback(() => {
-    dialog.replace(
-      <CreateProfile
-        existing={live.current.profiles.map(p => p.name)}
-        onSubmit={(name, cloneFrom, alias) => {
-          dialog.clear()
-          const flags = [
-            cloneFrom ? `--clone --clone-from ${cloneFrom}` : "",
-            alias ? "" : "--no-alias",
-          ].filter(Boolean).join(" ")
-          toast.show({ variant: "info", message: `Creating '${name}'…` })
-          sh(`hermes profile create ${name} ${flags}`.trim())
-            .then(() => {
-              toast.show({ variant: "success", message: `Created '${name}'` })
-              loadProfiles()
-            })
-            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-        }}
-        onCancel={() => dialog.clear()}
-      />,
-    )
+    openCreateProfile(dialog, { existing: live.current.profiles.map(p => p.name) })
+      .then(r => {
+        if (!r) return
+        const flags = [
+          r.cloneFrom ? `--clone --clone-from ${r.cloneFrom}` : "",
+          r.alias ? "" : "--no-alias",
+        ].filter(Boolean).join(" ")
+        toast.show({ variant: "info", message: `Creating '${r.name}'…` })
+        return sh(`hermes profile create ${r.name} ${flags}`.trim())
+          .then(() => {
+            toast.show({ variant: "success", message: `Created '${r.name}'` })
+            loadProfiles()
+          })
+      })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
   }, [sh, dialog, toast, loadProfiles])
 
   const selected = profiles[pSel]

@@ -43,18 +43,3 @@ export const TabShell = (props: {
     </box>
   )
 }
-
-// Two panels side by side. `ratio` is left:right — e.g. 3 gives the
-// left pane three times the width of the right. Both slots get
-// flexBasis=0 so the ratio holds independent of intrinsic content
-// width.
-export const SplitShell = (props: { left: ReactNode; right: ReactNode; ratio?: number }) => (
-  <box flexDirection="row" flexGrow={1}>
-    <box flexDirection="column" flexGrow={props.ratio ?? 3} flexBasis={0} minWidth={0}>
-      {props.left}
-    </box>
-    <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={0}>
-      {props.right}
-    </box>
-  </box>
-)

@@ -28,7 +28,7 @@ export const enabled = process.env.CONTROL === "1"
 
 const TAB_NAMES: readonly string[] = TABS.map(t => t.name)
 
-export type Bridge = {
+type Bridge = {
   tab: () => number
   setTab: (n: number) => void
   send: (msg: string) => void

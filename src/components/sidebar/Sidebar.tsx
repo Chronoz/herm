@@ -178,8 +178,8 @@ export const Sidebar = memo((props: {
           <Row label="Model" value={info?.model ?? snap?.config?.model.default ?? "—"} />
           <Row label="Provider" value={snap?.config?.model.provider ?? "—"} />
           {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
-          <Row label="Tools" value={String(countToolsets(info?.tools))} />
-          <Row label="Skills" value={String(countToolsets(info?.skills) || (snap?.skills.length ?? 0))} />
+          <Row label="Tools" value={String(countToolsets(info?.tools) || "—")} />
+          <Row label="Skills" value={String(countToolsets(info?.skills) || "—")} />
         </Section>
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {

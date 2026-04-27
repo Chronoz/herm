@@ -9,7 +9,7 @@
  *   toast.error(new Error("oops"))
  */
 
-import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react"
+import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from "react"
 import type { ReactNode } from "react"
 import { useTheme } from "../theme"
 import type { RGBA } from "@opentui/core"
@@ -41,14 +41,20 @@ const DEFAULT_DURATION = 3000
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [items, setItems] = useState<ToastEntry[]>([])
   const counter = useRef(0)
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+
+  useEffect(() => () => {
+    for (const t of timers.current.values()) clearTimeout(t)
+  }, [])
 
   const show = useCallback((opts: ToastOptions) => {
     const id = ++counter.current
     setItems(prev => [...prev, { ...opts, id }])
     const dur = opts.duration ?? DEFAULT_DURATION
-    setTimeout(() => {
+    timers.current.set(id, setTimeout(() => {
+      timers.current.delete(id)
       setItems(prev => prev.filter(t => t.id !== id))
-    }, dur)
+    }, dur))
   }, [])
 
   const error = useCallback((err: Error) => {

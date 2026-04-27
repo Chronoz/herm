@@ -151,7 +151,7 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
 
 // ── Constructors ────────────────────────────────────────────────────
 
-export function userMessage(text: string): Message {
+function userMessage(text: string): Message {
   return {
     id: mid(), role: "user",
     parts: [{ type: "text", content: text, streaming: false }],
@@ -159,7 +159,7 @@ export function userMessage(text: string): Message {
   }
 }
 
-export function systemMessage(text: string): Message {
+function systemMessage(text: string): Message {
   return {
     id: mid(), role: "system",
     parts: [{ type: "text", content: text, streaming: false }],
