@@ -18,9 +18,19 @@ import {
   readMemoryFile,
   readMemoryProviders,
   readEnvFile,
+  readSoul,
+  readLiveSessions,
+  readSystemPromptInfo,
+  readToolsFromLatestSession,
+  queryRecentSessions,
   type HermesConfig,
   type MemoryFileInfo,
   type MemoryProviderInfo,
+  type SoulInfo,
+  type LiveSession,
+  type SystemPromptInfo,
+  type ToolsInfo,
+  type SessionRow,
 } from "../utils/hermes-home"
 
 // ─── State shape ──────────────────────────────────────────────────────
@@ -31,6 +41,11 @@ export interface HomeState {
   userProfile: MemoryFileInfo | null
   memoryProviders: MemoryProviderInfo[]
   env: Record<string, string>
+  soul: SoulInfo | null
+  liveSessions: Record<string, LiveSession>
+  recentSessions: SessionRow[]
+  systemPrompt: SystemPromptInfo | null
+  toolsInfo: ToolsInfo | null
 }
 
 export type SliceKey = keyof HomeState
@@ -68,6 +83,28 @@ const SLICES: Slices = {
   env: {
     read: () => readEnvFile(),
     watch: [hermesPath(".env")],
+  },
+  soul: {
+    read: () => readSoul(),
+    watch: [hermesPath("SOUL.md")],
+  },
+  liveSessions: {
+    read: () => readLiveSessions(),
+    watch: [hermesPath("sessions/sessions.json")],
+  },
+  recentSessions: {
+    read: async () => queryRecentSessions(),
+    watch: [hermesPath("state.db")],
+  },
+  systemPrompt: {
+    read: async () => readSystemPromptInfo(),
+    watch: [hermesPath("state.db")],
+  },
+  toolsInfo: {
+    // Scans sessions/ for newest session_*.json — watching the dir picks
+    // up new files without tracking a specific one.
+    read: () => readToolsFromLatestSession(),
+    watch: [hermesPath("sessions")],
   },
 }
 

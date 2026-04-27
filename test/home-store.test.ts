@@ -14,7 +14,11 @@ const writeConfig = (provider: string) =>
 beforeAll(async () => {
   mkdirSync(HH, { recursive: true })
   mkdirSync(join(HH, "memories"), { recursive: true })
+  mkdirSync(join(HH, "sessions"), { recursive: true })
   writeConfig("mem0")
+  writeFileSync(join(HH, "SOUL.md"), "# Soul\ncontent")
+  writeFileSync(join(HH, "sessions", "sessions.json"),
+    JSON.stringify({ a: { session_id: "sid-1", platform: "tui", active: true } }))
   writeFileSync(join(HH, "mem0.json"), JSON.stringify({ api_key: "***", user_id: "u" }))
   writeFileSync(join(HH, "memories", "MEMORY.md"), "one\n§\ntwo\n§\nthree")
   writeFileSync(join(HH, "memories", "USER.md"), "name: test")
@@ -146,6 +150,23 @@ describe("HomeStore > core", () => {
     await settle(10)
     expect(h.get("env")?.LATE).toBe("arrival")
     expect(fired).toBeGreaterThan(0)
+  })
+
+  test("soul + liveSessions slices read fixtures", async () => {
+    const h = mk()
+    const soul = await h.ensure("soul")
+    expect(soul?.content).toContain("# Soul")
+    expect(soul?.charCount).toBe(14)
+    const live = await h.ensure("liveSessions")
+    expect(live.a?.session_id).toBe("sid-1")
+  })
+
+  test("db-backed slices fall back to empty on missing state.db", async () => {
+    const h = mk()
+    expect(await h.ensure("recentSessions")).toEqual([])
+    expect(await h.ensure("systemPrompt")).toBeNull()
+    // toolsInfo scans sessions/ for session_*.json; fixture has none.
+    expect(await h.ensure("toolsInfo")).toBeNull()
   })
 
   test("close disposes watchers and state", async () => {

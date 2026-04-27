@@ -641,7 +641,7 @@ export async function readToolsFromLatestSession(): Promise<ToolsInfo | null> {
 }
 
 /** Read system prompt from the most recent state.db session that has a full one */
-function readSystemPromptInfo(): SystemPromptInfo | null {
+export function readSystemPromptInfo(): SystemPromptInfo | null {
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
     // Short prompts (~700 chars) are the generic fallback without SOUL/memory/skills.
