@@ -7,6 +7,7 @@ import { memo, useEffect, useRef, useState } from "react"
 import type { BorderCharacters, MouseEvent } from "@opentui/core"
 import type { Message, Part, ThinkingPart, ToolPart } from "../../types/message"
 import { Tool } from "./tool"
+import { usePref } from "../../utils/preferences"
 import { useTheme } from "../../theme"
 
 export const CLOUD_MIN = 12
@@ -82,6 +83,7 @@ export const ThoughtCloud = memo((props: {
   onClose: () => void
 }) => {
   const theme = useTheme().theme
+  const detail = usePref("toolDetails") ?? "expanded"
   const src = props.pick ?? latest(props.messages)
   const body = parts(src)
   const pinned = !!props.pick
@@ -124,6 +126,9 @@ export const ThoughtCloud = memo((props: {
               : props.status || "· · ·"}
           </text>
         </box>
+        {detail !== "expanded" ? (
+          <box marginRight={1}><text fg={theme.textMuted}>⟨{detail}⟩</text></box>
+        ) : null}
         <box height={1} onMouseDown={props.onClose}>
           <text fg={theme.textMuted}>✕</text>
         </box>
@@ -135,7 +140,7 @@ export const ThoughtCloud = memo((props: {
               ? <box key={(p as ThinkingPart).key ?? `th-${i}`} minHeight={1}>
                   <text fg={theme.textMuted} wrapMode="word">{(p as ThinkingPart).content}</text>
                 </box>
-              : <Tool key={(p as ToolPart).id || `t-${i}`} tool={p as ToolPart} />,
+              : <Tool key={(p as ToolPart).id || `t-${i}`} tool={p as ToolPart} detail={detail} />,
           )}
         </box>
       </scrollbox>

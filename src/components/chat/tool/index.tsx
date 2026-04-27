@@ -11,6 +11,7 @@
 
 import { memo } from "react"
 import type { ToolPart as Part } from "../../../types/message"
+import type { DetailMode } from "../../../utils/preferences"
 import { InlineTool, BlockTool } from "./frame"
 import { DiffBlock, isDiff } from "../DiffBlock"
 import { Subagent } from "./Subagent"
@@ -42,29 +43,38 @@ const Inline = memo(({ tool }: { tool: Part }) => {
   )
 })
 
-const FileEdit = memo(({ tool }: { tool: Part }) => {
+const FileEdit = memo(({ tool, detail }: { tool: Part; detail: DetailMode }) => {
   const theme = useTheme().theme
   const diff = tool.diff ?? (isDiff(tool.result) ? tool.result : undefined)
   if (!diff) return <Inline tool={tool} />
   const lines = diff.split("\n")
   const add = lines.filter(l => /^\+(?!\+\+)/.test(l)).length
   const del = lines.filter(l => /^-(?!--)/.test(l)).length
+  const delta = (
+    <>
+      <span fg={theme.success}>+{add}</span>
+      <span fg={theme.textMuted}> / </span>
+      <span fg={theme.error}>-{del}</span>
+    </>
+  )
+  if (detail === "collapsed") {
+    return (
+      <InlineTool part={tool}>
+        {label(tool.name)} {short(tool.preview, 60)}  {delta}
+      </InlineTool>
+    )
+  }
   return (
     <BlockTool part={tool} title={title(tool)}>
       <box><DiffBlock text={diff} /></box>
-      <box height={1}>
-        <text>
-          <span fg={theme.success}>+{add}</span>
-          <span fg={theme.textMuted}> / </span>
-          <span fg={theme.error}>-{del}</span>
-        </text>
-      </box>
+      <box height={1}><text>{delta}</text></box>
     </BlockTool>
   )
 })
 
-export const Tool = memo(({ tool }: { tool: Part }) => {
+export const Tool = memo(({ tool, detail = "expanded" }: { tool: Part; detail?: DetailMode }) => {
+  if (detail === "hidden" && tool.status !== "running") return null
   if (tool.trail || tool.name === "delegate_task") return <Subagent tool={tool} />
-  if (FILE.has(tool.name) || tool.diff || isDiff(tool.result)) return <FileEdit tool={tool} />
+  if (FILE.has(tool.name) || tool.diff || isDiff(tool.result)) return <FileEdit tool={tool} detail={detail} />
   return <Inline tool={tool} />
 })

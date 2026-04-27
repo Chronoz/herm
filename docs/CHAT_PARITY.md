@@ -94,14 +94,19 @@ apply_patch, todowrite, question, skill).
               cycle, theme-colored.
         → src/ui/spinner.tsx (shared; also used by B4)
 
-[ ] A8  Trail details-mode toggle
+[x] A8  Trail details-mode toggle
         what: ink `detailsMode: hidden|collapsed|expanded`. (pt
               `/verbose` is the regression-catch that confirms the
               feature predates ink.)
         how:  oc `kv.json tool_details_visibility` bool + per-message
               expand state — a single kv-persisted tri-state, cycled
               by a keybind registered in `context/keybind.tsx`.
-        → preferences key `toolDetails`, cycled in useAppKeys
+        → preferences key `toolDetails`; cycled via command palette
+          "Tool Details" entry (oc default keybind is "none" so no
+          dedicated key). ThoughtCloud subscribes via usePref(),
+          passes `detail` to each <Tool>. Semantics: hidden = no
+          completed-tool rows (running stays visible), collapsed =
+          FileEdit blocks become inline+delta, expanded = full diff.
 
 [x] A9  Word-level intra-line diff highlight
         what: n/a (neither pt nor ink does this — pure oc polish).
@@ -284,7 +289,7 @@ Wave 4 — oc transcript actions:
 Backlog: B3 D5 E6 F4
 Won't-do: D3
 
-Tally: 26 done, 4 partial, 7 open, 1 declined.
+Tally: 27 done, 4 partial, 6 open, 1 declined.
 ⚠ blocked on wire (UPSTREAM.md `tool.start/.complete`): A2 A4 A5 (+A3 read body)
 † (no oc analogue): B4 C4 D12 F4
 

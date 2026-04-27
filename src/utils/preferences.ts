@@ -14,8 +14,15 @@
 import { homedir } from "os"
 import { join } from "path"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
+import { useSyncExternalStore } from "react"
 
 // ─── Schema ──────────────────────────────────────────────────────────
+
+export type DetailMode = "hidden" | "collapsed" | "expanded"
+
+const DETAIL_CYCLE: readonly DetailMode[] = ["expanded", "collapsed", "hidden"]
+export const cycleDetail = (m: DetailMode | undefined): DetailMode =>
+  DETAIL_CYCLE[(DETAIL_CYCLE.indexOf(m ?? "expanded") + 1) % DETAIL_CYCLE.length]
 
 interface TuiPreferences {
   /** JSON schema reference (for editor autocomplete) */
@@ -36,6 +43,8 @@ interface TuiPreferences {
   eikonPath?: string
   /** Spinner/avatar frame animations (off → static glyphs) */
   animations?: boolean
+  /** Thought-cloud tool trail verbosity */
+  toolDetails?: DetailMode
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {
@@ -51,6 +60,11 @@ const CONFIG_FILE = join(CONFIG_DIR, "tui.json")
 // ─── Load ────────────────────────────────────────────────────────────
 
 let cached: TuiPreferences | null = null
+
+/** Test-only: drop the cached snapshot so the next load() re-reads disk. */
+export function reset(): void {
+  cached = null
+}
 
 /**
  * Load preferences from disk. Returns cached copy on subsequent calls.
@@ -112,4 +126,23 @@ export function get<K extends keyof TuiPreferences>(key: K): TuiPreferences[K] {
 /** Set a single preference value and persist */
 export function set<K extends keyof TuiPreferences>(key: K, value: TuiPreferences[K]): void {
   save({ [key]: value } as Partial<TuiPreferences>)
+  for (const l of listeners) l()
+}
+
+// ─── Reactive ────────────────────────────────────────────────────────
+
+const listeners = new Set<() => void>()
+
+function subscribe(l: () => void): () => void {
+  listeners.add(l)
+  return () => listeners.delete(l)
+}
+
+/**
+ * Subscribe a component to a preference key. Re-renders on set().
+ * Writes go through the imperative `set(key, value)` — this hook is
+ * read-only by design so writes always persist through one path.
+ */
+export function usePref<K extends keyof TuiPreferences>(key: K): TuiPreferences[K] {
+  return useSyncExternalStore(subscribe, () => load()[key])
 }
