@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback, memo } from "react"
+import { useState, useCallback, memo } from "react"
 import { useKeyboard } from "@opentui/react"
-import {
-  readEnvFile, writeEnvVar, removeEnvVar, ENV_CATALOG,
-} from "../utils/hermes-home"
+import { writeEnvVar, removeEnvVar, ENV_CATALOG } from "../utils/hermes-home"
+import { useHome, home } from "../home"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
@@ -57,15 +56,12 @@ export const Env = memo((props: { focused?: boolean }) => {
   const dialog = useDialog()
   const toast = useToast()
 
-  const [vars, setVars] = useState<Record<string, string>>({})
+  const vars = useHome("env") ?? {}
   const [sel, setSel] = useState(0)
   const [reveal, setReveal] = useState<Set<string>>(new Set())
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState("")
-
-  const load = useCallback(async () => setVars(await readEnvFile()), [])
-  useEffect(() => { load() }, [load])
 
   // Catalog keys plus any extras present in .env that aren't catalogued.
   const known = new Set(ENV_CATALOG.flatMap(g => g.keys))
@@ -93,9 +89,9 @@ export const Env = memo((props: { focused?: boolean }) => {
     const val = await openTextPrompt(dialog, { title: `Edit ${key}`, label: "Value", initial })
     if (val == null) return
     await writeEnvVar(key, val)
-    await load()
+    home.invalidate("env")
     toast.show({ variant: "success", message: `${key} saved` })
-  }, [dialog, load, toast])
+  }, [dialog, toast])
 
   const add = useCallback(async () => {
     const key = await openTextPrompt(dialog, { title: "New Variable", label: "Name (e.g. FOO_API_KEY)" })
@@ -103,9 +99,9 @@ export const Env = memo((props: { focused?: boolean }) => {
     const val = await openTextPrompt(dialog, { title: `Set ${key}`, label: "Value" })
     if (val == null) return
     await writeEnvVar(key, val)
-    await load()
+    home.invalidate("env")
     toast.show({ variant: "success", message: `${key} added` })
-  }, [dialog, load, toast])
+  }, [dialog, toast])
 
   const del = useCallback(async (key: string) => {
     const ok = await openConfirm(dialog, {
@@ -115,9 +111,9 @@ export const Env = memo((props: { focused?: boolean }) => {
     })
     if (!ok) return
     await removeEnvVar(key)
-    await load()
+    home.invalidate("env")
     toast.show({ variant: "success", message: `${key} removed` })
-  }, [dialog, load, toast])
+  }, [dialog, toast])
 
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
@@ -144,7 +140,7 @@ export const Env = memo((props: { focused?: boolean }) => {
 
     if (key.name === "up") return setSel(p => Math.max(0, p - 1))
     if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
-    if (key.raw === "r") return void load()
+    if (key.raw === "r") return home.invalidate("env")
     if (key.raw === "n") return void add()
     if (key.raw === "v") {
       return setReveal(s => s.size === setKeys.length && setKeys.length > 0

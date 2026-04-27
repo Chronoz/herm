@@ -6,8 +6,8 @@
  * watcher on first pull. `invalidate(k)` drops the value, re-reads if there
  * are subscribers, and cascades to dependents.
  *
- * Pilot scope: `config` and `memoryProviders`. Remaining readers migrate
- * in from utils/hermes-home.ts as they're converted to collectors.
+ * Slices registered below; remaining readers migrate in from
+ * utils/hermes-home.ts as they're converted to collectors.
  */
 
 import { watch, existsSync, statSync, type FSWatcher } from "node:fs"
@@ -17,6 +17,7 @@ import {
   readConfig,
   readMemoryFile,
   readMemoryProviders,
+  readEnvFile,
   type HermesConfig,
   type MemoryFileInfo,
   type MemoryProviderInfo,
@@ -29,6 +30,7 @@ export interface HomeState {
   memory: MemoryFileInfo | null
   userProfile: MemoryFileInfo | null
   memoryProviders: MemoryProviderInfo[]
+  env: Record<string, string>
 }
 
 export type SliceKey = keyof HomeState
@@ -62,6 +64,10 @@ const SLICES: Slices = {
   memoryProviders: {
     read: (d) => readMemoryProviders(d.config?.memory?.provider ?? ""),
     deps: ["config"],
+  },
+  env: {
+    read: () => readEnvFile(),
+    watch: [hermesPath(".env")],
   },
 }
 
@@ -129,8 +135,9 @@ export class HomeStore {
   }
 
   /**
-   * Drop the cached value. If there are active subscribers, re-read.
-   * Cascades to every slice that declared `k` as a dep.
+   * Drop the cached value; re-read if there are subscribers. Cascades to
+   * dependents. Call after TUI-driven writes so the UI reflects the change
+   * without waiting on a watch event.
    */
   invalidate(k: SliceKey): void {
     if (!(k in this.data) && !this.inflight.has(k)) return
@@ -166,13 +173,21 @@ export class HomeStore {
     for (const p of paths) {
       // Watching a file by path is unreliable across rewrites on Linux
       // (inotify binds to the inode). Watch the parent dir and filter on
-      // basename; for directory targets watch the dir itself.
-      let dir = p
-      let name: string | null = null
+      // basename so rename-into-place editors still fire. Only watch the
+      // path itself when it's an existing directory.
+      //
+      // Known runtime gap: Bun's fs.watch(dir) never emits for entries
+      // created after the watcher was armed (Node does). A target that
+      // didn't exist at first ensure stays non-reactive for the process
+      // lifetime. In practice only an optional file absent at launch is
+      // affected; in-TUI writes call invalidate() which re-reads directly,
+      // and `r` forces a manual refresh for the rare external-edit case.
+      let dir = dirname(p)
+      let name: string | null = basename(p)
       try {
-        if (existsSync(p) && statSync(p).isFile()) {
-          dir = dirname(p)
-          name = basename(p)
+        if (existsSync(p) && statSync(p).isDirectory()) {
+          dir = p
+          name = null
         }
       } catch {
         continue
