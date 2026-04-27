@@ -81,13 +81,14 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    // Popover owns up/down/tab/escape while open; other keys fall through
-    // to the <input> renderable for continued filtering. Popovers are
+    // Popover owns up/down/tab/escape while open; stopPropagation keeps the
+    // textarea renderable from also moving the cursor on the same keypress.
+    // Other keys fall through for continued filtering. Popovers are
     // suppressed during streaming (composer input queues instead).
     if (!o.streaming && c?.popOpen()) {
       if (key.name === "escape") return c.popCancel()
-      if (key.name === "up") return c.popNav(-1)
-      if (key.name === "down") return c.popNav(1)
+      if (key.name === "up") { c.popNav(-1); key.stopPropagation(); return }
+      if (key.name === "down") { c.popNav(1); key.stopPropagation(); return }
       if (key.name === "tab") return c.popAccept()
       return
     }
