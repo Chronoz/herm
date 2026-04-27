@@ -209,13 +209,14 @@ against sections above; dedupe as they're picked up.
 
 ### Context tab
 
-[ ] X1  MVP: claude-code-style context viewer.
-[ ] X2  Granular per-block detail.
-[ ] X3  Grid visualization with dynamic LoD.
+[x] X1  MVP: claude-code-style context viewer.
+[~] X2  Granular per-block detail — two levels drill; third
+        (conversation → per-message) pending (herm-end.2).
+[ ] X3  Grid visualization with dynamic LoD — needs definition.
 [ ] X4  Expunge context blocks; lock non-expungeable (system prompt).
 [ ] X5  Compression management — model selector.
 [ ] X6  Compression management — default behavior/prompt.
-[ ] X7  Grid stickied left, content pane scrollable.
+[x] X7  Grid stickied left, content pane scrollable.
 
 ### Chat tab
 
