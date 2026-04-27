@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
-import { useKeyboard } from "@opentui/react";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
@@ -9,6 +9,7 @@ import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { openTextPrompt } from "../dialogs/text-prompt";
 import { trunc, ago, until } from "../ui/fmt";
+import { readCronOutput, type CronOutput } from "../utils/hermes-home";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -115,39 +116,54 @@ const JobRow = memo((props: {
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 
-const DetailPanel = memo((props: { job: CronJob }) => {
+const DetailPanel = memo((props: { job: CronJob; reloadKey: number }) => {
   const theme = useTheme().theme;
   const j = props.job;
+  const [output, setOutput] = useState<CronOutput | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    readCronOutput(j.id, 30).then(o => { if (live) setOutput(o) });
+    return () => { live = false };
+  }, [j.id, props.reloadKey]);
 
   return (
-    <box
-      flexDirection="column" padding={1} border
-      borderColor={theme.border} backgroundColor={theme.backgroundPanel} width="40%"
-    >
-      <box height={1}><text fg={theme.primary}><strong>Job Detail</strong></text></box>
-      <box height={1} />
-      <box height={1}><text fg={theme.accent}><strong>{j.name || j.id}</strong></text></box>
-      <box height={1} />
-      <KVBlock rows={[
-        ["ID", j.id],
-        ["State", j.enabled ? "active" : "paused", j.enabled ? theme.success : theme.warning],
-        ["Schedule", j.schedule || "—"],
-        ["Repeat", j.repeat],
-        ["Deliver", j.deliver ?? "local"],
-        ["Last Run", j.last_run ? `${last(j.last_run)}  ·  ${j.last_status ?? "?"}` : "never",
-          j.last_status === "error" ? theme.error : undefined],
-        ["Next Run", j.enabled ? next(j.next_run) : "paused"],
-        ["Model", j.model],
-        ["Skills", j.skills?.length ? j.skills.join(", ") : undefined],
-        ["Workdir", j.workdir],
-        ["Script", j.script],
-        ["Paused", j.paused_reason],
-        ["Error", j.last_error, theme.error],
-      ]} />
-      <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>Prompt</text></box>
-      <text wrapMode="word"><span fg={theme.text}>{j.prompt}</span></text>
-    </box>
+    <TabShell title="Job Detail" hint="" grow={2}>
+      <scrollbox scrollY flexGrow={1}>
+        <box flexDirection="column" width="100%">
+          <box minHeight={1}>
+            <text wrapMode="word"><span fg={theme.accent}><strong>{j.name || j.id}</strong></span></text>
+          </box>
+          <box height={1} />
+          <KVBlock rows={[
+            ["ID", j.id],
+            ["State", j.enabled ? "active" : "paused", j.enabled ? theme.success : theme.warning],
+            ["Schedule", j.schedule || "—"],
+            ["Repeat", j.repeat],
+            ["Deliver", j.deliver ?? "local"],
+            ["Last Run", j.last_run ? `${last(j.last_run)}  ·  ${j.last_status ?? "?"}` : "never",
+              j.last_status === "error" ? theme.error : undefined],
+            ["Next Run", j.enabled ? next(j.next_run) : "paused"],
+            ["Model", j.model],
+            ["Skills", j.skills?.length ? j.skills.join(", ") : undefined],
+            ["Workdir", j.workdir],
+            ["Script", j.script],
+            ["Paused", j.paused_reason],
+            ["Error", j.last_error, theme.error],
+          ]} />
+          <box height={1} />
+          <box height={1}><text fg={theme.textMuted}>Prompt</text></box>
+          <text wrapMode="word"><span fg={theme.text}>{j.prompt}</span></text>
+          <box height={1} />
+          <box height={1}>
+            <text fg={theme.textMuted}>Last Output{output ? `  ·  ${ago(output.at.getTime() / 1000)}` : ""}</text>
+          </box>
+          {output
+            ? <text wrapMode="word"><span fg={theme.text}>{output.text}</span></text>
+            : <text fg={theme.textMuted}>(none yet)</text>}
+        </box>
+      </scrollbox>
+    </TabShell>
   );
 });
 
@@ -158,16 +174,22 @@ export const Cron = memo((props: { focused?: boolean }) => {
   const gw = useGateway();
   const dialog = useDialog();
   const toast = useToast();
+  const dims = useTerminalDimensions();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [sel, setSel] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const live = useRef({ jobs, sel });
   live.current = { jobs, sel };
 
   const load = useCallback(() => {
     gw.request<{ jobs?: RawJob[] }>("cron.manage", { action: "list" })
-      .then(res => { setJobs((res.jobs ?? []).map(normalize)); setErr(null); })
+      .then(res => {
+        setJobs((res.jobs ?? []).map(normalize));
+        setErr(null);
+        setReloadKey(k => k + 1);
+      })
       .catch(e => setErr(e instanceof Error ? e.message : String(e)));
   }, [gw]);
 
@@ -237,10 +259,11 @@ export const Cron = memo((props: { focused?: boolean }) => {
   });
 
   const job = jobs[sel] ?? null;
+  const showDetail = dims.width >= 140 && job !== null;
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <TabShell title={`Cron Jobs (${jobs.length})`} error={err}
+      <TabShell title={`Cron Jobs (${jobs.length})`} error={err} grow={3}
                 hint="↑↓ nav  n new  x run  Space pause/resume  d delete  r refresh">
         {jobs.length === 0 ? (
           <box key="empty" flexGrow={1}>
@@ -261,7 +284,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
         )}
       </TabShell>
 
-      {job ? <DetailPanel job={job} /> : null}
+      {showDetail ? <DetailPanel job={job} reloadKey={reloadKey} /> : null}
     </box>
   );
 });

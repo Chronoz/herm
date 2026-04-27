@@ -9,6 +9,7 @@
  */
 
 import { Database } from "bun:sqlite";
+import { readdir, stat } from "node:fs/promises";
 import { homedir } from "os";
 import { parse as parseYaml } from "yaml";
 import * as perf from "./perf";
@@ -605,6 +606,38 @@ export function readSystemPromptInfo(): SystemPromptInfo | null {
   } catch {
     return null;
   }
+}
+
+export interface CronOutput {
+  at: Date
+  path: string
+  text: string
+}
+
+/** Read the most recent cron output for a job, tail-truncated. */
+export async function readCronOutput(
+  jobId: string,
+  tailLines = 40,
+): Promise<CronOutput | null> {
+  const dir = hermesPath(`cron/output/${jobId}`);
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return null;
+  }
+  const md = entries.filter(f => f.endsWith(".md")).sort().reverse();
+  if (md.length === 0) return null;
+  const path = `${dir}/${md[0]}`;
+  const full = await Bun.file(path).text();
+  const lines = full.trimEnd().split("\n");
+  const text =
+    lines.length > tailLines
+      ? `…(${lines.length - tailLines} earlier lines)\n` +
+        lines.slice(-tailLines).join("\n")
+      : full.trimEnd();
+  const st = await stat(path);
+  return { at: st.mtime, path, text };
 }
 
 // ─── Env File CRUD ──────────────────────────────────────────────────

@@ -1,8 +1,11 @@
 import { describe, test, expect } from "bun:test"
 import { act } from "react"
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { mountNode, until, MockGateway } from "./harness"
 import { Cron } from "../src/tabs/Cron"
 
+const HH = process.env.HERMES_HOME!
 const iso = (dsec: number) => new Date(Date.now() + dsec * 1000).toISOString()
 const ago = (s: number) => iso(-s)
 const hence = (s: number) => iso(s)
@@ -91,6 +94,33 @@ describe("Cron tab", () => {
     expect(f).toMatch(/Next Run\s+paused/)
     // Conditional rows absent for this job
     expect(f).not.toContain("claude-opus")
+    t.destroy()
+  })
+
+  test("detail pane shows last-output tail; '(none yet)' otherwise", async () => {
+    const dir = join(HH, "cron", "output", "a1b2c3")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, "20260426_090000.md"), "## Digest\nitem one\nitem two")
+
+    const gw = mk()
+    const t = await mountNode(<Cron focused />, { gw })
+    await until(t, () => t.frame().includes("Last Output"))
+    await until(t, () => t.frame().includes("item two"))
+    expect(t.frame()).toContain("## Digest")
+
+    // d4e5f6 has no output dir → '(none yet)'
+    act(() => t.keys.pressArrow("down"))
+    await until(t, () => /ID\s+d4e5f6/.test(t.frame()))
+    await until(t, () => t.frame().includes("(none yet)"))
+    expect(t.frame()).not.toContain("item two")
+    t.destroy()
+  })
+
+  test("detail pane hidden below 140 cols", async () => {
+    const gw = mk()
+    const t = await mountNode(<Cron focused />, { gw, width: 120 })
+    await until(t, () => t.frame().includes("Cron Jobs (3)"))
+    expect(t.frame()).not.toContain("Job Detail")
     t.destroy()
   })
 

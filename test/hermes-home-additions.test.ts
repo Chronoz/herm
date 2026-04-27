@@ -2,6 +2,7 @@ import { describe, test, expect, beforeAll } from "bun:test"
 import { mkdirSync, writeFileSync } from "fs"
 import { join } from "path"
 import { count as tokenCount } from "../src/utils/tokens"
+import { readCronOutput } from "../src/utils/hermes-home"
 
 const HH = process.env.HERMES_HOME!
 
@@ -52,5 +53,23 @@ describe("hermes-home readers", () => {
     expect(typeof redactedKey).toBe("string")
     expect(redactedKey).not.toContain("abcdef1234567890")
     expect(redactedKey.endsWith("...")).toBe(true)
+  })
+
+  test("readCronOutput: null when no dir; tail-truncates newest file", async () => {
+    expect(await readCronOutput("nope")).toBeNull()
+
+    const dir = join(HH, "cron", "output", "jx")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, "20260101_000000.md"), "old")
+    const body = Array.from({ length: 50 }, (_, i) => `line ${i}`).join("\n")
+    writeFileSync(join(dir, "20260102_000000.md"), body)
+
+    const out = await readCronOutput("jx", 10)
+    expect(out).not.toBeNull()
+    expect(out!.text).toContain("…(40 earlier lines)")
+    expect(out!.text).toContain("line 49")
+    expect(out!.text).not.toContain("line 39")
+    expect(out!.text).not.toContain("old")
+    expect(out!.path).toContain("20260102")
   })
 })
