@@ -20,9 +20,16 @@ type CronJob = {
   enabled: boolean
   state: string
   deliver: string
+  repeat?: string
   last_run?: string
   next_run?: string
+  last_status?: "ok" | "error"
   last_error?: string
+  paused_reason?: string
+  model?: string
+  skills?: string[]
+  workdir?: string
+  script?: string
 }
 
 type RawJob = {
@@ -35,9 +42,16 @@ type RawJob = {
   enabled?: boolean
   state?: string
   deliver?: string
+  repeat?: string
   last_run_at?: string
   next_run_at?: string
+  last_status?: string
   last_delivery_error?: string
+  paused_reason?: string
+  model?: string
+  skills?: string[]
+  workdir?: string
+  script?: string
 }
 
 const normalize = (j: RawJob): CronJob => ({
@@ -48,9 +62,16 @@ const normalize = (j: RawJob): CronJob => ({
   enabled: j.enabled ?? true,
   state: j.state ?? "scheduled",
   deliver: j.deliver ?? "local",
+  repeat: j.repeat,
   last_run: j.last_run_at,
   next_run: j.next_run_at,
+  last_status: j.last_status === "ok" || j.last_status === "error" ? j.last_status : undefined,
   last_error: j.last_delivery_error,
+  paused_reason: j.paused_reason,
+  model: j.model,
+  skills: j.skills,
+  workdir: j.workdir,
+  script: j.script,
 })
 
 // gateway returns ISO timestamps; shared `ago`/`until` want unix seconds
@@ -69,20 +90,24 @@ const JobRow = memo((props: {
   const theme = useTheme().theme;
   const j = props.job;
   const bg = props.selected ? theme.backgroundElement : undefined;
+  // ●/○ encodes enabled; color encodes last-run outcome.
   const glyph = j.enabled ? "●" : "○";
+  const glyphColor = !j.enabled ? theme.textMuted
+    : j.last_status === "error" ? theme.error
+    : j.last_status === "ok" ? theme.success
+    : theme.textMuted;
 
   return (
     <box backgroundColor={bg} onMouseDown={props.onSelect} onMouseOver={props.onHover}>
       <text>
         <span fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</span>
-        <span fg={j.enabled ? theme.success : theme.textMuted}>{glyph} </span>
+        <span fg={glyphColor}>{glyph} </span>
         <span fg={props.selected ? theme.accent : theme.text}>
           {trunc(j.name || j.id, 20).padEnd(22)}
         </span>
         <span fg={theme.textMuted}>{(j.schedule || "—").padEnd(18)}</span>
         <span fg={theme.textMuted}>{` last: ${last(j.last_run).padEnd(10)}`}</span>
         <span fg={j.enabled ? theme.text : theme.textMuted}>{` next: ${(j.enabled ? next(j.next_run) : "paused").padEnd(10)}`}</span>
-        {j.state === "error" ? <span fg={theme.error}>{"  ERR"}</span> : null}
       </text>
     </box>
   );
@@ -107,13 +132,20 @@ const DetailPanel = memo((props: { job: CronJob }) => {
         ["ID", j.id],
         ["State", j.enabled ? "active" : "paused", j.enabled ? theme.success : theme.warning],
         ["Schedule", j.schedule || "—"],
+        ["Repeat", j.repeat],
         ["Deliver", j.deliver ?? "local"],
-        ["Last Run", j.last_run ?? "—"],
-        ["Next Run", j.next_run ?? "—"],
+        ["Last Run", j.last_run ? `${last(j.last_run)}  ·  ${j.last_status ?? "?"}` : "never",
+          j.last_status === "error" ? theme.error : undefined],
+        ["Next Run", j.enabled ? next(j.next_run) : "paused"],
+        ["Model", j.model],
+        ["Skills", j.skills?.length ? j.skills.join(", ") : undefined],
+        ["Workdir", j.workdir],
+        ["Script", j.script],
+        ["Paused", j.paused_reason],
         ["Error", j.last_error, theme.error],
       ]} />
       <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>Prompt:</text></box>
+      <box height={1}><text fg={theme.textMuted}>Prompt</text></box>
       <text wrapMode="word"><span fg={theme.text}>{j.prompt}</span></text>
     </box>
   );
@@ -152,10 +184,19 @@ export const Cron = memo((props: { focused?: boolean }) => {
       title: "New Cron Job", label: "Prompt",
     });
     if (prompt === null) return;
+    // name left blank — server derives one from the prompt text.
     gw.request("cron.manage", { action: "add", name: "", schedule, prompt })
       .then(() => { toast.show({ variant: "success", message: "Job created" }); load(); })
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
   }, [gw, dialog, toast, load]);
+
+  const run = useCallback(() => {
+    const j = live.current.jobs[live.current.sel];
+    if (!j) return;
+    gw.request("cron.manage", { action: "run", name: j.id })
+      .then(() => { toast.show({ variant: "success", message: `Queued ${j.name || j.id}` }); load(); })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
+  }, [gw, toast, load]);
 
   const toggle = useCallback(() => {
     const j = live.current.jobs[live.current.sel];
@@ -190,6 +231,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
     if (key.name === "down") return setSel(s => Math.min(jobs.length - 1, s + 1));
     if (key.raw === "r") return load();
     if (key.raw === "n") return void create();
+    if (key.raw === "x") return run();
     if (key.name === "space") return toggle();
     if (key.raw === "d" || key.name === "delete") return remove();
   });
@@ -199,7 +241,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell title={`Cron Jobs (${jobs.length})`} error={err}
-                hint="↑↓ nav  n new  Space pause/resume  d delete  r refresh">
+                hint="↑↓ nav  n new  x run  Space pause/resume  d delete  r refresh">
         {jobs.length === 0 ? (
           <box key="empty" flexGrow={1}>
             <text fg={theme.textMuted}>No cron jobs. Press n to create one.</text>
