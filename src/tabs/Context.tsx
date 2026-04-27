@@ -340,8 +340,10 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   // `home.config.compression.threshold` is the single source of truth; server
   // reads the same key at run_agent.py:1736.
   const thresholdPct = home?.config?.compression?.threshold ?? 0.5
-  const thresholdCol = Math.min(COLS - 1, Math.max(0, Math.round(thresholdPct * COLS)))
-  const overThreshold = pct >= Math.round(thresholdPct * 100)
+  // Linear cell index (0..255) at which compression threshold lies. Cells with
+  // row*COLS+col >= thresholdIdx render with an X overlay (⊠) to signal "this
+  // content is in the danger zone and will be compressed at next threshold hit".
+  const thresholdIdx = Math.min(COLS * COLS, Math.max(0, Math.round(thresholdPct * COLS * COLS)))
   const compressions = info?.usage?.compressions ?? 0
 
   // Parse + build
@@ -530,28 +532,25 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
               <text fg={theme.info}>◀ Back to overview</text>
             </box>
           ) : null}
-          {/* Threshold ruler — marker at threshold_col with over-threshold tint
-              and '×N compressed' badge when compressions > 0. Aligned to the
-              grid below via +1 left margin (matching the border inset) and
-              paddingX=2 + 2-cell column width (matching grid paddingX). */}
-          <box flexDirection="row" height={1} paddingX={2} marginLeft={1}>
-            {[...Array(COLS)].map((_, col) => (
-              <box key={col} width={2}>
-                <text fg={col === thresholdCol ? (overThreshold ? theme.error : theme.warning) : theme.textMuted}>
-                  {col === thresholdCol ? "│ " : "  "}
-                </text>
-              </box>
-            ))}
-            {compressions > 0 ? (
-              <text fg={theme.warning}> ×{compressions}</text>
-            ) : null}
-          </box>
+          {/* Compression badge — shown inline above the grid when any
+              compression events have fired this session. */}
+          {compressions > 0 ? (
+            <box height={1} marginBottom={1}>
+              <text fg={theme.warning}>×{compressions} compressed</text>
+            </box>
+          ) : null}
           <box borderStyle="single" paddingTop={1} paddingX={2}>
             {[...Array(COLS)].map((_, row) => (
               <box key={row} flexDirection="row" height={1}>
                 {[...Array(COLS)].map((_, col) => {
                   const cell = grid[row * COLS + col]
                   const hl = hovered === cell.id || selected === cell.id
+                  // Cells at or past the compression threshold index get an X
+                  // overlay (⊠). Keeps the category color so viewers can still
+                  // see what kind of content is in the danger zone.
+                  const idx = row * COLS + col
+                  const past = idx >= thresholdIdx
+                  const glyph = past ? "⊠" : cell.id === "free" ? "◻" : "◼"
                   return (
                     <box
                       height={1} width={2} key={col}
@@ -561,7 +560,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
                       onMouseDown={() => click(cell.id)}
                     >
                       <text fg={clr(cell.id, theme)}>
-                        {cell.id === "free" ? "◻" : "◼"}
+                        {glyph}
                       </text>
                     </box>
                   )
