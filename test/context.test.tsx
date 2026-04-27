@@ -48,7 +48,7 @@ describe("Context tab", () => {
     t.destroy()
   })
 
-  // herm-1ng: in-grid threshold marker (⊠ past threshold) + ×N badge.
+  // herm-1ng: in-grid threshold marker (◼ in textMuted past threshold) + ×N badge.
   describe("threshold marker (herm-1ng)", () => {
     test("renders '×N compressed' badge when compressions > 0", async () => {
       const info: SessionInfo = {
@@ -79,11 +79,14 @@ describe("Context tab", () => {
       t.destroy()
     })
 
-    test("cells past threshold render ⊠ glyph in the grid", async () => {
+    test("cells past threshold render ◼ in the grid", async () => {
       const info: SessionInfo = { model: "claude-opus-4-7", context_max: 200_000 }
       const t = await mountNode(<Context info={info} />)
-      // Default threshold 0.5 → cells 128..255 (bottom half) render as ⊠.
-      expect(strip(t.frame())).toContain("⊠")
+      const f = strip(t.frame())
+      // All-free fixture, threshold 0.5 → rows 0-7 are ◻, rows 8-15 are ◼.
+      // Assert on a run so the Breakdown legend's lone ◼ can't satisfy it.
+      expect(f).toContain("◼ ◼ ◼ ◼")
+      expect(f).toContain("◻ ◻ ◻ ◻")
       t.destroy()
     })
   })

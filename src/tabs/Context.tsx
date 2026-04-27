@@ -340,9 +340,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
   // `home.config.compression.threshold` is the single source of truth; server
   // reads the same key at run_agent.py:1736.
   const thresholdPct = home?.config?.compression?.threshold ?? 0.5
-  // Linear cell index (0..255) at which compression threshold lies. Cells with
-  // row*COLS+col >= thresholdIdx render with an X overlay (⊠) to signal "this
-  // content is in the danger zone and will be compressed at next threshold hit".
+  // Linear cell index (0..255) at threshold; cells at/past render ◼ in textMuted.
   const thresholdIdx = Math.min(COLS * COLS, Math.max(0, Math.round(thresholdPct * COLS * COLS)))
   const compressions = info?.usage?.compressions ?? 0
 
@@ -462,10 +460,8 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
       {output > 0 && !drilled ? (
         <text><span fg={theme.success}>◼</span> Output — {fmt(output)} tokens</text>
       ) : null}
-      {/* Glyph legend — documents the ⊠ threshold overlay used in the grid.
-          Color is muted so the row reads as a footnote, not a data line. */}
       <text>
-        <span fg={theme.textMuted}>⊠ past compression threshold ({Math.round(thresholdPct * 100)}%)</span>
+        <span fg={theme.textMuted}>◼ past compression threshold ({Math.round(thresholdPct * 100)}%)</span>
       </text>
     </box>
   )
@@ -550,12 +546,9 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
                 {[...Array(COLS)].map((_, col) => {
                   const cell = grid[row * COLS + col]
                   const hl = hovered === cell.id || selected === cell.id
-                  // Cells at or past the compression threshold index get an X
-                  // overlay (⊠). Keeps the category color so viewers can still
-                  // see what kind of content is in the danger zone.
-                  const idx = row * COLS + col
-                  const past = idx >= thresholdIdx
-                  const glyph = past ? "⊠" : cell.id === "free" ? "◻" : "◼"
+                  // Past-threshold cells: ◼ in textMuted; hover still shows category color.
+                  const past = row * COLS + col >= thresholdIdx
+                  const glyph = !past && cell.id === "free" ? "◻" : "◼"
                   return (
                     <box
                       height={1} width={2} key={col}
@@ -564,7 +557,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
                       onMouseOut={() => setHovered(null)}
                       onMouseDown={() => click(cell.id)}
                     >
-                      <text fg={clr(cell.id, theme)}>
+                      <text fg={past ? theme.textMuted : clr(cell.id, theme)}>
                         {glyph}
                       </text>
                     </box>
