@@ -4,12 +4,16 @@ Gaps found while building Herm against stock `tui_gateway/server.py`.
 Herm works around all of these today; this file tracks what we'd
 upstream if/when we PR against NousResearch/hermes-agent.
 
-**Local patches applied:** none. The `patches/` dir is empty as of the
-2026-04-24 sync — upstream adopted the `_make_agent()` runtime-provider
-/ `max_iterations` / `fallback_model` hunks and the
-`_background_agent_kwargs()` `agent.max_turns` config-path fix. When a
-patch is reintroduced, reapply after any upstream pull with
-`git -C ~/.hermes/hermes-agent apply ~/Dev/herm/patches/<name>.patch`.
+**Local patches applied** (reapply after any upstream pull with
+`git -C ~/.hermes/hermes-agent apply ~/Dev/herm/patches/*.patch`):
+
+- `agent-config.patch` — `_make_agent()` reads `max_iterations` /
+  `fallback_model` from config; `_background_agent_kwargs()` reads
+  `agent.max_turns` (was top-level `max_turns=25`). *Not* in upstream
+  as of 9be83728 despite earlier claim.
+- `cron-manage.patch` — `cron.manage` handler: `list` passes
+  `include_disabled=True` so paused jobs stay visible; routes
+  `action="run"` through to `cronjob()`.
 
 ## Wanted RPCs
 
@@ -118,3 +122,19 @@ file moves or the list becomes non-literal.
 as a system line. A structured `{name, configured, running}[]` would
 let it live in the same KV info-dialog family as /status /usage
 /profile (`src/dialogs/info.tsx`).
+
+### `cron.manage action=update`
+`cronjob(action='update', ...)` exists in `tools/cronjob_tools.py` but
+the `cron.manage` handler doesn't route it. Would enable rename +
+schedule/prompt edit from Cron tab. Herm workaround: none (edit
+requires `hermes cron update` in a shell).
+
+### `cron.manage` list — return full prompt
+`_format_job()` returns `prompt_preview` (100ch) only. Cron DetailPanel
+can't show the full prompt. Herm workaround: none short of reading
+`~/.hermes/cron/jobs.json` directly, which reintroduces fs coupling.
+
+### `cron.output {job_id, lines?}`
+Tail of the newest file under `~/.hermes/cron/output/{job_id}/`.
+Herm workaround: fs-read that dir directly (Cron.tsx DetailPanel).
+Won't work against a remote gateway.
