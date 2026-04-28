@@ -36,3 +36,17 @@ export const FileLink = memo(({ source, children }: FileLinkProps) => {
     </box>
   );
 });
+
+// KV row whose value is a clickable FileLink. Lives beside FileLink
+// rather than in ui/kv so that module stays free of data-layer deps.
+export const KVLink = (props: { label: string; source: Source; text?: string }) => {
+  const theme = useTheme().theme;
+  return (
+    <box height={1} flexDirection="row">
+      <box width={11} flexShrink={0}><text fg={theme.textMuted}>{props.label}</text></box>
+      <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+        <FileLink source={props.source}>{props.text ?? props.source.label}</FileLink>
+      </box>
+    </box>
+  );
+};

@@ -12,7 +12,7 @@ import { openProfileMenu } from "../dialogs/profile"
 import { openCreateProfile } from "../dialogs/new-profile"
 import { TabShell } from "../ui/shell"
 import { KV, KVBlock } from "../ui/kv"
-import { FileLink } from "../components/ui/FileLink"
+import { KVLink } from "../components/ui/FileLink"
 import { dur, trunc, fmt } from "../ui/fmt"
 import {
   listProfiles, stickyDefault, profileStats,
@@ -113,21 +113,6 @@ const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => 
     </scrollbox>
   )
 })
-
-// KV row whose value is a clickable FileLink rather than plain text.
-// Lives here (not ui/kv) because it depends on FileLink/Source, which
-// are data-layer imports — ui/kv stays dependency-light.
-const KVLink = (props: { label: string; source: import("../utils/hermes-home").Source; text?: string }) => {
-  const theme = useTheme().theme
-  return (
-    <box height={1} flexDirection="row">
-      <box width={11} flexShrink={0}><text fg={theme.textMuted}>{props.label}</text></box>
-      <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-        <FileLink source={props.source}>{props.text ?? props.source.label}</FileLink>
-      </box>
-    </box>
-  )
-}
 
 // ─── Delegation pane ─────────────────────────────────────────────────
 

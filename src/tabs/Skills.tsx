@@ -9,6 +9,7 @@ import { useToast } from "../ui/toast";
 import { useTheme } from "../theme";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
+import { KVLink } from "../components/ui/FileLink";
 import { Col, Hdr } from "../ui/table";
 import { openConfirm } from "../dialogs/confirm";
 
@@ -72,9 +73,9 @@ const DetailPanel = memo((props: { skill: SkillInfo }) => {
       <box height={1} />
       <KVBlock rows={[
         ["Category", s.category || "uncategorized", theme.info],
-        ["File", s.source.relative],
         ["Tags", s.tags.length > 0 ? s.tags.join(", ") : undefined],
       ]} />
+      <KVLink label="File" source={s.source} text={s.source.relative} />
       <box height={1} />
       {s.description ? (
         <text wrapMode="word"><span fg={theme.text}>{s.description}</span></text>
