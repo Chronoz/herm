@@ -73,7 +73,7 @@ export const Memory = memo(() => {
                 height={1}
                 backgroundColor={i === sel ? theme.backgroundElement : undefined}
                 onMouseDown={() => setSel(i)}
-                onMouseOver={() => setSel(i)}
+                onMouseMove={() => setSel(i)}
               >
                 <text>
                   <span fg={fg}>{dot} </span>

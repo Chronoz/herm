@@ -29,7 +29,7 @@ const SkillRow = memo((props: {
 
   return (
     <box flexDirection="row" height={1} backgroundColor={bg}
-         onMouseDown={props.onSelect} onMouseOver={props.onHover}>
+         onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Marquee w={26} active={props.selected} fg={props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
       <Marquee grow min={8} active={props.selected} fg={theme.textMuted}>{s.description || "—"}</Marquee>
@@ -44,7 +44,7 @@ const HitRow = memo((props: { hit: Hit; selected: boolean; onHover: () => void }
   const on = props.selected;
   return (
     <box flexDirection="row" height={1} backgroundColor={on ? theme.backgroundElement : undefined}
-         onMouseOver={props.onHover}>
+         onMouseMove={props.onHover}>
       <Col w={2} fg={on ? theme.primary : theme.textMuted}>{on ? "▸ " : "  "}</Col>
       <Col w={28} fg={on ? theme.accent : theme.text}>{props.hit.name}</Col>
       <Col grow min={8} fg={theme.textMuted}>{props.hit.description || "—"}</Col>

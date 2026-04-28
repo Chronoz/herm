@@ -102,7 +102,7 @@ const JobRow = memo((props: {
 
   return (
     <box flexDirection="row" height={1} backgroundColor={bg}
-         onMouseDown={props.onSelect} onMouseOver={props.onHover}>
+         onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col w={2} fg={glyphColor}>{`${glyph} `}</Col>
       <Col grow fg={props.selected ? theme.accent : theme.text}>{j.name || j.id}</Col>

@@ -34,7 +34,7 @@ const Row = memo((props: {
   return (
     <box flexDirection="column">
       <box flexDirection="row" height={1} backgroundColor={bg}
-           onMouseDown={props.onSelect} onMouseOver={props.onHover}>
+           onMouseDown={props.onSelect} onMouseMove={props.onHover}>
         <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
         <Col w={2} fg={theme.textMuted}>{props.expanded ? "▾ " : "▸ "}</Col>
         <Col w={2} fg={ts.enabled ? theme.success : theme.textMuted}>{`${glyph} `}</Col>
