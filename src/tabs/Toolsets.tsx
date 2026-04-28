@@ -6,7 +6,7 @@ import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
-import { Col, Hdr, Marquee } from "../ui/table";
+import { Col, Hdr } from "../ui/table";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -75,8 +75,7 @@ const Row = memo((props: {
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col w={2} fg={statusFg}>{`${glyph} `}</Col>
-      <Col w={24} fg={props.selected ? theme.accent : theme.text}>{ts.name}</Col>
-      <Marquee grow active={props.selected} fg={theme.textMuted}>{ts.description || "—"}</Marquee>
+      <Col grow fg={props.selected ? theme.accent : theme.text}>{ts.name}</Col>
       <Col w={9} fg={theme.info} right>{`${ts.tool_count} tools`}</Col>
       <Col w={13} fg={statusFg} right>{status}</Col>
     </box>
@@ -187,8 +186,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
       >
         <Hdr>
           <Col w={4} fg={theme.textMuted}>{""}</Col>
-          <Col w={24} fg={theme.textMuted} bold>Name</Col>
-          <Col grow fg={theme.textMuted} bold>Description</Col>
+          <Col grow fg={theme.textMuted} bold>Name</Col>
           <Col w={9} fg={theme.textMuted} bold right>Tools</Col>
           <Col w={13} fg={theme.textMuted} bold right>Status</Col>
         </Hdr>

@@ -31,8 +31,7 @@ const SkillRow = memo((props: {
     <box flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
-      <Marquee w={26} active={props.selected} fg={props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
-      <Marquee grow min={8} active={props.selected} fg={theme.textMuted}>{s.description || "—"}</Marquee>
+      <Marquee grow min={8} active={props.selected} fg={props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
     </box>
   );
 });
@@ -65,7 +64,7 @@ const DetailPanel = memo((props: { skill: SkillInfo }) => {
       border
       borderColor={theme.border}
       backgroundColor={theme.backgroundPanel}
-      width="40%"
+      width="50%"
     >
       <box height={1}><text fg={theme.primary}><strong>Skill Detail</strong></text></box>
       <box height={1} />
@@ -247,8 +246,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
         {searching ? null : (
           <Hdr>
             <Col w={2} fg={theme.textMuted}>{""}</Col>
-            <Col w={26} fg={theme.textMuted} bold>Name</Col>
-            <Col grow min={8} fg={theme.textMuted} bold>Description</Col>
+            <Col grow min={8} fg={theme.textMuted} bold>Name</Col>
           </Hdr>
         )}
         {searching ? null : <box height={1} />}

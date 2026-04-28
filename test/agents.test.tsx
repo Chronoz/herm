@@ -158,8 +158,9 @@ describe("Agents tab", () => {
     // Active row == coder (gateway's home), not default (process env).
     const rowCoder = f.split("\n").find(l => /▸?\s+coder/.test(l))!
     expect(rowCoder).toContain("you")
-    expect(f).toContain("I am default.")
-    expect(f).not.toContain("# Default Soul")
+    // <markdown> resolves tree-sitter async — wait for body to paint.
+    await until(t, () => t.frame().includes("I am default."))
+    expect(t.frame()).not.toContain("# Default Soul")
     // FileLinks render labels.
     expect(f).toContain("config.yaml")
     expect(f).toContain("SOUL.md")

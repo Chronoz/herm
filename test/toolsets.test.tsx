@@ -25,15 +25,13 @@ describe("Toolsets tab", () => {
     t.destroy()
   })
 
-  test("renders status glyphs and inline description column", async () => {
+  test("renders status glyphs", async () => {
     const gw = new MockGateway({ "toolsets.list": () => ({ toolsets: SETS }) })
     const t = await mountNode(<Toolsets focused />, { gw })
     await until(t, () => t.frame().includes("Toolsets (5)"))
     const f = strip(t.frame())
     expect(f).toContain("● file")
     expect(f).toContain("○ web")
-    // description surfaces in the row, not only behind expand
-    expect(f).toMatch(/file\s+read\/write files/)
     expect(f).toContain("Space toggle")
     // no expand affordance now that detail pane is the single surface
     expect(f).not.toMatch(/\bexpand\b/)

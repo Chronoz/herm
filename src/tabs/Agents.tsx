@@ -75,7 +75,7 @@ const ProfileRow = memo((props: {
 })
 
 const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => {
-  const theme = useTheme().theme
+  const { theme, syntaxStyle } = useTheme()
   const p = props.p
   const s = props.stats
   return (
@@ -106,9 +106,7 @@ const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => 
         {p.soul_preview ? <>
           <box height={1} />
           <box height={1}><text fg={theme.textMuted}>SOUL.md</text></box>
-          <box minHeight={1}>
-            <text fg={theme.textMuted} wrapMode="word">{p.soul_preview}</text>
-          </box>
+          <markdown content={p.soul_preview} fg={theme.markdownText} syntaxStyle={syntaxStyle} />
         </> : null}
       </box>
     </scrollbox>

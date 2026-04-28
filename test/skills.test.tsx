@@ -17,9 +17,10 @@ describe("Skills tab", () => {
     })
     const t = await mountNode(<Skills focused />, { gw, width: 160 })
     await until(t, () => t.frame().includes("Skills (1)"))
-    const row = t.frame().split("\n").find(l => l.includes("▸ local-skill"))!
-    expect(row).toContain("A test skill description")
-    // Detail pane shows tags.
+    // Description is detail-pane only (no list column).
+    expect(t.frame().split("\n").find(l => l.includes("▸ local-skill"))!)
+      .not.toContain("A test skill description")
+    expect(t.frame()).toContain("A test skill description")
     expect(t.frame()).toMatch(/Tags\s+alpha, beta/)
     t.destroy()
   })
