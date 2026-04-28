@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
+import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
@@ -35,8 +35,14 @@ const badge = (src: string): string => ({
   telegram: "Telegram", slack: "Slack", whatsapp: "WhatsApp", signal: "Signal",
 } as Record<string, string>)[src] ?? src
 
-const stamp = (ts: number): string =>
-  new Date(ts * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+// Today → 24h HH:MM; otherwise short date.
+const stamp = (ts: number): string => {
+  const d = new Date(ts * 1000)
+  const now = new Date()
+  return d.toDateString() === now.toDateString()
+    ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 //
@@ -151,7 +157,7 @@ const SearchDetail = memo((props: { result: SessionHit }) => {
 // Col/Hdr live in ui/table; header pads by VBAR_W so its grow column
 // matches body rows inside the forced-visible v-bar scrollbox.
 
-const HeaderRow = memo((props: { detail: boolean }) => {
+const HeaderRow = memo(() => {
   const theme = useTheme().theme
   const fg = theme.textMuted
   return (
@@ -159,12 +165,9 @@ const HeaderRow = memo((props: { detail: boolean }) => {
       <Col w={2} fg={fg}>{"  "}</Col>
       <Col grow fg={fg} bold>Title</Col>
       <Col w={9} fg={fg} bold>Source</Col>
-      <Col w={7} fg={fg} bold>Start</Col>
+      <Col w={8} fg={fg} bold>Start</Col>
+      <Col w={10} fg={fg} bold right>Active</Col>
       <Col w={7} fg={fg} bold right>Msgs</Col>
-      {props.detail ? <>
-        <Col w={7} fg={fg} bold right>Tools</Col>
-        <Col w={9} fg={fg} bold right>Cost</Col>
-      </> : null}
       <box width={3} />
     </Hdr>
   )
@@ -180,11 +183,12 @@ type RowCbs = {
 }
 
 const Item = memo((props: {
-  id: string; row: Row; idx: number; selected: boolean; detail: boolean
+  id: string; row: Row; idx: number; selected: boolean
 } & RowCbs) => {
   const theme = useTheme().theme
   const { row: r, idx: i } = props
   const [x, setX] = useState(false)
+  const active = r.detail?.last_active ?? r.detail?.ended_at ?? null
 
   return (
     <box id={props.id} flexDirection="row" height={1}
@@ -196,12 +200,9 @@ const Item = memo((props: {
         {r.title || "Untitled"}
       </Marquee>
       <Col w={9} fg={theme.info}>{badge(r.source ?? "")}</Col>
-      <Col w={7} fg={theme.textMuted}>{stamp(r.started_at)}</Col>
+      <Col w={8} fg={theme.textMuted}>{stamp(r.started_at)}</Col>
+      <Col w={10} fg={theme.textMuted} right>{active ? ago(active) : "—"}</Col>
       <Col w={7} fg={theme.textMuted} right>{String(r.message_count)}</Col>
-      {props.detail ? <>
-        <Col w={7} fg={theme.textMuted} right>{r.detail ? String(r.detail.tool_call_count) : "—"}</Col>
-        <Col w={9} fg={theme.success} right>{r.detail ? cost(r.detail.estimated_cost_usd) : "—"}</Col>
-      </> : null}
       <box width={3}
            onMouseDown={(e) => { e.stopPropagation(); props.onDelete(i) }}
            onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
@@ -393,7 +394,7 @@ export const Sessions = memo((props: Props) => {
     const r = live.current.rows[sel]
     if (!r) return
     const title = await openTextPrompt(dialog, {
-      title: "Rename Session", label: "Title", initial: r.title || "",
+      title: `Rename: ${trunc(r.title || "Untitled", 42)}`, label: "Title", initial: r.title || "",
     })
     if (title === null) return
     Promise.resolve()
@@ -438,7 +439,6 @@ export const Sessions = memo((props: Props) => {
   })
 
   const empty = searching ? results.length === 0 && query.length > 0 : rows.length === 0
-  const hasDetail = useMemo(() => rows.some(r => r.detail), [rows])
   const showDetailPanel = dims.width >= 140
 
   return (
@@ -472,7 +472,7 @@ export const Sessions = memo((props: Props) => {
           </box>
         ) : (
           <box key="table" flexDirection="column" flexGrow={1} minWidth={0}>
-            {searching ? <SearchHeaderRow /> : <HeaderRow detail={hasDetail} />}
+            {searching ? <SearchHeaderRow /> : <HeaderRow />}
             <box height={1} />
             <scrollbox ref={vscroll} scrollY viewportCulling flexGrow={1}
                        verticalScrollbarOptions={{ visible: true }}>
@@ -484,7 +484,7 @@ export const Sessions = memo((props: Props) => {
                   ))
                 : rows.map((r, i) => (
                     <Item key={r.id} id={rowId(i)} idx={i}
-                      row={r} selected={i === sel} detail={hasDetail}
+                      row={r} selected={i === sel}
                       onActivate={rowActivate} onHover={rowHover} onDelete={rowDelete} />
                   ))}
             </scrollbox>

@@ -181,7 +181,7 @@ describe("Sessions tab", () => {
     await until(t, () => t.frame().includes("First session"))
 
     act(() => t.keys.pressKey("r", { ctrl: true }))
-    await until(t, () => t.frame().includes("Rename Session"))
+    await until(t, () => t.frame().includes("Rename: First session"))
     // initial seeded from current title
     expect(t.frame()).toContain("First session")
     // Ctrl+U clear, then type new title
@@ -235,8 +235,9 @@ describe("Sessions tab", () => {
 
     const wide = t.frame()
     // Header row present, value under Msgs column
-    expect(wide).toMatch(/Title\s+Source\s+Start\s+Msgs/)
-    expect(row(wide)).toMatch(/TUI\s+\d{2}:\d{2}\s+7/)
+    expect(wide).toMatch(/Title\s+Source\s+Start\s+Active\s+Msgs/)
+    // started_at fixture is Nov 2023 → date, not HH:MM.
+    expect(row(wide)).toMatch(/TUI\s+\w{3} \d+\s+—\s+7/)
     // Full title visible at 200 cols
     expect(row(wide)).toContain("exceeds thirty characters")
 
@@ -270,7 +271,7 @@ describe("Sessions tab", () => {
     // the vbar is visible (it carves 1 col out of the body; header
     // mirrors it via paddingRight=VBAR_W, vbar forced always visible).
     const lines = t.frame().split("\n")
-    const hdr = lines.find(l => /Title\s+Source\s+Start\s+Msgs/.test(l))!
+    const hdr = lines.find(l => /Title\s+Source\s+Start\s+Active\s+Msgs/.test(l))!
     const row = lines.find(l => l.includes("▸ Session 0"))!
     expect(hdr.indexOf("Title")).toBe(row.indexOf("Session 0"))
     expect(hdr.indexOf("Source")).toBe(row.indexOf("TUI"))
