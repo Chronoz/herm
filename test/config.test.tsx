@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test"
+import { describe, test, expect, afterEach } from "bun:test"
 import { act } from "react"
 import { mountNode, until, MockGateway } from "./harness"
 import { Config } from "../src/tabs/Config"
@@ -94,6 +94,34 @@ describe("Config tab", () => {
     await t.settle()
     expect(panes()).toBe(2)
     expect(t.frame()).not.toContain("Category")
+    t.destroy()
+  })
+
+  afterEach(() => { delete process.env.HERMES_MANAGED })
+
+  test("managed install: read-only, edits blocked, notice shown", async () => {
+    process.env.HERMES_MANAGED = "nixos"
+    const gw = new MockGateway({ "config.get": () => ({ config: CFG }) })
+    const t = await mountNode(<Config focused />, { gw, width: 160, height: 40 })
+    await until(t, () => t.frame().includes("managed install"))
+    expect(t.frame()).toContain("read-only · managed by NixOS")
+    expect(t.frame()).toContain("configuration.nix")
+
+    // Navigate to a boolean field and hit Space — should NOT dirty.
+    act(() => { for (let i = 0; i < 2; i++) t.keys.pressArrow("down") })
+    act(() => t.keys.pressArrow("right"))
+    act(() => t.keys.pressArrow("down"))
+    await act(async () => { await t.keys.typeText(" ") })
+    await t.settle()
+    expect(t.frame()).not.toContain("unsaved")
+    expect(t.frame()).toContain("🔒")
+
+    // Ctrl+S short-circuits with managed toast, no confirm dialog.
+    act(() => t.keys.pressKey("s", { ctrl: true }))
+    await until(t, () => t.frame().includes("Managed by NixOS"))
+    expect(t.frame()).not.toContain("Write")
+    expect(gw.last("cli.exec")).toBeUndefined()
+    expect(gw.last("config.set")).toBeUndefined()
     t.destroy()
   })
 })

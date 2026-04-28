@@ -25,6 +25,21 @@ const HERMES_HOME = process.env.HERMES_HOME || `${HOME}/.hermes`;
 export const hermesPath = (relative: string): string =>
   `${HERMES_HOME}/${relative}`;
 
+/** Detect a package-manager-owned install. Two signals, matching
+ *  hermes_cli/config.py:get_managed_system — HERMES_MANAGED env var
+ *  (systemd service sets it) or the `.managed` marker file (NixOS
+ *  activation script touches it so interactive shells see it too). */
+export const managedSystem = async (): Promise<string | null> => {
+  const env = (process.env.HERMES_MANAGED ?? "").trim()
+  if (env) {
+    const norm = env.toLowerCase()
+    if (norm === "1" || norm === "true" || norm === "yes" || norm === "on") return "NixOS"
+    const names: Record<string, string> = { homebrew: "Homebrew", nix: "NixOS", nixos: "NixOS" }
+    return names[norm] ?? env
+  }
+  return (await Bun.file(hermesPath(".managed")).exists()) ? "NixOS" : null
+}
+
 // ─── Source Provenance ────────────────────────────────────────────────
 
 /** Every piece of data extracted from ~/.hermes/ carries its origin file. */

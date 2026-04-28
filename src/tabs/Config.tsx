@@ -10,6 +10,8 @@ import { TabShell } from "../ui/shell";
 import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
+import { managedSystem, makeSource } from "../utils/hermes-home";
+import { FileLink } from "../components/ui/FileLink";
 
 // ─── Schema ──────────────────────────────────────────────────────────
 
@@ -111,6 +113,7 @@ const FieldRow = memo((props: {
   changed: boolean;
   editing: boolean;
   buf: string;
+  readonly?: boolean;
   /** Search mode: resolved category shown as a pill so hits stay attributable. */
   badge?: string;
 }) => {
@@ -129,10 +132,15 @@ const FieldRow = memo((props: {
   };
 
   const hint = (): string => {
+    if (props.readonly) return "🔒";
     if (f.type === "boolean") return "[space]";
     if (f.type === "select") return "[h/l]";
     return "[enter]";
   };
+
+  const valFg = props.readonly ? theme.textMuted
+    : f.type === "boolean" ? (f.value ? theme.success : theme.error)
+    : theme.text;
 
   return (
     <box flexDirection="row" height={1} backgroundColor={bg}>
@@ -142,9 +150,7 @@ const FieldRow = memo((props: {
         ? <Col w={12} fg={theme.textMuted}>{props.badge}</Col>
         : null}
       <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
-      <Col grow min={6} fg={f.type === "boolean" ? (f.value ? theme.success : theme.error) : theme.text}>
-        {display()}
-      </Col>
+      <Col grow min={6} fg={valFg}>{display()}</Col>
       <Col w={9} fg={theme.textMuted} right>{props.active ? hint() : ""}</Col>
     </box>
   );
@@ -168,6 +174,9 @@ export const Config = memo((props: { focused?: boolean }) => {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<"categories" | "fields">("categories");
+  const [managed, setManaged] = useState<string | null>(null);
+
+  useEffect(() => { managedSystem().then(setManaged) }, []);
 
   const load = useCallback(() => {
     gw.request<{ config?: Record<string, unknown> }>("config.get", { key: "full" })
@@ -226,6 +235,10 @@ export const Config = memo((props: { focused?: boolean }) => {
     v === undefined ? "—" : Array.isArray(v) ? v.join(", ") : String(v);
 
   const save = async () => {
+    if (managed) {
+      toast.show({ variant: "error", message: `Managed by ${managed} — edit configuration.nix` });
+      return;
+    }
     const target = mode === "yaml" ? (yamlParse(yaml) ?? {}) : raw;
     const flat = flatten(target as Record<string, unknown>);
     const diffs = flat
@@ -330,18 +343,19 @@ export const Config = memo((props: { focused?: boolean }) => {
     }
 
     const f = fields[cursor];
+    const writable = !managed;
     const matched = handleListKey(keys, key, {
       count, setSel: setCursor,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
-      onToggle: f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
-      onActivate: f && (f.type === "string" || f.type === "number" || f.type === "list")
+      onToggle: writable && f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
+      onActivate: writable && f && (f.type === "string" || f.type === "number" || f.type === "list")
         ? () => {
             setEditing(true);
             setBuf(f.type === "list" && Array.isArray(f.value) ? (f.value as string[]).join(", ") : String(f.value ?? ""));
           }
         : undefined,
     });
-    if (matched || !f) return;
+    if (matched || !f || !writable) return;
 
     if (f.type === "select" && f.options) {
       const idx = f.options.indexOf(String(f.value));
@@ -419,9 +433,18 @@ export const Config = memo((props: { focused?: boolean }) => {
 
         <TabShell
           title={searching ? "Search" : nChanged > 0 ? `${active} · ${nChanged} unsaved` : active}
-          hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
+          hint={managed
+            ? `read-only · managed by ${managed}`
+            : `${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
           grow={3} focus={focus === "fields" || searching}
         >
+          {managed ? (
+            <box height={1} flexDirection="row" gap={1}>
+              <text fg={theme.warning}>🔒 managed install — edit</text>
+              <FileLink source={makeSource("config.yaml")}>config.yaml</FileLink>
+              <text fg={theme.warning}>via configuration.nix</text>
+            </box>
+          ) : null}
           <Hdr>
             <Col w={4} fg={theme.textMuted}>{""}</Col>
             {searching ? <Col w={12} fg={theme.textMuted} bold>Category</Col> : null}
@@ -448,6 +471,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                   changed={changed(f.key)}
                   editing={editing && i === cursor}
                   buf={buf}
+                  readonly={!!managed}
                   badge={searching ? categorize(f.key) : undefined}
                 />
               ))}
