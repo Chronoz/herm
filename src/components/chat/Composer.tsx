@@ -214,7 +214,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   const lift = rows + 3
 
   const hint = props.streaming
-    ? (input ? "Enter: Queue · " : "") + "Esc×2: Interrupt" + ((props.queue?.length ?? 0) > 0 ? " · Ctrl+U: Pop queued" : "")
+    ? (input ? "Enter: Queue · " : "") + "Esc×2: Interrupt"
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
     : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
     : !props.focused ? "Tab: Focus input · Esc: Focus input"
@@ -292,7 +292,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           wrapMode="word"
           minHeight={1}
           maxHeight={MAX_ROWS}
-          placeholder={props.streaming ? "Type to queue... (Enter queues, Ctrl+U pops)" : "Message Hermes... (/ for commands, Shift+Enter for newline)"}
+          placeholder={props.streaming ? "Type to queue... (Enter queues, click chip to edit)" : "Message Hermes... (/ for commands, Shift+Enter for newline)"}
           focused={props.focused}
           textColor={theme.text}
           focusedTextColor={theme.text}

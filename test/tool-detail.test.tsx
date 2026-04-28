@@ -2,18 +2,8 @@ import { describe, expect, test, beforeEach } from "bun:test"
 import { act } from "react"
 import { mountNode, until } from "./harness"
 import * as prefs from "../src/utils/preferences"
-import { cycleDetail } from "../src/utils/preferences"
 import { Tool } from "../src/components/chat/tool"
 import type { ToolPart } from "../src/types/message"
-
-describe("preferences > cycleDetail", () => {
-  test("cycles expanded → collapsed → hidden → expanded", () => {
-    expect(cycleDetail(undefined)).toBe("collapsed")
-    expect(cycleDetail("expanded")).toBe("collapsed")
-    expect(cycleDetail("collapsed")).toBe("hidden")
-    expect(cycleDetail("hidden")).toBe("expanded")
-  })
-})
 
 describe("preferences > usePref", () => {
   beforeEach(() => prefs.reset())

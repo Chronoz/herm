@@ -317,7 +317,6 @@ describe("composer", () => {
     await until(t, () => t.frame().includes("⏸ 1. follow-up one"))
     expect(sent).toEqual([])
     expect(ref.current?.value()).toBe("")
-    expect(t.frame()).toContain("Ctrl+U: Pop queued")
 
     await act(async () => { await t.keys.typeText("two") })
     act(() => t.keys.pressEnter())

@@ -28,8 +28,6 @@ type Opts = {
   onCopyLast: () => void
   onAttachClipboard: () => void
   onNotice: (text: string) => void
-  /** Pop last queued prompt into the composer; returns whether one existed. */
-  onQueuePop: () => boolean
 }
 
 export function useAppKeys(o: Opts) {
@@ -136,13 +134,6 @@ export function useAppKeys(o: Opts) {
     if (keys.match("clipboard.attach", key)) {
       o.onAttachClipboard()
       key.stopPropagation()
-      return
-    }
-    // Ctrl+U queue-pop — not in the catalog (pending removal, herm-0pg.14).
-    // Only stop propagation on success so the textarea's readline
-    // kill-to-start still works on an empty queue.
-    if (key.ctrl && key.name === "u") {
-      if (o.onQueuePop()) key.stopPropagation()
       return
     }
 

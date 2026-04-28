@@ -20,10 +20,6 @@ import { useSyncExternalStore } from "react"
 
 export type DetailMode = "hidden" | "collapsed" | "expanded"
 
-const DETAIL_CYCLE: readonly DetailMode[] = ["expanded", "collapsed", "hidden"]
-export const cycleDetail = (m: DetailMode | undefined): DetailMode =>
-  DETAIL_CYCLE[(DETAIL_CYCLE.indexOf(m ?? "expanded") + 1) % DETAIL_CYCLE.length]
-
 interface TuiPreferences {
   /** JSON schema reference (for editor autocomplete) */
   $schema?: string

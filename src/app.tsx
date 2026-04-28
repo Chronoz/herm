@@ -448,12 +448,6 @@ const AppInner = () => {
       onSelect: () => openModelPicker(dialog, gw) },
     { title: "Pick Avatar", value: "eikon", description: "Choose sidebar .eikon avatar", category: "General",
       onSelect: () => pickEikon() },
-    { title: "Tool Details", value: "tool-details", description: "Cycle trail verbosity (expanded/collapsed/hidden)", category: "General",
-      onSelect: () => {
-        const m = preferences.cycleDetail(preferences.get("toolDetails"))
-        preferences.set("toolDetails", m)
-        toast.show({ variant: "info", message: `Tool details: ${m}` })
-      } },
     { title: "Rollback", value: "rollback", description: "Browse & restore checkpoints", category: "Session",
       onSelect: () => openRollback(dialog, gw, toast) },
     { title: "History", value: "history", description: "Server-authoritative transcript", category: "Session",
@@ -484,11 +478,6 @@ const AppInner = () => {
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,
     onNotice: (text) => dispatch({ kind: "system", text }),
-    onQueuePop: () => {
-      if (!queue.length) return false
-      dequeue(queue.length - 1)
-      return true
-    },
   })
 
   // ── Control bridge ────────────────────────────────────────────────
