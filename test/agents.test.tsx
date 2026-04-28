@@ -345,14 +345,24 @@ describe("Agents tab", () => {
     t.destroy()
   })
 
-  test("empty delegation shows placeholder; paused state surfaces from status poll", async () => {
+  test("empty delegation shows placeholder; paused pill toggles via delegation.pause", async () => {
+    let paused = true
     const gw = new MockGateway({
-      "delegation.status": () => STATUS({ active: [], paused: true }),
+      "delegation.status": () => STATUS({ active: [], paused }),
+      "delegation.pause": (p) => { paused = !!p.paused; return { paused } },
     })
     const t = await mountNode(<Agents focused sessionId="test-sid" />, { gw })
     await until(t, () => t.frame().includes("Delegation (0)"))
-    expect(t.frame()).toContain("PAUSED")
+    expect(t.frame()).toContain("⏸ paused")
     expect(t.frame()).toContain("new subagents will queue")
+
+    // Click the pill → resume.
+    const y = t.frame().split("\n").findIndex(l => l.includes("⏸ paused"))
+    const x = t.frame().split("\n")[y].indexOf("⏸") + 1
+    await act(async () => { await t.mouse.pressDown(x, y) })
+    await until(t, () => t.frame().includes("▶ active"))
+    expect(gw.last("delegation.pause")?.params.paused).toBe(false)
+    expect(t.frame()).toContain("Delegation resumed")
     t.destroy()
   })
 })

@@ -6,6 +6,7 @@ import { trail } from "../app/spawnHistory"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
+import { useCommand } from "../ui/command"
 import { openConfirm } from "../dialogs/confirm"
 import { openSpawnHistory } from "../dialogs/spawn-history"
 import { openProfileMenu } from "../dialogs/profile"
@@ -247,6 +248,7 @@ export const Agents = memo((props: Props) => {
   const gw = useGateway()
   const dialog = useDialog()
   const toast = useToast()
+  const cmd = useCommand()
 
   const [pane, setPane] = useState<Pane>("profiles")
   // Profiles-pane list↔detail swap for narrow terminals — in wide
@@ -474,7 +476,21 @@ export const Agents = memo((props: Props) => {
   const sticky = stickyDefault()
   const limits = deleg
     ? `depth≤${deleg.max_spawn_depth} · conc≤${deleg.max_concurrent_children}` : ""
-  const pauseTag = deleg?.paused ? " · PAUSED" : ""
+
+  const togglePause = useCallback(() => {
+    const next = !deleg?.paused
+    gw.request<{ paused: boolean }>("delegation.pause", { paused: next })
+      .then(r => {
+        setDeleg(d => d ? { ...d, paused: r.paused } : d)
+        toast.show({ variant: "info", message: r.paused ? "Delegation paused" : "Delegation resumed" })
+      })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+  }, [gw, toast, deleg?.paused])
+
+  useEffect(() => cmd.register([
+    { title: deleg?.paused ? "Resume Delegation" : "Pause Delegation", value: "deleg.pause",
+      category: "Agents", onSelect: togglePause },
+  ]), [cmd, togglePause, deleg?.paused])
 
   const pHint = pWide
     ? `↑↓ nav  ${keys.print("list.activate")} actions  ${keys.print("list.new")} new  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`
@@ -513,9 +529,20 @@ export const Agents = memo((props: Props) => {
 
       {/* ── Delegation ── */}
       {showDeleg ? (
-      <TabShell title={`Delegation (${active.length})${pauseTag}`}
+      <TabShell title={`Delegation (${active.length})`}
                 hint={`↑↓ nav  ${keys.print("agents.kill")} interrupt  ${keys.print("agents.history")} history  ${keys.print("list.refresh")} refresh  ·  ${limits}`}
                 focus={pane === "deleg"} grow={2}>
+        <box height={1} flexDirection="row" marginBottom={1}>
+          <box flexShrink={0} paddingX={1}
+               backgroundColor={deleg?.paused ? theme.warning : theme.backgroundElement}
+               onMouseDown={togglePause}>
+            <text fg={deleg?.paused ? theme.background : theme.text}>
+              {deleg?.paused ? "⏸ paused" : "▶ active"}
+            </text>
+          </box>
+          <box flexGrow={1} />
+          <text fg={theme.textMuted}>click to {deleg?.paused ? "resume" : "pause"}</text>
+        </box>
         {active.length === 0 ? (
           <box key="empty" flexGrow={1}>
             <text fg={theme.textMuted}>
