@@ -118,12 +118,19 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
 
   // ≥5 pasted lines → gateway writes a temp file and hands back a
   // `[Pasted #N …]` placeholder (hermes CLI convention; expanded server-side
-  // in prompt.submit). Below the limit the textarea's default handler
-  // inserts the text verbatim, newlines preserved.
+  // in prompt.submit). Below the limit, insert verbatim minus trailing
+  // newlines — terminals append one on bracketed paste and `echo`/`cat`
+  // output copied from a shell always carries one, so a naive 1-line paste
+  // would otherwise push the cursor to a blank second row. A paste that is
+  // *only* newlines is let through unchanged (intentional line break).
   const paste = useCallback((e: PasteEvent) => {
-    const text = decodePasteBytes(e.bytes)
-    if (text.split("\n").length < 5) return
     e.preventDefault()
+    const raw = decodePasteBytes(e.bytes).replace(/\r\n?/g, "\n")
+    const text = /[^\n]/.test(raw) ? raw.replace(/\n+$/, "") : raw
+    if (text.split("\n").length < 5) {
+      ta.current?.insertText(text)
+      return
+    }
     gw.request<{ placeholder: string }>("paste.collapse", { text })
       .then(r => ta.current?.insertText(r.placeholder + " "))
       .catch(() => ta.current?.insertText(text))

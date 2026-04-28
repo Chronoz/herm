@@ -351,4 +351,24 @@ describe("composer", () => {
     expect(ref.current?.value()).toContain("7 lines")
     t.destroy()
   })
+
+  test("paste: trailing newlines stripped; CRLF normalised; bare-newline passes through", async () => {
+    const { t, ref } = await setup()
+
+    await act(async () => { await t.keys.pasteBracketedText("git status\n") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("git status")
+    expect(ref.current?.lines()).toBe(1)
+
+    act(() => ref.current?.set(""))
+    await act(async () => { await t.keys.pasteBracketedText("a\r\nb\r\n\r\n") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("a\nb")
+
+    act(() => ref.current?.set("x"))
+    await act(async () => { await t.keys.pasteBracketedText("\n\n") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("x\n\n")
+    t.destroy()
+  })
 })
