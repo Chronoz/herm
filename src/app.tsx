@@ -476,6 +476,7 @@ const AppInner = () => {
   useAppKeys({
     tab, tabMax: TAB_MAX, chatTab: CHAT_TAB, setTab, focusRegion, setFocusRegion,
     streaming: turn.streaming,
+    dialogOpen: dialog.stack.length > 0,
     composer,
     onInterrupt: () => session.interrupt(),
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),

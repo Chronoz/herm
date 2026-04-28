@@ -296,6 +296,49 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("dialog open gates shell keys: Esc closes only, no interrupt arm; tab-nav blocked", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Enter streaming, then an approval dialog arrives (the real-world
+    // case where session.interrupt would have armed underneath).
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    act(() => t.gw.push({ type: "message.start" }))
+    await until(t, () => t.frame().includes("Type to queue"))
+    act(() => t.gw.push({
+      type: "approval.request",
+      payload: { command: "rm x", description: "" },
+    }))
+    await until(t, () => t.frame().includes("Permission required"))
+
+    // tab.next while dialog open must NOT switch tab.
+    act(() => t.keys.pressArrow("right", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).toContain("Permission required")
+    expect(t.frame()).toContain("1 Chat")   // still on Chat; bold marker matches
+
+    // Esc closes the dialog (deny) and does NOT arm the interrupt
+    // double-tap. Prove by RPC trace, not frame text — the notice
+    // system-line is occluded by the thought cloud (herm-mzb.11).
+    act(() => t.keys.pressEscape())
+    await until(t, () => !t.frame().includes("Permission required"))
+    expect(t.gw.last("approval.respond")?.params.choice).toBe("deny")
+    expect(t.gw.last("session.interrupt")).toBeUndefined()
+
+    // Second Esc (dialog gone, still streaming) arms; third fires.
+    // Pre-gate, the first Esc would have armed and the second would
+    // have fired — so a single post-close Esc NOT firing is the
+    // regression guard.
+    act(() => t.keys.pressEscape())
+    await t.settle()
+    expect(t.gw.last("session.interrupt")).toBeUndefined()
+    act(() => t.keys.pressEscape())
+    await until(t, () => t.gw.last("session.interrupt") !== undefined)
+
+    t.destroy()
+  })
+
   test("slash popover opens on '/' and Enter dispatches local command", async () => {
     const gw = new MockGateway({
       "commands.catalog": () => ({ pairs: [["/model", "Switch model"]] }),

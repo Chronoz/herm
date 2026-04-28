@@ -16,12 +16,11 @@ describe("catalog", () => {
   })
 
   test("DEFAULTS has no conflicts across overlapping scopes", () => {
-    // Known-intentional overlaps — both actions firing on the same key
-    // is the desired behaviour, not a collision to resolve.
+    // Known-intentional: same chord, mutually-exclusive modes. The
+    // dialogOpen gate in useAppKeys means these never fire together —
+    // Esc is context-sensitive (close dialog / arm interrupt), not a
+    // collision.
     const ALLOW = new Set<string>([
-      // Esc in a dialog closes it; useAppKeys also sees Esc and (only
-      // while streaming) arms the interrupt double-tap. Closing a dialog
-      // and signalling "Esc again to interrupt" on the same press is fine.
       "session.interrupt|dialog.cancel",
     ])
     const found = conflicts(TABLE).filter(c =>

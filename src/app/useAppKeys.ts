@@ -23,6 +23,7 @@ type Opts = {
   focusRegion: Region
   setFocusRegion: (r: Region | ((r: Region) => Region)) => void
   streaming: boolean
+  dialogOpen: boolean
   composer: RefObject<ComposerHandle | null>
   onInterrupt: () => void
   onInterruptNotice: () => void
@@ -46,6 +47,8 @@ export function useAppKeys(o: Opts) {
   // hit here is user-introduced — warn but honor the override.
   useEffect(() => {
     const found = conflicts(keys.table)
+      // Same chord, disjoint modes — dialogOpen gate below makes these
+      // mutually exclusive, not a real collision.
       .filter(c => !(c.a === "session.interrupt" && c.b === "dialog.cancel"))
     if (found.length === 0) return
     const first = found[0]
@@ -72,6 +75,12 @@ export function useAppKeys(o: Opts) {
       process.once("SIGCONT", () => renderer.resume())
       return
     }
+
+    // Modal means modal: with a dialog open, the shell yields
+    // everything except process-level escapes above. DialogProvider
+    // handles Esc-to-close; tabs/composer/interrupt all sit behind the
+    // overlay and shouldn't move.
+    if (o.dialogOpen) return
 
     if (keys.match("editor.open", key) && !o.streaming) {
       const seed = c?.value() ?? ""
