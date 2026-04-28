@@ -501,7 +501,9 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
               <box key={row} flexDirection="row" height={1}>
                 {[...Array(COLS)].map((_, col) => {
                   const cell = grid[row * COLS + col]
-                  const hl = hovered === cell.id || selected === cell.id
+                  // Selection wins over hover — otherwise hovering a
+                  // different segment lights both groups at once.
+                  const hl = selected ? selected === cell.id : hovered === cell.id
                   // Past-threshold cells: ◼ in textMuted; hover still shows category color.
                   const past = row * COLS + col >= thresholdIdx
                   const glyph = !past && cell.id === "free" ? "◻" : "◼"
