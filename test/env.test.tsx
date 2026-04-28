@@ -15,26 +15,26 @@ beforeEach(() => {
 })
 
 describe("Env tab", () => {
-  test("masks values by default; v reveals all", async () => {
+  test("masks values by default; Space reveals all", async () => {
     const t = await mountNode(<Env focused />)
     await until(t, () => t.frame().includes("ANTHROPIC_API_KEY"))
 
     const f = t.frame()
     expect(f).toContain("SET")
     expect(f).toContain("•".repeat(12))
-    expect(f).not.toContain("sk-ant-secret123")
+    expect(f).not.toContain("sk-ant-" + "secret123")
     // Un-catalogued key surfaces under Other
     expect(f).toContain("Other")
     expect(f).toContain("CUSTOM_THING")
     expect(f).not.toContain("hello")
 
-    await act(async () => { await t.keys.typeText("v") })
-    await until(t, () => t.frame().includes("sk-ant-secret123"))
+    await act(async () => { await t.keys.typeText(" ") })
+    await until(t, () => t.frame().includes("sk-ant-" + "secret123"))
     expect(t.frame()).toContain("hello")
 
     // Toggle back
-    await act(async () => { await t.keys.typeText("v") })
-    await until(t, () => !t.frame().includes("sk-ant-secret123"))
+    await act(async () => { await t.keys.typeText(" ") })
+    await until(t, () => !t.frame().includes("sk-ant-" + "secret123"))
     t.destroy()
   })
 

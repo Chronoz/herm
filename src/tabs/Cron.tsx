@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
-import { useKeyboard, useTerminalDimensions } from "@opentui/react";
+import { useTerminalDimensions } from "@opentui/react";
 import { useGateway } from "../app/gateway";
+import { useListKeys } from "../keys";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
@@ -247,15 +248,14 @@ export const Cron = memo((props: { focused?: boolean }) => {
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
   }, [gw, dialog, toast, load]);
 
-  useKeyboard((key) => {
-    if (!props.focused || dialog.stack.length > 0) return;
-    if (key.name === "up") return setSel(s => Math.max(0, s - 1));
-    if (key.name === "down") return setSel(s => Math.min(jobs.length - 1, s + 1));
-    if (key.raw === "r") return load();
-    if (key.raw === "n") return void create();
-    if (key.raw === "x") return run();
-    if (key.name === "space") return toggle();
-    if (key.raw === "d" || key.name === "delete") return remove();
+  const keys = useListKeys({
+    active: !!props.focused && dialog.stack.length === 0,
+    count: jobs.length, setSel,
+    onActivate: run,
+    onToggle: toggle,
+    onDelete: remove,
+    onNew: create,
+    onRefresh: load,
   });
 
   const job = jobs[sel] ?? null;
@@ -264,7 +264,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell title={`Cron Jobs (${jobs.length})`} error={err} grow={3}
-                hint="↑↓ nav  n new  x run  Space pause/resume  d delete  r refresh">
+                hint={`↑↓ nav  ${keys.print("list.new")} new  ${keys.print("list.activate")} run  ${keys.print("list.toggle")} pause/resume  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}>
         {jobs.length === 0 ? (
           <box key="empty" flexGrow={1}>
             <text fg={theme.textMuted}>No cron jobs. Press n to create one.</text>

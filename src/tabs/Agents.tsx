@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
+import { useKeys, handleListKey } from "../keys"
 import { useGateway, useGatewayEvent } from "../app/gateway"
 import { trail } from "../app/spawnHistory"
 import { useTheme } from "../theme"
@@ -418,16 +419,6 @@ export const Agents = memo((props: Props) => {
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
   }, [gw, dialog, toast, loadDeleg])
 
-  const togglePause = useCallback(() => {
-    const next = !(deleg?.paused ?? false)
-    gw.request<{ paused: boolean }>("delegation.pause", { paused: next })
-      .then(r => {
-        toast.show({ variant: "info", message: r.paused ? "Spawn paused — new subagents queue" : "Spawn resumed" })
-        loadDeleg()
-      })
-      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-  }, [gw, toast, deleg?.paused, loadDeleg])
-
   const create = useCallback(() => {
     openCreateProfile(dialog, { existing: live.current.profiles.map(p => p.name) })
       .then(r => {
@@ -463,27 +454,31 @@ export const Agents = memo((props: Props) => {
   const wide = dims.width >= 130
   const pWide = dims.width >= 170 || (!wide && dims.width >= 90)
 
+  const keys = useKeys()
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
     if (key.name === "tab") return setPane(p => p === "profiles" ? "deleg" : "profiles")
-    if (key.raw === "r") { loadProfiles(); loadDeleg(); return }
+    if (keys.match("list.refresh", key)) { loadProfiles(); loadDeleg(); return }
     if (pane === "profiles") {
       if (key.name === "escape" && !pWide && pView === "detail") return setPView("list")
-      if (key.name === "up") return setPSel(s => Math.max(0, s - 1))
-      if (key.name === "down") return setPSel(s => Math.min(profiles.length - 1, s + 1))
-      if (key.raw === "n") return create()
-      if (key.raw === "d" || key.name === "delete") return pDelete(pSel)
-      if (key.name === "return") {
-        if (!pWide && pView === "list") return setPView("detail")
-        return pEnter(pSel)
-      }
+      handleListKey(keys, key, {
+        count: profiles.length, setSel: setPSel,
+        onNew: create,
+        onDelete: () => pDelete(pSel),
+        onActivate: () => {
+          if (!pWide && pView === "list") return setPView("detail")
+          pEnter(pSel)
+        },
+      })
       return
     }
-    if (key.name === "up") return setDSel(s => Math.max(0, s - 1))
-    if (key.name === "down") return setDSel(s => Math.min(active.length - 1, s + 1))
-    if (key.raw === "p") return togglePause()
-    if (key.raw === "k" || key.name === "delete") return dKill(dSel)
-    if (key.raw === "h") return openSpawnHistory(dialog, gw, props.sessionId)
+    const matched = handleListKey(keys, key, {
+      count: active.length, setSel: setDSel,
+      onDelete: () => dKill(dSel),
+    })
+    if (matched) return
+    if (keys.match("agents.kill", key)) return dKill(dSel)
+    if (keys.match("agents.history", key)) return openSpawnHistory(dialog, gw, props.sessionId)
   })
 
   const showProfiles = wide || pane === "profiles"
@@ -497,9 +492,9 @@ export const Agents = memo((props: Props) => {
   const pauseTag = deleg?.paused ? " · PAUSED" : ""
 
   const pHint = pWide
-    ? "↑↓ nav  Enter actions  n new  d delete  r refresh"
-    : pView === "list" ? "↑↓ nav  Enter detail  n new  d delete"
-    : "Enter actions  Esc back  d delete"
+    ? `↑↓ nav  ${keys.print("list.activate")} actions  ${keys.print("list.new")} new  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`
+    : pView === "list" ? `↑↓ nav  ${keys.print("list.activate")} detail  ${keys.print("list.new")} new  ${keys.print("list.delete")} delete`
+    : `${keys.print("list.activate")} actions  Esc back  ${keys.print("list.delete")} delete`
 
   return (
     <box flexDirection="row" flexGrow={1}>
@@ -534,7 +529,7 @@ export const Agents = memo((props: Props) => {
       {/* ── Delegation ── */}
       {showDeleg ? (
       <TabShell title={`Delegation (${active.length})${pauseTag}`}
-                hint={`↑↓ nav  k interrupt  p ${deleg?.paused ? "resume" : "pause"}  h history  r refresh  ·  ${limits}`}
+                hint={`↑↓ nav  ${keys.print("agents.kill")} interrupt  ${keys.print("agents.history")} history  ${keys.print("list.refresh")} refresh  ·  ${limits}`}
                 focus={pane === "deleg"} grow={2}>
         {active.length === 0 ? (
           <box key="empty" flexGrow={1}>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
-import { useKeyboard } from "@opentui/react";
 import { useGateway } from "../app/gateway";
+import { useListKeys } from "../keys";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
@@ -135,13 +135,12 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
   const count = list.length;
   const ts = list[sel] ?? null;
 
-  useKeyboard((key) => {
-    if (!props.focused || dialog.stack.length > 0) return;
-    if (key.name === "up") return setSel(s => Math.max(0, s - 1));
-    if (key.name === "down") return setSel(s => Math.min(count - 1, s + 1));
-    if (key.name === "return" && ts) return expand(ts.name);
-    if (key.name === "space") return toggle();
-    if (key.raw === "r") return load();
+  const keys = useListKeys({
+    active: !!props.focused && dialog.stack.length === 0,
+    count, setSel,
+    onActivate: () => { if (ts) expand(ts.name) },
+    onToggle: toggle,
+    onRefresh: load,
   });
 
   return (
@@ -149,7 +148,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
       <TabShell
         title={`Toolsets (${count})`}
         error={err}
-        hint="↑↓ nav  Space toggle  Enter expand  r refresh"
+        hint={`↑↓ nav  ${keys.print("list.toggle")} toggle  ${keys.print("list.activate")} expand  ${keys.print("list.refresh")} refresh`}
       >
         {/* Column headers */}
         <box height={1}>

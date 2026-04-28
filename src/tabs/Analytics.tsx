@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, memo } from "react"
 import { useKeyboard } from "@opentui/react"
 import { analytics, type Analytics as Data } from "../utils/hermes-analytics"
+import { useKeys } from "../keys"
 import { useTheme } from "../theme"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
@@ -24,12 +25,13 @@ export const Analytics = memo((props: { focused?: boolean }) => {
   const load = useCallback(() => setData(analytics(days)), [days])
   useEffect(load, [load])
 
+  const keys = useKeys()
   useKeyboard((key) => {
     if (!props.focused) return
+    if (keys.match("list.refresh", key)) return load()
     if (key.raw === "1") return setDays(1)
     if (key.raw === "7") return setDays(7)
     if (key.raw === "3") return setDays(30)
-    if (key.raw === "r") return load()
   })
 
   const peak = Math.max(1, ...data.byModel.map(m => m.tokens))

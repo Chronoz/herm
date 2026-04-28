@@ -61,14 +61,14 @@ describe("Cron tab", () => {
     t.destroy()
   })
 
-  test("x fires cron.manage/run with selected job_id, then reloads", async () => {
+  test("Enter fires cron.manage/run with selected job_id, then reloads", async () => {
     const gw = mk()
     const t = await mountNode(<Cron focused />, { gw })
     await until(t, () => t.frame().includes("Cron Jobs (3)"))
 
     act(() => t.keys.pressArrow("down"))
     await t.settle()
-    await act(async () => { await t.keys.typeText("x") })
+    act(() => t.keys.pressEnter())
     await until(t, () => t.frame().includes("Queued broken-job"))
 
     const runs = gw.calls.filter(c => c.params.action === "run")

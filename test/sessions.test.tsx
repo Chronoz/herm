@@ -173,14 +173,14 @@ describe("Sessions tab", () => {
     t.destroy()
   })
 
-  test("t renames selected session via io.rename, patches row in place", async () => {
+  test("Ctrl+R renames selected session via io.rename, patches row in place", async () => {
     const calls: Array<[string, string]> = []
     const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
     const rename = (sid: string, title: string) => { calls.push([sid, title]); return true }
     const t = await mountNode(<Sessions focused io={{ ...NOIO, rename }} />, { gw })
     await until(t, () => t.frame().includes("First session"))
 
-    await act(async () => { await t.keys.typeText("t") })
+    act(() => t.keys.pressKey("r", { ctrl: true }))
     await until(t, () => t.frame().includes("Rename Session"))
     // initial seeded from current title
     expect(t.frame()).toContain("First session")

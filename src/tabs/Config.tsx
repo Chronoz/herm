@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { useKeyboard } from "@opentui/react";
+import { useKeys, handleListKey } from "../keys";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useToast } from "../ui/toast";
@@ -234,6 +235,7 @@ export const Config = memo((props: { focused?: boolean }) => {
     else toast.show({ variant: "success", message: results.length === 0 ? "No changes" : "Config saved" });
   };
 
+  const keys = useKeys();
   useKeyboard((key) => {
     if (!props.focused) return;
     if (key.name === "tab" && !editing && !searching) {
@@ -241,10 +243,7 @@ export const Config = memo((props: { focused?: boolean }) => {
       return;
     }
 
-    if (key.ctrl && key.name === "s") {
-      save();
-      return;
-    }
+    if (keys.match("config.save", key)) return void save();
 
     if (mode === "yaml") {
       if (key.name === "backspace") { setYaml(prev => prev.slice(0, -1)); return; }
@@ -253,13 +252,6 @@ export const Config = memo((props: { focused?: boolean }) => {
         setYaml(prev => prev + key.raw);
         return;
       }
-      return;
-    }
-
-    if (!editing && !searching && key.raw === "/") {
-      setSearching(true);
-      setQuery("");
-      setCursor(0);
       return;
     }
 
@@ -297,6 +289,7 @@ export const Config = memo((props: { focused?: boolean }) => {
 
     if (key.name === "left") { setFocus("categories"); return; }
     if (key.name === "right") { setFocus("fields"); return; }
+    if (keys.match("list.search", key)) { setSearching(true); setQuery(""); setCursor(0); return; }
 
     if (focus === "categories") {
       if (key.name === "up") { setCat(c => Math.max(0, c - 1)); setCursor(0); return; }
@@ -305,16 +298,19 @@ export const Config = memo((props: { focused?: boolean }) => {
       return;
     }
 
-    if (key.name === "up") { setCursor(c => Math.max(0, c - 1)); return; }
-    if (key.name === "down") { setCursor(c => Math.min(count - 1, c + 1)); return; }
-
     const f = fields[cursor];
-    if (!f) return;
-
-    if (key.name === "space" && f.type === "boolean") {
-      update(f.key, !f.value);
-      return;
-    }
+    const matched = handleListKey(keys, key, {
+      count, setSel: setCursor,
+      onRefresh: load,
+      onToggle: f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
+      onActivate: f && (f.type === "string" || f.type === "number" || f.type === "list")
+        ? () => {
+            setEditing(true);
+            setBuf(f.type === "list" && Array.isArray(f.value) ? (f.value as string[]).join(", ") : String(f.value ?? ""));
+          }
+        : undefined,
+    });
+    if (matched || !f) return;
 
     if (f.type === "select" && f.options) {
       const idx = f.options.indexOf(String(f.value));
@@ -327,19 +323,13 @@ export const Config = memo((props: { focused?: boolean }) => {
         return;
       }
     }
-
-    if (key.name === "return" && (f.type === "string" || f.type === "number" || f.type === "list")) {
-      setEditing(true);
-      setBuf(f.type === "list" && Array.isArray(f.value) ? (f.value as string[]).join(", ") : String(f.value ?? ""));
-      return;
-    }
   });
 
   const dirty = hasChanges ? "● unsaved  " : "";
 
   if (mode === "yaml") {
     return (
-      <TabShell title="Config · YAML" hint={`${dirty}Tab form  Ctrl+S save`}>
+      <TabShell title="Config · YAML" hint={`${dirty}Tab form  ${keys.print("config.save")} save`}>
         <scrollbox scrollY flexGrow={1}>
           <text wrapMode="word">
             <span fg={theme.text}>{yaml}</span>
@@ -381,7 +371,7 @@ export const Config = memo((props: { focused?: boolean }) => {
 
       <TabShell
         title={searching ? `${count} matches` : active}
-        hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  / search  Ctrl+S save`}
+        hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
         grow={3} focus={focus === "fields" || searching}
       >
         {searching ? (

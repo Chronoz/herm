@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
+import { useKeys, handleListKey } from "../keys";
 import { makeSource, type SkillInfo } from "../utils/hermes-home";
 import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
@@ -209,28 +210,9 @@ export const Skills = memo((props: { focused?: boolean }) => {
         toast.show({ variant: "error", message: `Install failed: ${e.message}` }));
   }, [dialog, gw, toast, exit, load]);
 
-  const inspect = useCallback((name: string) => {
-    gw.request<{ info: unknown }>("skills.manage", { action: "inspect", query: name })
-      .then(r => dialog.replace(
-        <box flexDirection="column" width={90} height={24}>
-          <box height={1}><text fg={theme.primary}><strong>{`Skill · ${name}`}</strong></text></box>
-          <box height={1} />
-          <scrollbox scrollY flexGrow={1}>
-            <box flexDirection="column" width="100%">
-              <text wrapMode="word">{JSON.stringify(r.info ?? r, null, 2)}</text>
-            </box>
-          </scrollbox>
-        </box>,
-      ))
-      .catch((e: Error) => toast.error(e));
-  }, [gw, dialog, toast, theme.primary]);
-
+  const keys = useKeys();
   useKeyboard((key) => {
-    if (!props.focused) return;
-    if (!searching && key.raw === "/") {
-      setSearching(true); setQuery(""); setHits([]); setSelected(0);
-      return;
-    }
+    if (!props.focused || dialog.stack.length > 0) return;
 
     if (searching) {
       if (key.name === "escape") { exit(); return }
@@ -248,11 +230,11 @@ export const Skills = memo((props: { focused?: boolean }) => {
       return;
     }
 
-    // Normal mode
-    if (key.name === "up") return setSelected(p => Math.max(0, p - 1));
-    if (key.name === "down") return setSelected(p => Math.min(count - 1, p + 1));
-    if (key.name === "r") return load();
-    if (key.name === "i" && current) return inspect(current.name);
+    handleListKey(keys, key, {
+      count, setSel: setSelected,
+      onRefresh: load,
+      onSearch: () => { setSearching(true); setQuery(""); setHits([]); setSelected(0) },
+    });
   });
 
   // Track which skill index we're on as we iterate through the grouped list
@@ -264,7 +246,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
         title={searching ? `Hub Search (${hits.length})` : `Skills (${skills.length})`}
         hint={searching
           ? "↑↓ navigate  Enter install  Esc cancel"
-          : "↑↓ navigate  / search hub  i inspect  r refresh"}
+          : `↑↓ navigate  ${keys.print("list.search")} search hub  ${keys.print("list.refresh")} refresh`}
       >
         {/* Search bar */}
         {searching ? (

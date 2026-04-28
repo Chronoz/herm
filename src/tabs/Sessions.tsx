@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
 import type { ScrollBoxRenderable } from "@opentui/core"
+import { useKeys, handleListKey } from "../keys"
 import {
   queryRecentSessions, searchSessions, deleteSession, renameSession,
   type SessionRow, type SessionHit,
@@ -441,42 +442,29 @@ export const Sessions = memo((props: Props) => {
   const count = searching ? results.length : rows.length
   const rowId = (i: number) => `sess-row-${i}`
 
-  const move = useCallback((next: (p: number) => number) => {
-    setSel(p => {
-      const n = Math.max(0, Math.min(count - 1, next(p)))
-      vscroll.current?.scrollChildIntoView(rowId(n))
-      return n
-    })
-  }, [count])
-
+  const keys = useKeys()
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
-    if (!searching && key.raw === "/") {
-      setSearching(true); setQuery(""); setResults([]); setSel(0)
-      return
-    }
     if (searching) {
       if (key.name === "escape") { setSearching(false); setQuery(""); setResults([]); setSel(0); return }
       if (key.name === "backspace") return setQuery(p => p.slice(0, -1))
       if (key.name === "return") return activate()
-      if (key.name === "up") return move(p => p - 1)
-      if (key.name === "down") return move(p => p + 1)
+      if (key.name === "up") return setSel(p => Math.max(0, p - 1))
+      if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
       if (key.raw && key.raw.length === 1 && key.raw >= " ") return setQuery(p => p + key.raw)
       return
     }
-    if (key.name === "up") return move(p => p - 1)
-    if (key.name === "down") return move(p => p + 1)
-    if (key.name === "pageup") return move(p => p - Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1))
-    if (key.name === "pagedown") return move(p => p + Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1))
-    if (key.name === "home") return move(() => 0)
-    if (key.name === "end") return move(() => count - 1)
-    if (key.name === "return") return activate()
-    if (key.name === "r") return void load()
-    if (key.raw === "t") return void rename()
-    if (key.raw === "d" || key.name === "delete") {
-      const r = rows[sel]
-      if (r) confirmDelete(r)
-    }
+    const matched = handleListKey(keys, key, {
+      count, setSel,
+      page: Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1),
+      scrollTo: n => vscroll.current?.scrollChildIntoView(rowId(n)),
+      onActivate: activate,
+      onRefresh: () => void load(),
+      onDelete: () => { const r = rows[sel]; if (r) confirmDelete(r) },
+      onSearch: () => { setSearching(true); setQuery(""); setResults([]); setSel(0) },
+    })
+    if (matched) return
+    if (keys.match("sessions.rename", key)) return void rename()
   })
 
   const empty = searching ? results.length === 0 && query.length > 0 : rows.length === 0
@@ -489,7 +477,7 @@ export const Sessions = memo((props: Props) => {
         title={searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
         hint={searching
           ? "↑↓ navigate  Enter/click switch  Esc cancel"
-          : "↑↓ navigate  Enter/click switch  / search  t rename  d delete  r refresh"}
+          : `↑↓ navigate  ${keys.print("list.activate")}/click switch  ${keys.print("list.search")} search  ${keys.print("sessions.rename")} rename  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}
         error={warn || null}
         grow={3}
       >

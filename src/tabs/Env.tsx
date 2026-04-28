@@ -1,5 +1,6 @@
 import { useState, useCallback, memo } from "react"
 import { useKeyboard } from "@opentui/react"
+import { useKeys, handleListKey } from "../keys"
 import { writeEnvVar, removeEnvVar, ENV_CATALOG } from "../utils/hermes-home"
 import { useHome, home } from "../home"
 import { useTheme } from "../theme"
@@ -115,49 +116,46 @@ export const Env = memo((props: { focused?: boolean }) => {
     toast.show({ variant: "success", message: `${key} removed` })
   }, [dialog, toast])
 
+  const revealAll = useCallback(() =>
+    setReveal(s => s.size === setKeys.length && setKeys.length > 0
+      ? new Set()
+      : new Set(setKeys)), [setKeys])
+
+  const activate = useCallback(() => {
+    if (cur?.type === "header")
+      return setCollapsed(p => ({ ...p, [cur.category]: !p[cur.category] }))
+    if (cur?.type === "var") {
+      if (cur.value !== undefined && !reveal.has(cur.key))
+        return setReveal(s => new Set(s).add(cur.key))
+      return void edit(cur.key, cur.value ?? "")
+    }
+  }, [cur, reveal, edit])
+
+  const keys = useKeys()
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
 
-    if (!searching && key.raw === "/") {
-      setSearching(true); setQuery(""); setSel(0); return
-    }
     if (searching) {
       if (key.name === "escape") { setSearching(false); setQuery(""); setSel(0); return }
       if (key.name === "backspace") { setQuery(q => q.slice(0, -1)); setSel(0); return }
       if (key.name === "up") return setSel(p => Math.max(0, p - 1))
       if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
-      if (key.name === "return" && cur?.type === "var") {
-        setSearching(false)
-        if (cur.value !== undefined && !reveal.has(cur.key))
-          return setReveal(s => new Set(s).add(cur.key))
-        return void edit(cur.key, cur.value ?? "")
-      }
+      if (key.name === "return") { setSearching(false); return activate() }
       if (key.raw && key.raw.length === 1 && key.raw >= " ") {
         setQuery(q => q + key.raw); setSel(0); return
       }
       return
     }
 
-    if (key.name === "up") return setSel(p => Math.max(0, p - 1))
-    if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
-    if (key.raw === "r") return home.invalidate("env")
-    if (key.raw === "n") return void add()
-    if (key.raw === "v") {
-      return setReveal(s => s.size === setKeys.length && setKeys.length > 0
-        ? new Set()
-        : new Set(setKeys))
-    }
-    if (key.raw === "d" && cur?.type === "var" && cur.value !== undefined)
-      return del(cur.key)
-    if (key.name === "return") {
-      if (cur?.type === "header")
-        return setCollapsed(p => ({ ...p, [cur.category]: !p[cur.category] }))
-      if (cur?.type === "var") {
-        if (cur.value !== undefined && !reveal.has(cur.key))
-          return setReveal(s => new Set(s).add(cur.key))
-        return void edit(cur.key, cur.value ?? "")
-      }
-    }
+    handleListKey(keys, key, {
+      count, setSel,
+      onActivate: activate,
+      onToggle: revealAll,
+      onNew: add,
+      onDelete: () => { if (cur?.type === "var" && cur.value !== undefined) del(cur.key) },
+      onSearch: () => { setSearching(true); setQuery(""); setSel(0) },
+      onRefresh: () => home.invalidate("env"),
+    })
   })
 
   return (
@@ -165,7 +163,7 @@ export const Env = memo((props: { focused?: boolean }) => {
       title={searching ? "Env (searching)" : "Env / API Keys"}
       hint={searching
         ? "↑↓ move  Enter reveal/edit  Esc cancel"
-        : "↑↓ move  Enter reveal/edit  v show-all  n new  d delete  / search  r reload"}
+        : `↑↓ move  ${keys.print("list.activate")} reveal/edit  ${keys.print("list.toggle")} show-all  ${keys.print("list.new")} new  ${keys.print("list.delete")} delete  ${keys.print("list.search")} search  ${keys.print("list.refresh")} reload`}
     >
       {searching ? (
         <box height={1}>

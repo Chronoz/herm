@@ -74,22 +74,4 @@ describe("Skills tab", () => {
     expect(t.frame()).not.toContain("STALE")
     t.destroy()
   })
-
-  test("i on installed skill opens inspect dialog", async () => {
-    const gw = new MockGateway({
-      "skills.manage": p => {
-        if (p.action === "list") return { skills: { general: ["alpha"] } }
-        if (p.action === "inspect") return { info: { name: p.query, version: "1.2.3", path: "/x" } }
-        return {}
-      },
-    })
-    const t = await mountNode(<Skills focused />, { gw })
-    await until(t, () => t.frame().includes("alpha"))
-
-    await act(async () => { await t.keys.typeText("i") })
-    await until(t, () => t.frame().includes("Skill · alpha"))
-    expect(t.frame()).toContain("1.2.3")
-    expect(t.gw.last("skills.manage")?.params.action).toBe("inspect")
-    t.destroy()
-  })
 })
