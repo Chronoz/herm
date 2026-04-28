@@ -172,7 +172,7 @@ describe("Agents tab", () => {
     expect(t.gw.last("delegation.status")).toBeDefined()
     expect(t.gw.last("config.get")?.params.key).toBe("profile")
     // Lazy stats: no state.db in fixture → Sessions row shows dash.
-    await until(t, () => t.frame().includes("Sessions   —"))
+    await until(t, () => /Sessions\s+—/.test(t.frame()))
     t.destroy()
   })
 

@@ -14,7 +14,7 @@ import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
-import { KVBlock } from "../ui/kv"
+import { KV, KVBlock } from "../ui/kv"
 import { Col, Hdr } from "../ui/table"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
@@ -88,10 +88,8 @@ const Detail = memo((props: { row: Row }) => {
             ["Parent", d?.parent_session_id || undefined],
           ]} />
           <box height={1} />
-          <KVBlock rows={[
-            ["First msg", r.preview || "—", theme.textMuted],
-            ["Last msg", d?.lastMessage || "—", theme.textMuted],
-          ]} />
+          <KV label="First msg" value={r.preview || "—"} fg={theme.textMuted} wrap />
+          <KV label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} wrap />
           {!d ? <>
             <box height={1} />
             <box height={1}><text fg={theme.textMuted}>(no local detail — state.db mismatch)</text></box>
