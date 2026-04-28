@@ -7,6 +7,7 @@ import type { AvatarState } from "../avatar/states"
 import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
 import type { MemoryFileInfo, SessionRow } from "../../utils/hermes-home"
 import { useHome, home } from "../../home"
+import { useGitBranch, rtrunc } from "../../utils/git"
 import { Tail } from "../chat/ThoughtCloud"
 
 // The pillar body carries what used to be the Overview tab, broken into
@@ -128,6 +129,9 @@ export const Sidebar = memo((props: {
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [open, setOpen] = useState<Set<SectionId>>(() => new Set(["identity"]))
 
+  const cwd = info?.cwd ?? process.cwd()
+  const branch = useGitBranch(cwd)
+
   const gw = useGateway()
   useEffect(() => {
     gw.request<{ plugins: PluginInfo[] }>("plugins.list")
@@ -182,6 +186,7 @@ export const Sidebar = memo((props: {
           <Row label="Model" value={info?.model ?? config?.model.default ?? "—"} />
           <Row label="Provider" value={config?.model.provider ?? "—"} />
           {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
+          {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
           <Row label="Tools" value={String(countToolsets(info?.tools) || "—")} />
           <Row label="Skills" value={String(countToolsets(info?.skills) || "—")} />
         </Section>
