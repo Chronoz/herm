@@ -35,15 +35,20 @@ describe("Config tab", () => {
     expect(t.frame()).toContain("terminal.container_persistent: false → true")
 
     await act(async () => { await t.keys.typeText("y") })
-    await until(t, () => t.frame().includes("Saved"))
     // terminal.* is not whitelisted → cli lane, serialized, bool → "true".
+    await until(t, () => gw.last("cli.exec") !== undefined)
     const c = gw.last("cli.exec")
     expect(c?.params.argv).toEqual(["config", "set", "terminal.container_persistent", "true"])
     expect(gw.last("config.set")).toBeUndefined()
+    // terminal.* → restart tier: confirm dialog offers [restart now]/[later].
+    await until(t, () => t.frame().includes("need a gateway restart"))
+    expect(t.frame()).toContain("interrupts any running turn")
+    expect(t.frame()).toContain("restart now")
+    // Decline.
+    await act(async () => { await t.keys.typeText("n") })
+    await t.settle()
     // Pill cleared after reload from disk truth.
     expect(t.frame()).not.toContain("unsaved")
-    // terminal.* → restart tier.
-    expect(t.frame()).toContain("restart gateway")
     t.destroy()
   })
 

@@ -290,11 +290,21 @@ export const Config = memo((props: { focused?: boolean }) => {
       return;
     }
     const tier = maxEffect(res.ok);
+    if (tier === "restart") {
+      const go = await openConfirm(dialog, {
+        title: `Saved — ${res.ok.length} setting${res.ok.length === 1 ? "" : "s"} need a gateway restart`,
+        body: "Restart now? This interrupts any running turn.",
+        yes: "restart now", no: "later", danger: true,
+      });
+      if (go) {
+        gw.start();
+        toast.show({ variant: "info", message: "Gateway restarting…" });
+      }
+      return;
+    }
     toast.show({
       variant: "success",
-      message: tier === "live" ? "Saved"
-        : tier === "session" ? "Saved — new sessions pick this up"
-        : "Saved — restart gateway to apply",
+      message: tier === "live" ? "Saved" : "Saved — new sessions pick this up",
     });
   };
 
