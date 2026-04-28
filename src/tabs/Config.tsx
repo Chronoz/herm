@@ -10,6 +10,7 @@ import { TabShell } from "../ui/shell";
 import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
+import { check as checkRule } from "../config/rules";
 import { managedSystem, makeSource } from "../utils/hermes-home";
 import { FileLink } from "../components/ui/FileLink";
 
@@ -114,6 +115,7 @@ const FieldRow = memo((props: {
   editing: boolean;
   buf: string;
   readonly?: boolean;
+  error?: string;
   /** Search mode: resolved category shown as a pill so hits stay attributable. */
   badge?: string;
 }) => {
@@ -142,16 +144,26 @@ const FieldRow = memo((props: {
     : f.type === "boolean" ? (f.value ? theme.success : theme.error)
     : theme.text;
 
+  const lead = 4 + (props.badge !== undefined ? 12 : 0) + 28;
+
   return (
-    <box flexDirection="row" height={1} backgroundColor={bg}>
-      <Col w={2} fg={props.changed ? theme.warning : theme.textMuted}>{mark}</Col>
-      <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
-      {props.badge !== undefined
-        ? <Col w={12} fg={theme.textMuted}>{props.badge}</Col>
-        : null}
-      <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
-      <Col grow min={6} fg={valFg}>{display()}</Col>
-      <Col w={9} fg={theme.textMuted} right>{props.active ? hint() : ""}</Col>
+    <box flexDirection="column">
+      <box flexDirection="row" height={1} backgroundColor={bg}>
+        <Col w={2} fg={props.changed ? theme.warning : theme.textMuted}>{mark}</Col>
+        <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
+        {props.badge !== undefined
+          ? <Col w={12} fg={theme.textMuted}>{props.badge}</Col>
+          : null}
+        <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
+        <Col grow min={6} fg={valFg}>{display()}</Col>
+        <Col w={9} fg={theme.textMuted} right>{props.active ? hint() : ""}</Col>
+      </box>
+      {props.error ? (
+        <box flexDirection="row" height={1} backgroundColor={bg}>
+          <Col w={lead} fg={theme.textMuted}>{""}</Col>
+          <Col grow min={6} fg={theme.error}>{`✗ ${props.error}`}</Col>
+        </box>
+      ) : null}
     </box>
   );
 });
@@ -171,6 +183,7 @@ export const Config = memo((props: { focused?: boolean }) => {
   const [cursor, setCursor] = useState(0);
   const [editing, setEditing] = useState(false);
   const [buf, setBuf] = useState("");
+  const [err, setErr] = useState<Record<string, string>>({});
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<"categories" | "fields">("categories");
@@ -185,6 +198,7 @@ export const Config = memo((props: { focused?: boolean }) => {
         setRaw(structuredClone(parsed));
         setOriginal(structuredClone(parsed));
         setYaml(yamlStringify(parsed));
+        setErr({});
       })
       .catch(() => {
         setRaw({});
@@ -237,6 +251,11 @@ export const Config = memo((props: { focused?: boolean }) => {
   const save = async () => {
     if (managed) {
       toast.show({ variant: "error", message: `Managed by ${managed} — edit configuration.nix` });
+      return;
+    }
+    const nErr = Object.keys(err).length;
+    if (nErr > 0) {
+      toast.show({ variant: "error", message: `${nErr} invalid field${nErr === 1 ? "" : "s"}` });
       return;
     }
     const target = mode === "yaml" ? (yamlParse(yaml) ?? {}) : raw;
@@ -313,10 +332,17 @@ export const Config = memo((props: { focused?: boolean }) => {
     }
 
     if (editing) {
-      if (key.name === "escape") { setEditing(false); setBuf(""); return; }
+      const f = fields[cursor];
+      if (key.name === "escape") {
+        setEditing(false); setBuf("");
+        if (f) setErr(e => { const { [f.key]: _, ...rest } = e; return rest });
+        return;
+      }
       if (key.name === "return") {
-        const f = fields[cursor];
         if (f) {
+          const msg = checkRule(f.key, buf);
+          if (msg) { setErr(e => ({ ...e, [f.key]: msg })); return; }
+          setErr(e => { const { [f.key]: _, ...rest } = e; return rest });
           const val = f.type === "number" ? Number(buf) || 0
             : f.type === "list" ? buf.split(",").map(s => s.trim())
             : buf;
@@ -472,6 +498,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                   editing={editing && i === cursor}
                   buf={buf}
                   readonly={!!managed}
+                  error={err[f.key]}
                   badge={searching ? categorize(f.key) : undefined}
                 />
               ))}

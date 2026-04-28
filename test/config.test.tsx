@@ -124,4 +124,35 @@ describe("Config tab", () => {
     expect(gw.last("config.set")).toBeUndefined()
     t.destroy()
   })
+
+  test("inline validation: bad value blocks commit, shows error, clears on fix", async () => {
+    const cfg = { agent: { max_turns: 90 } }
+    const gw = new MockGateway({ "config.get": () => ({ config: cfg }) })
+    const t = await mountNode(<Config focused />, { gw, width: 160, height: 40 })
+    await until(t, () => t.frame().includes("agent"))
+
+    // agent category → fields → row[0]=max_turns → Enter to edit.
+    act(() => t.keys.pressArrow("down"))
+    act(() => t.keys.pressArrow("right"))
+    await t.settle()
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    // Clear buffer then type "0".
+    await act(async () => { for (let i = 0; i < 2; i++) t.keys.pressBackspace() })
+    await act(async () => { await t.keys.typeText("0") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("✗ expected"))
+    expect(t.frame()).toContain("✗ expected 1–10000")
+    // Still editing — buffer cursor visible, no dirty dot.
+    expect(t.frame()).not.toContain("unsaved")
+
+    // Fix: backspace, type "5", Enter → error clears, value commits.
+    await act(async () => { t.keys.pressBackspace() })
+    await act(async () => { await t.keys.typeText("5") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.frame()).not.toContain("✗ expected")
+    await until(t, () => t.frame().includes("1 unsaved"))
+    t.destroy()
+  })
 })

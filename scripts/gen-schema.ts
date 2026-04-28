@@ -149,6 +149,12 @@ const EXTRA: Record<string, { type: string; default: unknown; doc: string }> = {
   "agent.system_prompt": { type: "str", default: "", doc: "System-prompt override applied by the active personality." },
   custom_prompt: { type: "str", default: "", doc: "Ad-hoc system-prompt addendum set via /prompt." },
   provider: { type: "str", default: "", doc: "Default model provider." },
+  "display.details_mode": { type: "str", default: "collapsed", doc: "Tool-progress section fold state: hidden | collapsed | expanded." },
+  "display.thinking_mode": { type: "str", default: "collapsed", doc: "Reasoning display: collapsed | truncated | full." },
+  "display.tool_progress": { type: "str", default: "all", doc: "Tool-progress verbosity: off | new | all | verbose." },
+  "display.tui_compact": { type: "bool", default: false, doc: "Ink-TUI compact layout." },
+  "display.tui_statusbar": { type: "str", default: "top", doc: "Ink-TUI statusbar placement: top | bottom | off." },
+  "display.tui_mouse": { type: "bool", default: true, doc: "Ink-TUI mouse support." },
 }
 
 const RPC_LIVE = new Set([
