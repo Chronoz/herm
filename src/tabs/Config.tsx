@@ -296,7 +296,7 @@ export const Config = memo((props: { focused?: boolean }) => {
     const f = fields[cursor];
     const matched = handleListKey(keys, key, {
       count, setSel: setCursor,
-      onRefresh: load,
+      onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onToggle: f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
       onActivate: f && (f.type === "string" || f.type === "number" || f.type === "list")
         ? () => {

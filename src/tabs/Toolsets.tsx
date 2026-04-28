@@ -136,7 +136,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
     count, setSel,
     onActivate: () => { if (ts) expand(ts.name) },
     onToggle: toggle,
-    onRefresh: load,
+    onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
   });
 
   return (

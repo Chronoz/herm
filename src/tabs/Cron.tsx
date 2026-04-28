@@ -255,7 +255,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
     onToggle: toggle,
     onDelete: remove,
     onNew: create,
-    onRefresh: load,
+    onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
   });
 
   const job = jobs[sel] ?? null;

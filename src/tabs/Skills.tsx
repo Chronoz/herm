@@ -216,7 +216,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
 
     handleListKey(keys, key, {
       count, setSel: setSelected,
-      onRefresh: load,
+      onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onSearch: () => { setSearching(true); setQuery(""); setHits([]); setSelected(0) },
     });
   });

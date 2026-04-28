@@ -443,7 +443,7 @@ export const Agents = memo((props: Props) => {
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
     if (key.name === "tab") return setPane(p => p === "profiles" ? "deleg" : "profiles")
-    if (keys.match("list.refresh", key)) { loadProfiles(); loadDeleg(); return }
+    if (keys.match("list.refresh", key)) { loadProfiles(); loadDeleg(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }); return }
     if (pane === "profiles") {
       if (key.name === "escape" && !pWide && pView === "detail") return setPView("list")
       handleListKey(keys, key, {

@@ -428,7 +428,7 @@ export const Sessions = memo((props: Props) => {
       page: Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1),
       scrollTo: n => vscroll.current?.scrollChildIntoView(rowId(n)),
       onActivate: activate,
-      onRefresh: () => void load(),
+      onRefresh: () => { void load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onDelete: () => { const r = rows[sel]; if (r) confirmDelete(r) },
       onSearch: () => { setSearching(true); setQuery(""); setResults([]); setSel(0) },
     })

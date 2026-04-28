@@ -148,7 +148,7 @@ export const Env = memo((props: { focused?: boolean }) => {
       onNew: add,
       onDelete: () => { if (cur?.type === "var" && cur.value !== undefined) del(cur.key) },
       onSearch: () => { setSearching(true); setQuery(""); setSel(0) },
-      onRefresh: () => home.invalidate("env"),
+      onRefresh: () => { home.invalidate("env"); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
     })
   })
 
