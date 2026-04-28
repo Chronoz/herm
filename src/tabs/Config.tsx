@@ -110,6 +110,8 @@ const FieldRow = memo((props: {
   changed: boolean;
   editing: boolean;
   buf: string;
+  /** Search mode: resolved category shown as a pill so hits stay attributable. */
+  badge?: string;
 }) => {
   const theme = useTheme().theme;
   const f = props.field;
@@ -135,6 +137,9 @@ const FieldRow = memo((props: {
     <box flexDirection="row" height={1} backgroundColor={bg}>
       <Col w={2} fg={props.changed ? theme.warning : theme.textMuted}>{mark}</Col>
       <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
+      {props.badge !== undefined
+        ? <Col w={12} fg={theme.textMuted}>{props.badge}</Col>
+        : null}
       <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
       <Col grow min={6} fg={f.type === "boolean" ? (f.value ? theme.success : theme.error) : theme.text}>
         {display()}
@@ -195,7 +200,7 @@ export const Config = memo((props: { focused?: boolean }) => {
         .filter(([key]) => key.toLowerCase().includes(query.toLowerCase()))
         .map(([key, val]) => ({
           key,
-          label: key,
+          label: key.split(".").slice(1).join(".") || key,
           type: classify(key, val),
           value: val,
           options: SELECTS[key],
@@ -352,81 +357,90 @@ export const Config = memo((props: { focused?: boolean }) => {
     );
   }
 
+  // Search collapses to single-pane: input row sits above (outside)
+  // both shells so placement matches scope (all categories). Results
+  // rows carry a category badge so hits stay attributable; Esc
+  // restores two-pane.
   return (
-    <box flexDirection="row" flexGrow={1}>
-      <TabShell title="Config" hint="↑↓ → select" grow={1}
-                focus={focus === "categories" && !searching}>
-        <scrollbox scrollY flexGrow={1}>
-          {CATEGORIES.map((c, i) => {
-            const sel = i === cat && !searching;
-            const hot = sel && focus === "categories";
-            const items = grouped.get(c) ?? [];
-            const catDirty = items.some(f => changed(f.key));
-            return (
-              <box
-                key={c}
-                backgroundColor={hot ? theme.backgroundElement : undefined}
-                onMouseDown={() => { setCat(i); setCursor(0); setFocus("categories"); }}
-              >
-                <text>
-                  <span fg={catDirty ? theme.warning : theme.textMuted}>{catDirty ? "●" : " "}</span>
-                  <span fg={hot ? theme.accent : sel ? theme.primary : theme.text}>
-                    {sel ? "▸ " : "  "}{c}
-                  </span>
-                  <span fg={theme.textMuted}>{` (${items.length})`}</span>
-                </text>
-              </box>
-            );
-          })}
-        </scrollbox>
-      </TabShell>
-
-      <TabShell
-        title={searching ? `${count} matches` : nChanged > 0 ? `${active} · ${nChanged} unsaved` : active}
-        hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
-        grow={3} focus={focus === "fields" || searching}
-      >
-        {searching ? (
-          <box height={1}>
-            <text>
-              <span fg={theme.accent}>/ </span>
-              <span fg={theme.text}>{query}</span>
-              <span fg={theme.accent}>█</span>
-              <span fg={theme.textMuted}>  Esc cancel</span>
-            </text>
-          </box>
-        ) : null}
-
-        <Hdr>
-          <Col w={4} fg={theme.textMuted}>{""}</Col>
-          <Col w={28} fg={theme.textMuted} bold>Field</Col>
-          <Col grow min={6} fg={theme.textMuted} bold>Value</Col>
-          <Col w={9} fg={theme.textMuted}>{""}</Col>
-        </Hdr>
-        <box height={1} />
-
-        {count === 0 ? (
-          <box key="empty" flexGrow={1} padding={2}>
-            <text fg={theme.textMuted}>
-              {searching ? "No matching fields" : "No fields in this category"}
-            </text>
-          </box>
-        ) : (
-          <scrollbox key="list" scrollY flexGrow={1}
-                     verticalScrollbarOptions={{ visible: true }}>
-            {fields.map((f, i) => (
-              <FieldRow
-                key={f.key}
-                field={f}
-                active={i === cursor && (focus === "fields" || searching)}
-                changed={changed(f.key)}
-                editing={editing && i === cursor}
-                buf={buf}
-              />
-            ))}
-          </scrollbox>
+    <box flexDirection="column" flexGrow={1}>
+      {searching ? (
+        <box height={1} paddingLeft={1} paddingRight={1}>
+          <text>
+            <span fg={theme.accent}>┃ </span>
+            <span fg={theme.text}>{query}</span>
+            <span fg={theme.accent}>█</span>
+            <span fg={theme.textMuted}>{`   ${count} of ${entries.length}  ·  ↑↓ nav  ·  Esc close`}</span>
+          </text>
+        </box>
+      ) : null}
+      <box flexDirection="row" flexGrow={1}>
+        {searching ? null : (
+          <TabShell title="Config" hint="↑↓ → select" grow={1}
+                    focus={focus === "categories"}>
+            <scrollbox scrollY flexGrow={1}>
+              {CATEGORIES.map((c, i) => {
+                const sel = i === cat;
+                const hot = sel && focus === "categories";
+                const items = grouped.get(c) ?? [];
+                const catDirty = items.some(f => changed(f.key));
+                return (
+                  <box
+                    key={c}
+                    backgroundColor={hot ? theme.backgroundElement : undefined}
+                    onMouseDown={() => { setCat(i); setCursor(0); setFocus("categories"); }}
+                  >
+                    <text>
+                      <span fg={catDirty ? theme.warning : theme.textMuted}>{catDirty ? "●" : " "}</span>
+                      <span fg={hot ? theme.accent : sel ? theme.primary : theme.text}>
+                        {sel ? "▸ " : "  "}{c}
+                      </span>
+                      <span fg={theme.textMuted}>{` (${items.length})`}</span>
+                    </text>
+                  </box>
+                );
+              })}
+            </scrollbox>
+          </TabShell>
         )}
-      </TabShell>
+
+        <TabShell
+          title={searching ? "Search" : nChanged > 0 ? `${active} · ${nChanged} unsaved` : active}
+          hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
+          grow={3} focus={focus === "fields" || searching}
+        >
+          <Hdr>
+            <Col w={4} fg={theme.textMuted}>{""}</Col>
+            {searching ? <Col w={12} fg={theme.textMuted} bold>Category</Col> : null}
+            <Col w={28} fg={theme.textMuted} bold>Field</Col>
+            <Col grow min={6} fg={theme.textMuted} bold>Value</Col>
+            <Col w={9} fg={theme.textMuted}>{""}</Col>
+          </Hdr>
+          <box height={1} />
+
+          {count === 0 ? (
+            <box key="empty" flexGrow={1} padding={2}>
+              <text fg={theme.textMuted}>
+                {searching ? "No matching fields" : "No fields in this category"}
+              </text>
+            </box>
+          ) : (
+            <scrollbox key="list" scrollY flexGrow={1}
+                       verticalScrollbarOptions={{ visible: true }}>
+              {fields.map((f, i) => (
+                <FieldRow
+                  key={f.key}
+                  field={f}
+                  active={i === cursor && (focus === "fields" || searching)}
+                  changed={changed(f.key)}
+                  editing={editing && i === cursor}
+                  buf={buf}
+                  badge={searching ? categorize(f.key) : undefined}
+                />
+              ))}
+            </scrollbox>
+          )}
+        </TabShell>
+      </box>
     </box>
   );
 });

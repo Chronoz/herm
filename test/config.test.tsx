@@ -47,4 +47,43 @@ describe("Config tab", () => {
     expect(gw.last("config.set")).toBeUndefined()
     t.destroy()
   })
+
+  // '/' collapses the categories pane and hoists the query row above
+  // the results shell so placement matches scope (all entries). Each
+  // hit carries its resolved category badge.
+  test("search: single-pane, query row above, category badge per hit", async () => {
+    const cfg = {
+      terminal: { backend: "local" },
+      memory: { provider: "sqlite" },
+      logging: { level: "INFO" },
+    }
+    const gw = new MockGateway({ "config.get": () => ({ config: cfg }) })
+    const t = await mountNode(<Config focused />, { gw, width: 160, height: 40 })
+    await until(t, () => t.frame().includes("terminal"))
+    const panes = () => t.frame().split("\n")
+      .filter(l => l.includes("┌")).flatMap(l => l.match(/┌/g)!).length
+
+    expect(panes()).toBe(2)
+    expect(t.frame()).toContain("Config")
+
+    await act(async () => { await t.keys.typeText("/") })
+    await t.settle()
+    expect(panes()).toBe(1)
+    expect(t.frame()).toContain("Category")
+    // Query row sits above the results shell border.
+    const lines = t.frame().split("\n")
+    expect(lines.findIndex(l => l.includes("┃"))).toBeLessThan(lines.findIndex(l => l.includes("┌")))
+
+    await act(async () => { await t.keys.typeText("prov") })
+    await t.settle()
+    expect(t.frame()).toMatch(/memory\s+provider/)
+    expect(t.frame()).not.toContain("backend")
+    expect(t.frame()).toContain("1 of 3")
+
+    act(() => t.keys.pressEscape())
+    await t.settle()
+    expect(panes()).toBe(2)
+    expect(t.frame()).not.toContain("Category")
+    t.destroy()
+  })
 })
