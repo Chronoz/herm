@@ -738,4 +738,19 @@ describe("app", () => {
 
     t.destroy()
   })
+
+  test("send() expands {!cmd} via shell.exec before prompt.submit", async () => {
+    const t = await mount({ handlers: {
+      "shell.exec": p => ({ stdout: `OUT<${p.command}>`, stderr: "", code: 0 }),
+    }})
+    await until(t, () => t.frame().includes("Ready"))
+    await act(async () => { await t.keys.typeText("branch is {!git rev-parse} ok") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("prompt.submit") !== undefined)
+    expect(t.gw.last("shell.exec")?.params.command).toBe("git rev-parse")
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("branch is OUT<git rev-parse> ok")
+    // Transcript shows the expanded form, not the raw template.
+    expect(t.frame()).not.toContain("{!git")
+    t.destroy()
+  })
 })

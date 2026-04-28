@@ -3,6 +3,7 @@ import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "
 import * as perf from "./utils/perf"
 import * as spawnHistory from "./app/spawnHistory"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
+import { hasInterp, interpolate } from "./utils/interpolate"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
 import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
 import type { Message } from "./types/message"
@@ -301,13 +302,22 @@ const AppInner = () => {
   }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, toast, info, sid])
 
   // ── Send ──────────────────────────────────────────────────────────
-  const send = useCallback((text: string) => {
+  const send = useCallback(async (raw: string) => {
     // Arg-bearing local slashes bypass the popover (it closes on space).
-    const m = text.match(/^\/(title|queue|q)\s+(.+)$/)
+    const m = raw.match(/^\/(title|queue|q)\s+(.+)$/)
     if (m) {
       const arg = m[2].trim()
       if (m[1] === "title") return applyTitle(arg)
       return setQueue(q => [...q, arg])
+    }
+    // {!cmd} spans resolve via shell.exec before submit so the
+    // transcript shows what was actually sent. The await is short
+    // (gateway-side 30s cap); status line signals the wait.
+    let text = raw
+    if (hasInterp(raw)) {
+      setStatus("interpolating…")
+      text = await interpolate(gw, raw)
+      setStatus("")
     }
     dispatch({ kind: "user", text })
     setAttachments([])
