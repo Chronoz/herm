@@ -35,11 +35,14 @@ export const TextPrompt = (props: Props) => {
       <box height={1}><text fg={theme.primary}><strong>{props.title}</strong></text></box>
       <box height={1} />
       {props.label ? <box height={1}><text fg={theme.textMuted}>{props.label}</text></box> : null}
-      <box height={1} flexDirection="row" border borderStyle="single" borderColor={theme.border}>
-        <text>
-          <span fg={theme.text}>{value}</span>
-          <span fg={theme.accent}>█</span>
-        </text>
+      <box height={1} flexDirection="row" overflow="hidden">
+        <box flexShrink={0}><text fg={theme.accent}>{"┃ "}</text></box>
+        <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+          <text>
+            <span fg={theme.text}>{value}</span>
+            <span fg={theme.accent}>█</span>
+          </text>
+        </box>
       </box>
       <box height={1} />
       <box height={1}><text fg={theme.textMuted}>
