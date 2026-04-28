@@ -3,9 +3,10 @@
 // the imperative handle so there is exactly one global useKeyboard.
 
 import { forwardRef, memo, useImperativeHandle, useRef, useState, useCallback, useMemo } from "react"
-import type { TextareaRenderable, KeyBinding, PasteEvent } from "@opentui/core"
+import type { TextareaRenderable, PasteEvent } from "@opentui/core"
 import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
+import { useKeys, toBindings } from "../../keys"
 import { useGateway } from "../../app/gateway"
 import type { Usage } from "../../types/message"
 import type { ImageAttachResponse } from "../../utils/gateway-types"
@@ -56,17 +57,6 @@ type Props = {
 
 const MAX_ROWS = 6
 
-// Enter submits; Shift/Ctrl/Alt+Enter and Ctrl+J insert a newline. Merged
-// over the renderable's defaults (which have bare return → newline), so
-// this must override that entry by exact modifier match.
-const KEYS: KeyBinding[] = [
-  { name: "return", action: "submit" },
-  { name: "return", shift: true, action: "newline" },
-  { name: "return", ctrl: true, action: "newline" },
-  { name: "return", meta: true, action: "newline" },
-  { name: "j", ctrl: true, action: "newline" },
-]
-
 function fmt(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
@@ -76,6 +66,7 @@ function fmt(n: number): string {
 export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   const theme = useTheme().theme
   const gw = useGateway()
+  const keys = useKeys()
   const ta = useRef<TextareaRenderable | null>(null)
   // Mirror of the textarea buffer. The renderable is the source of truth;
   // this drives React-side derivations (popover matching, row count, hints).
@@ -99,6 +90,14 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   }, [])
 
   const hist = useInputHistory(input, write)
+
+  // Merged over the renderable's default map (which has bare return →
+  // newline), so input.submit's `return` entry overrides it and the
+  // newline alternates add on top. Recomputes only when a user rebinds.
+  const bindings = useMemo(() => [
+    ...toBindings(keys.chord("input.submit"), "submit"),
+    ...toBindings(keys.chord("input.newline"), "newline"),
+  ], [keys])
 
   // Hold latest pop/props in a ref so the imperative handle is stable.
   const live = useRef({ pop, at, props, input })
@@ -219,8 +218,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
     : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
     : !props.focused ? "Tab: Focus input · Esc: Focus input"
-    : rows > 1 ? "Enter: Send · Shift+Enter: Newline · ↑↓: Move · Ctrl+G: Editor"
-    : "Enter: Send · Shift+Enter: Newline · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor"
+    : rows > 1 ? `Enter: Send · ${keys.print("input.newline")}: Newline · ↑↓: Move · Ctrl+G: Editor`
+    : `Enter: Send · ${keys.print("input.newline")}: Newline · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor`
 
   return (
     <box flexDirection="column" position="relative">
@@ -289,7 +288,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           onContentChange={() => setInput(ta.current?.plainText ?? "")}
           onSubmit={submit}
           onPaste={paste}
-          keyBindings={KEYS}
+          keyBindings={bindings}
           wrapMode="word"
           minHeight={1}
           maxHeight={MAX_ROWS}

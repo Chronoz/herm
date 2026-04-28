@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { act, createRef, useState } from "react"
 import { mountNode, until, MockGateway, type Harness } from "./harness"
 import { Composer, type ComposerHandle } from "../src/components/chat/Composer"
+import * as prefs from "../src/utils/preferences"
 import type { SlashCommand } from "../src/commands/slash"
 import { atWordAt } from "../src/app/useAtRefPopover"
 
@@ -84,6 +85,31 @@ describe("composer", () => {
     // collapsed back to one row
     const r2 = t.frame().split("\n")
     expect(r2.findIndex(l => l.startsWith("└")) - r2.findIndex(l => l.startsWith("┌"))).toBe(2)
+    t.destroy()
+  })
+
+  test("input.newline rebind flows to textarea", async () => {
+    prefs.set("keys", { "input.newline": "ctrl+o" })
+    const { t, ref, sent } = await setup()
+    await act(async () => { await t.keys.typeText("a") })
+    // Old defaults no longer newline:
+    act(() => t.keys.pressEnter({ shift: true }))
+    await t.settle()
+    expect(ref.current?.value()).toBe("a")
+    act(() => t.keys.pressKey("j", { ctrl: true }))
+    await t.settle()
+    expect(ref.current?.value()).toBe("a")
+    // Rebound chord does:
+    act(() => t.keys.pressKey("o", { ctrl: true }))
+    await t.settle()
+    expect(ref.current?.value()).toBe("a\n")
+    // Hint reflects the override
+    expect(t.frame()).toContain("Ctrl+O: Newline")
+    // Submit still Enter
+    await act(async () => { await t.keys.typeText("b") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(sent).toEqual(["a\nb"])
     t.destroy()
   })
 
