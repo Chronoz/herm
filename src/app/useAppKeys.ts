@@ -80,6 +80,20 @@ export function useAppKeys(o: Opts) {
       o.setTab(t => { const n = Math.min(o.tabMax, t + 1); o.setFocusRegion(regionFor(n)); return n })
       return
     }
+    // Ctrl+1..0 → tab 1..10 (1-indexed), Ctrl+- → tab 11. Structural,
+    // not catalog — ten near-identical rebindable actions is noise.
+    if (key.ctrl && !key.meta && !key.shift && key.eventType !== "release") {
+      const map: Record<string, number> = {
+        "1": 0, "2": 1, "3": 2, "4": 3, "5": 4,
+        "6": 5, "7": 6, "8": 7, "9": 8, "0": 9, "-": 10,
+      }
+      const n = map[key.name]
+      if (n !== undefined && n <= o.tabMax) {
+        o.setTab(() => { o.setFocusRegion(regionFor(n)); return n })
+        key.stopPropagation()
+        return
+      }
+    }
 
     // Popover owns up/down/tab/escape while open; stopPropagation keeps the
     // textarea renderable from also moving the cursor on the same keypress.

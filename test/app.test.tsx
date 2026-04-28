@@ -38,6 +38,31 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("Ctrl+<digit> jumps directly to tab N", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Tab bar shows index prefixes.
+    expect(t.frame()).toMatch(/1 Chat.*2 Context.*3 Sessions/)
+
+    act(() => t.keys.pressKey("3", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).toContain("No sessions")
+
+    act(() => t.keys.pressKey("0", { ctrl: true }))
+    await until(t, () => t.frame().includes("Env / API Keys"))
+    // Focus landed on content: arrow moves Env selection, doesn't type.
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    const sel = t.frame().split("\n").find(l => l.includes("▸"))!
+    expect(sel).not.toMatch(/LLM Providers/)
+
+    act(() => t.keys.pressKey("1", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).toContain("Message Hermes")
+    t.destroy()
+  })
+
   test("tab.next rebind via preferences.keys is honored end-to-end", async () => {
     prefs.set("keys", { "tab.next": "ctrl+l", "tab.prev": "ctrl+h" })
     const t = await mount()

@@ -1,5 +1,6 @@
 import { memo } from "react"
 import { useTheme } from "../../theme"
+import { useKeys } from "../../keys"
 
 type Tab = {
   name: string
@@ -12,8 +13,12 @@ type TabBarProps = {
   onTabChange: (index: number) => void
 }
 
+// 1..9, 0, - — mirrors the Ctrl+<digit> map in useAppKeys.
+const idx = (i: number) => i < 9 ? String(i + 1) : i === 9 ? "0" : "-"
+
 export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
   const theme = useTheme().theme
+  const keys = useKeys()
 
   return (
     <box width="100%" flexDirection="column" height={2}>
@@ -26,14 +31,17 @@ export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
             marginRight={1}
             backgroundColor={i === activeTab ? theme.backgroundElement : undefined}
           >
-            <text fg={i === activeTab ? theme.primary : theme.textMuted}>
-              {tab.name}
+            <text>
+              <span fg={theme.borderSubtle}>{idx(i)} </span>
+              <span fg={i === activeTab ? theme.primary : theme.textMuted}>{tab.name}</span>
             </text>
           </box>
         ))}
         <box flexGrow={1} />
         <box paddingX={1}>
-          <text fg={theme.borderSubtle}>Ctrl+←/→: Switch tabs</text>
+          <text fg={theme.borderSubtle}>
+            {`${keys.print("tab.prev")}/${keys.print("tab.next")} or Ctrl+N`}
+          </text>
         </box>
       </box>
       <box width="100%" height={1}>
