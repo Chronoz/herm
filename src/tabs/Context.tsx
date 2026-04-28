@@ -482,11 +482,22 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
     : "click a group to drill in"
   const escHint = selected || drilled ? "  ·  Esc back" : ""
 
+  const focus = selected || hovered
+  const focusSeg = focus ? findSeg(focus) : null
+
   return (
     <TabShell
       title={`Context · ${fmt(fill)} / ${fmt(ctxLen)} (${pct}%)`}
       hint={crumb + escHint}
     >
+      <box height={1}>
+        {focusSeg ? (
+          <text fg={clr(focusSeg.id, theme)}>
+            ◼ {focusSeg.label} — {fmt(focusSeg.tokens)} tok ({focusSeg.percent.toFixed(1)}%)
+          </text>
+        ) : <text>{" "}</text>}
+      </box>
+      <box height={1} />
       <box flexDirection="row" flexGrow={1}>
         <box flexDirection="column" marginRight={2} flexShrink={0}>
           {/* Compression badge — shown inline above the grid when any
