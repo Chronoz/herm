@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState, useRef, useMemo, memo } from "react"
+import { useKeyboard } from "@opentui/react"
 
 import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
@@ -41,6 +42,7 @@ type Props = {
   messages?: Message[]
   sessionStart?: number
   info?: SessionInfo
+  focused?: boolean
 }
 
 type Wire = { input: number; output: number; total: number; calls: number }
@@ -282,7 +284,7 @@ const NO_MESSAGES: readonly Message[] = Object.freeze([])
 
 // ─── Main Component ──────────────────────────────────────────────────
 
-export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Props) => {
+export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focused }: Props) => {
   const config = useHome("config")
   const memory = useHome("memory")
   const userProfile = useHome("userProfile")
@@ -386,10 +388,21 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     setSelected(selected === id ? null : id)
   }
 
-  const back = () => {
-    setDrilled(null)
-    setSelected(null)
-  }
+  // Esc pops one drill level (detail → group → overview); double-tap
+  // within 400ms jumps straight to overview. Replaces the '◀ Back to
+  // overview' row, which stole a line above the grid and broke
+  // top-alignment with the breakdown pane.
+  const lastEsc = useRef(0)
+  useKeyboard((key) => {
+    if (!focused || key.name !== "escape") return
+    const now = Date.now()
+    if (now - lastEsc.current < 400) {
+      setSelected(null); setDrilled(null); lastEsc.current = 0; return
+    }
+    lastEsc.current = now
+    if (selected) return setSelected(null)
+    if (drilled) return setDrilled(null)
+  })
 
   // Detail panel router
   const detail = () => {
@@ -467,19 +480,15 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info }: Prop
     : cumulative ? "[cumulative — not current fill]"
     : wire.calls === 0 && fill > 0 ? "[live session]"
     : "click a group to drill in"
+  const escHint = selected || drilled ? "  ·  Esc back" : ""
 
   return (
     <TabShell
       title={`Context · ${fmt(fill)} / ${fmt(ctxLen)} (${pct}%)`}
-      hint={crumb}
+      hint={crumb + escHint}
     >
       <box flexDirection="row" flexGrow={1}>
         <box flexDirection="column" marginRight={2} flexShrink={0}>
-          {drilled ? (
-            <box height={1} marginBottom={1} onMouseDown={back}>
-              <text fg={theme.info}>◀ Back to overview</text>
-            </box>
-          ) : null}
           {/* Compression badge — shown inline above the grid when any
               compression events have fired this session. */}
           {compressions > 0 ? (
