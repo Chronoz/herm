@@ -6,6 +6,7 @@ import { useKeyboard, useRenderer } from "@opentui/react"
 import { useRef, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
 import { editInEditor } from "../utils/editor"
+import { useKeys } from "../keys"
 import type { ComposerHandle } from "../components/chat/Composer"
 
 const INTERRUPT_MS = 5000
@@ -33,6 +34,7 @@ type Opts = {
 
 export function useAppKeys(o: Opts) {
   const renderer = useRenderer()
+  const keys = useKeys()
   const lastEsc = useRef(0)
   const lastTab = useRef(0)
 
@@ -43,13 +45,13 @@ export function useAppKeys(o: Opts) {
   useKeyboard((key) => {
     const c = o.composer.current
 
-    if (key.ctrl && key.name === "c") {
+    if (keys.match("app.exit", key)) {
       if (copySelection(renderer)) return
       renderer.destroy()
       return
     }
 
-    if (key.ctrl && key.name === "z") {
+    if (keys.match("app.suspend", key)) {
       renderer.suspend()
       process.kill(process.pid, "SIGTSTP")
       // Resumes on SIGCONT; OpenTUI's suspend/resume cycle re-enables
@@ -58,12 +60,12 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    if (key.ctrl && key.name === "g" && !o.streaming) {
+    if (keys.match("editor.open", key) && !o.streaming) {
       const seed = c?.value() ?? ""
       void editInEditor(renderer, seed).then(out => {
         if (out === undefined) {
           if (!process.env.VISUAL && !process.env.EDITOR)
-            o.onNotice("Set $EDITOR or $VISUAL to use Ctrl+G")
+            o.onNotice("Set $EDITOR or $VISUAL to use the external editor")
           return
         }
         c?.set(out)
@@ -72,19 +74,18 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    if (key.ctrl && key.name === "left") {
+    if (keys.match("tab.prev", key)) {
       o.setTab(t => { const n = Math.max(0, t - 1); o.setFocusRegion(regionFor(n)); return n })
       return
     }
-    if (key.ctrl && key.name === "right") {
+    if (keys.match("tab.next", key)) {
       o.setTab(t => { const n = Math.min(o.tabMax, t + 1); o.setFocusRegion(regionFor(n)); return n })
       return
     }
 
     // Popover owns up/down/tab/escape while open; stopPropagation keeps the
     // textarea renderable from also moving the cursor on the same keypress.
-    // Other keys fall through for continued filtering. Popovers are
-    // suppressed during streaming (composer input queues instead).
+    // Structural — popover nav is composer-state, not a catalog action.
     if (!o.streaming && c?.popOpen()) {
       if (key.name === "escape") return c.popCancel()
       if (key.name === "up") { c.popNav(-1); key.stopPropagation(); return }
@@ -93,7 +94,7 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    if (key.name === "tab" && !o.streaming) {
+    if (keys.match("focus.cycle", key) && !o.streaming) {
       if (o.tab === o.chatTab) {
         o.setFocusRegion(r => r === "input" ? "content" : "input")
         return
@@ -115,7 +116,7 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    if (key.name === "escape") {
+    if (keys.match("session.interrupt", key)) {
       if (o.streaming) {
         const now = Date.now()
         if (now - lastEsc.current < INTERRUPT_MS) {
@@ -131,17 +132,15 @@ export function useAppKeys(o: Opts) {
       return
     }
 
-    if (key.ctrl && key.name === "y") return o.onCopyLast()
-    // Alt+V → gateway probes the system clipboard for an image. Ctrl+V
-    // is the terminal's bracketed-paste path; Alt avoids collision.
-    if (key.meta && key.name === "v") {
+    if (keys.match("reply.copy", key)) return o.onCopyLast()
+    if (keys.match("clipboard.attach", key)) {
       o.onAttachClipboard()
       key.stopPropagation()
       return
     }
-    // Ctrl+U (readline kill-to-start) repurposed: if there's a queued
-    // prompt, pop it back into the input instead. Only stop propagation
-    // on success so the readline binding still works on an empty queue.
+    // Ctrl+U queue-pop — not in the catalog (pending removal, herm-0pg.14).
+    // Only stop propagation on success so the textarea's readline
+    // kill-to-start still works on an empty queue.
     if (key.ctrl && key.name === "u") {
       if (o.onQueuePop()) key.stopPropagation()
       return

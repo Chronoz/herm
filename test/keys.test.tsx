@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { act } from "react"
 import type { ParsedKey } from "@opentui/core"
 import { useKeyboard } from "@opentui/react"
@@ -18,8 +18,6 @@ function Probe(props: { onKeys: (k: Keys) => void; onFire?: (id: string) => void
 }
 
 describe("KeysProvider", () => {
-  afterEach(() => prefs.reset())
-
   test("match() resolves defaults", async () => {
     let keys!: Keys
     const t: Harness = await mountNode(<Probe onKeys={k => { keys = k }} />)

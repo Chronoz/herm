@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { act } from "react"
 import { mount, until, MockGateway } from "./harness"
+import * as prefs from "../src/utils/preferences"
 import { DOUBLE_TAB_MS } from "../src/app/useAppKeys"
 import type { GatewayEvent } from "../src/utils/gateway-types"
 
@@ -34,6 +35,54 @@ describe("app", () => {
     // Sandboxed HERMES_HOME has no state.db → empty state
     expect(t.frame()).toContain("No sessions")
 
+    t.destroy()
+  })
+
+  test("tab.next rebind via preferences.keys is honored end-to-end", async () => {
+    prefs.set("keys", { "tab.next": "ctrl+l", "tab.prev": "ctrl+h" })
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Default chord no longer switches.
+    act(() => t.keys.pressArrow("right", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).toContain("Message Hermes")
+
+    // Rebound chord does.
+    act(() => { t.keys.pressKey("l", { ctrl: true }); t.keys.pressKey("l", { ctrl: true }) })
+    await t.settle()
+    expect(t.frame()).toContain("No sessions")
+
+    act(() => t.keys.pressKey("h", { ctrl: true }))
+    await t.settle()
+    act(() => t.keys.pressKey("h", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).toContain("Message Hermes")
+
+    t.destroy()
+  })
+
+  test("<leader>e opens external editor (leader path through the full app)", async () => {
+    // Seed $EDITOR so editInEditor doesn't early-return; it will spawn
+    // `true` which exits 0 without writing — the temp file keeps its seed.
+    const prev = process.env.EDITOR
+    process.env.EDITOR = "true"
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("seed text") })
+    await t.settle()
+    // Ctrl+X arms leader; provider blurs the composer textarea so 'e'
+    // reaches useAppKeys' match("editor.open") instead of typing.
+    act(() => t.keys.pressKey("x", { ctrl: true }))
+    await t.settle()
+    await act(async () => { await t.keys.typeText("e") })
+    // editInEditor suspends the renderer; settle until it resumes and
+    // re-seeds. The composer should NOT contain a stray 'e'.
+    await until(t, () => t.frame().includes("> seed text"), 3000)
+    expect(t.frame()).not.toContain("seed texte")
+
+    process.env.EDITOR = prev
     t.destroy()
   })
 
