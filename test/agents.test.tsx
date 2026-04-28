@@ -337,8 +337,8 @@ describe("Agents tab", () => {
     act(() => t.keys.pressTab())
     await until(t, () => t.frame().includes("Delegation (3)"))
     expect(t.frame()).not.toContain("Profiles (")
-    // Hint truncates at 80 cols — check the visible prefix only.
-    expect(t.frame()).toContain("depth")
+    // Hint carries the tree summary when agents are live.
+    expect(t.frame()).toMatch(/d\d · \d+ age/)
 
     act(() => t.resize(200, 48))
     await t.settle()

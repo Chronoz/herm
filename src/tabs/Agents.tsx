@@ -20,6 +20,7 @@ import {
   type ProfileInfo, type ProfileStats,
 } from "../utils/hermes-profiles"
 import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
+import { tree as buildTree, totals as treeTotals, summary, spark, heat, peak, type Agg } from "../utils/subagent-tree"
 
 // Two panes:
 //   Profiles (left)   — filesystem scan of `<root>/profiles/`. Each
@@ -116,15 +117,20 @@ const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => 
 
 // ─── Delegation pane ─────────────────────────────────────────────────
 
+const HOT = ["⠀", "⠁", "⠃", "⠇", "⠏", "⠟", "⠿", "⡿", "⣿"] as const
+
 const DelegRow = memo((props: {
   id: string
-  r: DelegationRecord; idx: number; selected: boolean; now: number
+  r: DelegationRecord; idx: number; selected: boolean; now: number; hot: number
   onHover: (i: number) => void; onKill: (i: number) => void
 }) => {
   const theme = useTheme().theme
   const { r, idx: i, now } = props
   const [x, setX] = useState(false)
   const up = r.started_at ? dur(now - r.started_at) : "—"
+  const hotFg = [theme.textMuted, theme.textMuted, theme.text,
+    theme.info, theme.info, theme.accent, theme.accent,
+    theme.warning, theme.error][props.hot] ?? theme.textMuted
   return (
     <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
@@ -132,6 +138,7 @@ const DelegRow = memo((props: {
       <box width={2}><text fg={props.selected ? theme.primary : theme.text}>
         {props.selected ? "▸ " : "  "}
       </text></box>
+      <box width={2}><text fg={hotFg}>{HOT[props.hot]} </text></box>
       <box flexGrow={1} minWidth={8} height={1} overflow="hidden">
         <text>
           <span fg={theme.textMuted}>{"· ".repeat(r.depth)}</span>
@@ -193,15 +200,18 @@ type Live = {
   cost_usd?: number
 }
 
-const DelegDetail = memo((props: { r: DelegationRecord; live?: Live; now: number }) => {
+const DelegDetail = memo((props: { r: DelegationRecord; live?: Live; agg?: Agg; now: number }) => {
   const theme = useTheme().theme
-  const { r, live, now } = props
+  const { r, live, agg, now } = props
   const tc = live?.tool_count ?? r.tool_count ?? 0
   const tr = trail(r.subagent_id)
   return (
     <scrollbox scrollY flexGrow={1}>
       <box flexDirection="column" width="100%">
         <box minHeight={1}><text fg={theme.accent} wrapMode="word"><strong>{r.goal}</strong></text></box>
+        {agg && agg.agents > 1 ? (
+          <box height={1}><text fg={theme.textMuted}>{summary(agg)}</text></box>
+        ) : null}
         <box height={1} />
         <KVBlock rows={[
           ["Status",   live?.status ?? r.status ?? "running"],
@@ -263,6 +273,20 @@ export const Agents = memo((props: Props) => {
   const [err, setErr] = useState("")
 
   const active = preorder(deleg?.active ?? [])
+  // Aggregates: rebuild the tree from the same snapshot + live
+  // enrichment. O(n) per poll (n≤max_concurrent×depth, tiny).
+  const nodes = buildTree(deleg?.active ?? [], liveMap, now)
+  const all = treeTotals(nodes)
+  const hotPeak = peak(nodes)
+  // Flat lookup: subagent_id → subtree aggregate, for the selected
+  // row's detail pane and per-row hotness colouring.
+  const aggOf = new Map<string, Agg>()
+  {
+    const walk = (ns: typeof nodes) => {
+      for (const n of ns) { aggOf.set(n.rec.subagent_id, n.agg); walk(n.kids) }
+    }
+    walk(nodes)
+  }
   const live = useRef({ profiles, active })
   live.current = { profiles, active }
 
@@ -478,6 +502,9 @@ export const Agents = memo((props: Props) => {
   const sticky = stickyDefault()
   const limits = deleg
     ? `depth≤${deleg.max_spawn_depth} · conc≤${deleg.max_concurrent_children}` : ""
+  const dHint = active.length > 0
+    ? `${spark(nodes)}  ${summary(all)}`
+    : limits
 
   const togglePause = useCallback(() => {
     const next = !deleg?.paused
@@ -532,7 +559,7 @@ export const Agents = memo((props: Props) => {
       {/* ── Delegation ── */}
       {showDeleg ? (
       <TabShell title={`Delegation (${active.length})`}
-                hint={`↑↓ nav  ${keys.print("agents.kill")} interrupt  ${keys.print("agents.history")} history  ${keys.print("list.refresh")} refresh  ·  ${limits}`}
+                hint={`↑↓ nav  ${keys.print("agents.kill")} interrupt  ${keys.print("agents.history")} history  ${keys.print("list.refresh")} refresh  ·  ${dHint}`}
                 focus={pane === "deleg"} grow={2}>
         <box height={1} flexDirection="row" marginBottom={1}>
           <box flexShrink={0} paddingX={1}
@@ -557,14 +584,17 @@ export const Agents = memo((props: Props) => {
               {active.map((r, i) => {
                 const lv = liveMap.get(r.subagent_id)
                 const row = lv ? { ...r, tool_count: lv.tool_count } : r
-                return <DelegRow key={r.subagent_id} id={dFollow.id(i)} r={row} idx={i} selected={i === dSel} now={now}
+                const h = heat(aggOf.get(r.subagent_id)?.hot ?? 0, hotPeak, HOT.length)
+                return <DelegRow key={r.subagent_id} id={dFollow.id(i)} r={row} idx={i}
+                  selected={i === dSel} now={now} hot={h}
                   onHover={dHover} onKill={dKill} />
               })}
             </scrollbox>
             <box height={1}><text fg={theme.border}>{"─".repeat(4)}</text></box>
             <box flexGrow={2} flexBasis={0} minHeight={0}>
               {active[dSel]
-                ? <DelegDetail r={active[dSel]} live={liveMap.get(active[dSel].subagent_id)} now={now} />
+                ? <DelegDetail r={active[dSel]} live={liveMap.get(active[dSel].subagent_id)}
+                    agg={aggOf.get(active[dSel].subagent_id)} now={now} />
                 : null}
             </box>
           </box>
