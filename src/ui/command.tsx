@@ -1,26 +1,27 @@
 /**
- * Command palette — register commands with keybinds, open with Ctrl+K.
- *
- * Usage:
- *   <CommandProvider><App /></CommandProvider>
+ * Command palette — registry of named commands, each optionally bound
+ * to a catalog ActionId. The palette (palette.open) is just one way to
+ * reach them; any command with an `action` also fires when that chord
+ * is pressed, so the registry doubles as the dispatch table for global
+ * actions that don't need useAppKeys' composer/renderer state.
  *
  *   const cmd = useCommand()
  *   useEffect(() => cmd.register([
- *     { title: "Help", value: "help", keybind: "f1", onSelect: () => {} },
+ *     { title: "Help", value: "help", action: "help.open", onSelect: ... },
  *   ]), [])
  */
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react"
 import type { ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
+import { useKeys, type ActionId } from "../keys"
 import { useDialog } from "./dialog"
-import { DialogSelect } from "./dialog-select"
-import type { SelectOption } from "./dialog-select"
+import { DialogSelect, type SelectOption } from "./dialog-select"
 
 export type Command = {
   readonly title: string
   readonly value: string
-  readonly keybind?: string
+  readonly action?: ActionId
   readonly description?: string
   readonly category?: string
   readonly onSelect: () => void
@@ -38,6 +39,7 @@ export const CommandProvider = ({ children }: { children: ReactNode }) => {
   const [, setRevision] = useState(0)
   const enabled = useRef(true)
   const dialog = useDialog()
+  const keys = useKeys()
 
   const all = useCallback((): Command[] => {
     const result: Command[] = []
@@ -64,7 +66,8 @@ export const CommandProvider = ({ children }: { children: ReactNode }) => {
     const options: SelectOption[] = cmds.map(c => ({
       title: c.title,
       value: c.value,
-      description: c.keybind ? `[${c.keybind}]` : c.description,
+      description: c.description,
+      hint: c.action ? keys.print(c.action) : undefined,
       category: c.category,
     }))
     dialog.replace(
@@ -79,34 +82,19 @@ export const CommandProvider = ({ children }: { children: ReactNode }) => {
         placeholder="Search commands..."
       />
     )
-  }, [all, dialog])
+  }, [all, dialog, keys])
 
   useKeyboard((key) => {
-    if (!enabled.current) return
-
-    // Ctrl+K opens command palette
-    if (key.ctrl && key.name === "k") {
-      open()
-      return
+    if (!enabled.current || dialog.stack.length > 0) return
+    if (keys.match("palette.open", key)) return open()
+    for (const c of all()) {
+      if (c.action && keys.match(c.action, key)) return c.onSelect()
     }
-
-    // Match registered keybinds
-    const cmds = all()
-    cmds.forEach(cmd => {
-      if (!cmd.keybind) return
-      const kb = cmd.keybind.toLowerCase()
-      if (kb === "f1" && key.name === "f1") { cmd.onSelect(); return }
-      if (kb === "?" && key.sequence === "?") { cmd.onSelect(); return }
-    })
   })
 
   const value = useMemo<CommandContext>(() => ({ register, setEnabled }), [register, setEnabled])
 
-  return (
-    <Ctx.Provider value={value}>
-      {children}
-    </Ctx.Provider>
-  )
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
 export const useCommand = (): CommandContext => {

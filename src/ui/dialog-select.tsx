@@ -14,6 +14,7 @@ export type SelectOption = {
   readonly title: string
   readonly value: string
   readonly description?: string
+  readonly hint?: string
   readonly category?: string
 }
 
@@ -119,15 +120,23 @@ export const DialogSelect = (props: Props) => {
             elements.push(
               <box
                 key={item.value}
+                flexDirection="row"
                 backgroundColor={active ? theme.backgroundElement : undefined}
                 onMouseOver={() => setCursor(i)}
                 onMouseDown={() => props.onSelect(item)}
                 paddingLeft={1}
                 paddingRight={1}
               >
-                <text fg={active ? theme.text : theme.textMuted}>
-                  {current ? "● " : "  "}{item.title}{item.description ? ` — ${item.description}` : ""}
-                </text>
+                <box flexGrow={1} height={1} overflow="hidden">
+                  <text fg={active ? theme.text : theme.textMuted}>
+                    {current ? "● " : "  "}{item.title}{item.description ? ` — ${item.description}` : ""}
+                  </text>
+                </box>
+                {item.hint ? (
+                  <box flexShrink={0} height={1}>
+                    <text fg={theme.textMuted}>{item.hint}</text>
+                  </box>
+                ) : null}
               </box>
             )
           })
