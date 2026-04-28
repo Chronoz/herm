@@ -1,8 +1,11 @@
 import { describe, test, expect } from "bun:test"
 import { act } from "react"
-import { mountNode, until, MockGateway } from "./harness"
-import { Col, Hdr, Marquee } from "../src/ui/table"
-import { Toolsets } from "../src/tabs/Toolsets"
+import { mountNode } from "./harness"
+import { Col, Hdr, Marquee, VBAR_W } from "../src/ui/table"
+
+// These assert on the ui/table primitives directly. Earlier revisions
+// drove them through <Toolsets>, which meant any column-layout change
+// in that tab broke tests that have nothing to do with the tab.
 
 describe("ui/table", () => {
   test("Col truncates overlong fixed-width content; grow takes remainder", async () => {
@@ -22,41 +25,59 @@ describe("ui/table", () => {
   })
 
   test("Hdr+Col header aligns with body rows across a forced-vbar scrollbox", async () => {
-    const sets = Array.from({ length: 30 }, (_, i) => ({
-      name: `toolset-${i}`, description: "", tool_count: i, enabled: i % 2 === 0,
-    }))
-    const gw = new MockGateway({ "toolsets.list": () => ({ toolsets: sets }) })
-    const t = await mountNode(<Toolsets focused />, { gw, width: 160, height: 20 })
-    await until(t, () => t.frame().includes("Toolsets (30)"))
-
+    const rows = Array.from({ length: 30 }, (_, i) => `row-${i}`)
+    const t = await mountNode(
+      <box flexDirection="column" width={60} height={16}>
+        <Hdr>
+          <Col w={4}>{""}</Col>
+          <Col grow bold>Name</Col>
+          <Col w={10} right bold>Count</Col>
+        </Hdr>
+        <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+          {rows.map((r, i) => (
+            <box key={r} flexDirection="row" height={1}>
+              <Col w={4}>{"  "}</Col>
+              <Col grow>{r}</Col>
+              <Col w={10} right>{String(i)}</Col>
+            </box>
+          ))}
+        </scrollbox>
+      </box>,
+      { width: 70, height: 20 },
+    )
+    await t.settle()
     const lines = t.frame().split("\n")
-    const hdr = lines.find(l => /Name\s+Tools\s+Status/.test(l))!
-    const row = lines.find(l => l.includes("● toolset-0"))!
-    // Hdr's VBAR_W padding matches the scrollbox gutter → grow col at same x.
-    expect(hdr.indexOf("Name")).toBe(row.indexOf("toolset-0"))
+    const hdr = lines.find(l => /Name\s+Count/.test(l))!
+    const row = lines.find(l => l.includes("row-0"))!
+    // Hdr's VBAR_W paddingRight mirrors the scrollbox's v-bar gutter, so
+    // the grow column resolves to the same x in both.
+    expect(hdr.indexOf("Name")).toBe(row.indexOf("row-0"))
+    expect(VBAR_W).toBe(1)
     t.destroy()
   })
 
   test("grow col shrinks under narrow terminal instead of bleeding", async () => {
-    const long = "an_extremely_long_toolset_name_that_would_overflow_padEnd_sixteen"
-    const gw = new MockGateway({
-      "toolsets.list": () => ({ toolsets: [
-        { name: long, description: "", tool_count: 3, enabled: true },
-      ]}),
-    })
-    const t = await mountNode(<Toolsets focused />, { gw, width: 200, height: 20 })
-    await until(t, () => t.frame().includes("Toolsets (1)"))
-
-    // Detail panel echoes ts.name at the same y — scope to the list row (has ●).
+    const long = "an_extremely_long_value_that_would_overflow_padEnd_sixteen"
+    const Fixture = () => (
+      <box flexDirection="row" height={1}>
+        <Col w={2}>{"● "}</Col>
+        <Col grow>{long}</Col>
+        <Col w={9} right>3 tools</Col>
+        <Col w={11} right>enabled</Col>
+      </box>
+    )
+    const t = await mountNode(<Fixture />, { width: 120, height: 5 })
+    await t.settle()
     const row = (f: string) => f.split("\n").find(l => l.includes("● an_extremely"))!
+
     const wide = t.frame()
     expect(row(wide)).toContain("padEnd_sixteen")
     expect(row(wide)).toContain("3 tools")
 
-    t.resize(90, 20)
+    t.resize(50, 5)
     await t.settle(); await t.settle()
     const narrow = t.frame()
-    // Name truncated; meta cols still present on the same line; no wrap.
+    // grow col truncated; fixed meta cols still on the same line; no wrap.
     expect(row(narrow)).not.toContain("padEnd_sixteen")
     expect(row(narrow)).toContain("3 tools")
     expect(row(narrow)).toContain("enabled")
