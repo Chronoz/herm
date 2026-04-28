@@ -1,6 +1,7 @@
 // Scrollable read-only text dialog — oc ui/dialog-alert equivalent.
 
 import { useKeyboard } from "@opentui/react"
+import { useKeys } from "../keys"
 import { useTheme } from "../theme"
 import type { DialogContext } from "../ui/dialog"
 import { copy } from "../utils/clipboard"
@@ -11,9 +12,10 @@ export function openAlert(dialog: DialogContext, title: string, body: string) {
 
 const Alert = (props: { title: string; body: string; onClose: () => void }) => {
   const theme = useTheme().theme
+  const keys = useKeys()
   useKeyboard((key) => {
-    if (key.name === "escape" || key.name === "return") props.onClose()
-    if (key.name === "c") void copy(props.body)
+    if (keys.match("dialog.cancel", key) || keys.match("dialog.accept", key)) props.onClose()
+    if (keys.match("dialog.copy", key)) void copy(props.body)
   })
   return (
     <box flexDirection="column" width={84} maxHeight={28}
@@ -29,7 +31,7 @@ const Alert = (props: { title: string; body: string; onClose: () => void }) => {
         <text fg={theme.text} wrapMode="word">{props.body}</text>
       </scrollbox>
       <box height={1}>
-        <text fg={theme.textMuted}>esc close · c copy</text>
+        <text fg={theme.textMuted}>{`${keys.print("dialog.cancel")} close · ${keys.print("dialog.copy")} copy`}</text>
       </box>
     </box>
   )

@@ -2,6 +2,7 @@
 // true on [y], false on [n]/Esc.
 
 import { useKeyboard } from "@opentui/react"
+import { useKeys } from "../keys"
 import { useTheme } from "../theme"
 import type { DialogContext } from "../ui/dialog"
 
@@ -17,9 +18,10 @@ type Props = {
 
 export const Confirm = (props: Props) => {
   const theme = useTheme().theme
+  const keys = useKeys()
   useKeyboard((key) => {
-    if (key.name === "y") return props.onConfirm()
-    if (key.name === "n" || key.name === "escape") return props.onCancel()
+    if (keys.match("dialog.confirm", key)) return props.onConfirm()
+    if (keys.match("dialog.deny", key) || keys.match("dialog.cancel", key)) return props.onCancel()
   })
   return (
     <box flexDirection="column" width={54}>
@@ -33,7 +35,7 @@ export const Confirm = (props: Props) => {
       <box height={1} />
       <box height={1}>
         <text fg={theme.textMuted}>
-          {`[y] ${props.yes ?? "confirm"}   [n] ${props.no ?? "cancel"}`}
+          {`[${keys.print("dialog.confirm")}] ${props.yes ?? "confirm"}   [${keys.print("dialog.deny")}] ${props.no ?? "cancel"}`}
         </text>
       </box>
     </box>

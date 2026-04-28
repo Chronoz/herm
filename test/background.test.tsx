@@ -26,7 +26,7 @@ describe("background/btw completion", () => {
     const d = t.frame()
     expect(d).toContain("summary line")
     expect(d).toContain("detail 4")
-    expect(d).toContain("esc close · c copy")
+    expect(d).toContain("Esc close · C copy")
 
     act(() => t.keys.pressEscape())
     await t.settle()

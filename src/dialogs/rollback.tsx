@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react"
 import { useKeyboard } from "@opentui/react"
+import { useKeys, handleListKey } from "../keys"
 import { useTheme } from "../theme"
 import type { DialogContext } from "../ui/dialog"
 import type { useToast } from "../ui/toast"
@@ -82,21 +83,25 @@ export const RollbackDialog = (props: Props) => {
       })
   }
 
+  const keys = useKeys()
   useKeyboard((key) => {
     if (diff) {
       if (confirm) {
-        if (key.name === "y") return restore(cur)
-        if (key.name === "n" || key.name === "escape") { setConfirm(false); return back() }
+        if (keys.match("dialog.confirm", key)) return restore(cur)
+        if (keys.match("dialog.deny", key) || keys.match("dialog.cancel", key)) {
+          setConfirm(false); return back()
+        }
         return
       }
-      if (key.name === "escape") return back()
+      if (keys.match("dialog.cancel", key)) return back()
       if (key.name === "r") return setConfirm(true)
       return
     }
     if (!data?.enabled) return
-    if (key.name === "up") return setSel(p => Math.max(0, p - 1))
-    if (key.name === "down") return setSel(p => Math.min(points.length - 1, p + 1))
-    if (key.name === "return" && cur) return open(cur)
+    handleListKey(keys, key, {
+      count: points.length, setSel,
+      onActivate: () => { if (cur) open(cur) },
+    })
   })
 
   // ── Render ────────────────────────────────────────────────────────

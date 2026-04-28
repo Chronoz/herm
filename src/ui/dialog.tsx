@@ -13,6 +13,7 @@ import { createContext, useContext, useState, useCallback, useMemo } from "react
 import type { ReactNode } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import { RGBA } from "@opentui/core"
+import { useKeys } from "../keys"
 import { useTheme } from "../theme"
 
 type DialogEntry = {
@@ -45,10 +46,10 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
+  const keys = useKeys()
   useKeyboard((key) => {
-    if (key.name !== "escape") return
     if (stack.length === 0) return
-    clear()
+    if (keys.match("dialog.cancel", key)) clear()
   })
 
   const value = useMemo<DialogContext>(() => ({ replace, clear, stack }), [replace, clear, stack])

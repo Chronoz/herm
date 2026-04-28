@@ -2,10 +2,10 @@
 // preview. ↑/↓ to navigate, Enter to select, Esc closes (via DialogProvider).
 
 import { useMemo, useState } from "react"
-import { useKeyboard } from "@opentui/react"
 import { readFileSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
+import { useListKeys } from "../keys"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar"
@@ -21,7 +21,6 @@ const trunc = (s: string, n: number) => s.length <= n ? s : s.slice(0, n - 1) + 
 export const EikonPickerDialog = (props: {
   dirs?: string[]
   onSelect: (path: string) => void
-  onCancel?: () => void
 }) => {
   const theme = useTheme().theme
   const dialog = useDialog()
@@ -37,15 +36,10 @@ export const EikonPickerDialog = (props: {
     catch { return undefined }
   }, [cur])
 
-  useKeyboard((key) => {
-    if (key.name === "up") return void setCursor(c => Math.max(0, c - 1))
-    if (key.name === "down") return void setCursor(c => Math.min(found.length - 1, c + 1))
-    if (key.name === "return" && cur) {
-      props.onSelect(cur.path)
-      dialog.clear()
-      return
-    }
-    if (key.name === "escape") props.onCancel?.()
+  useListKeys({
+    active: true,
+    count: found.length, setSel: setCursor,
+    onActivate: () => { if (cur) { props.onSelect(cur.path); dialog.clear() } },
   })
 
   const w = (parsed?.meta.width ?? 48) + 2
