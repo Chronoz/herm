@@ -7,7 +7,9 @@
  */
 
 import { useState, useMemo, useEffect } from "react"
+import type { ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
+import type { ParsedKey } from "@opentui/core"
 import { useTheme } from "../theme"
 
 export type SelectOption = {
@@ -23,8 +25,11 @@ type Props = {
   readonly options: ReadonlyArray<SelectOption>
   readonly onSelect: (option: SelectOption) => void
   readonly onMove?: (option: SelectOption) => void
+  /** Printable-key interceptor — return true to consume (skip filter append). */
+  readonly onKey?: (key: ParsedKey) => boolean
   readonly placeholder?: string
   readonly current?: string
+  readonly footer?: ReactNode
 }
 
 export const DialogSelect = (props: Props) => {
@@ -77,6 +82,7 @@ export const DialogSelect = (props: Props) => {
       if (item) props.onSelect(item)
       return
     }
+    if (props.onKey?.(key)) return
   })
 
   // Build flat list with index tracking
@@ -143,6 +149,7 @@ export const DialogSelect = (props: Props) => {
           return elements
         }).flat()}
       </scrollbox>
+      {props.footer != null ? <box paddingTop={1}>{props.footer}</box> : null}
     </box>
   )
 }
