@@ -9,6 +9,7 @@ const HH = process.env.HERMES_HOME!
 beforeAll(() => {
   // Seed the sandboxed hermes home with the fixtures we need.
   mkdirSync(HH, { recursive: true })
+  mkdirSync(join(HH, "hermes-agent", "plugins", "memory", "mem0"), { recursive: true })
 
   // SOUL.md
   writeFileSync(join(HH, "SOUL.md"), "# Identity\n\nYou are a test agent.")

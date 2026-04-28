@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from "react"
+import { useState, memo } from "react"
 import type { MemoryProviderInfo, MemoryFileInfo } from "../utils/hermes-home"
 import { useHome } from "../home"
 import { useTheme, type Theme } from "../theme"
@@ -32,8 +32,6 @@ const DESC: Record<string, string> = {
   supermemory: "Semantic long-term memory with profile recall and session ingest.",
 }
 
-const ALL = ["builtin", "mem0", "honcho", "hindsight", "holographic", "openviking", "retaindb", "byterover", "supermemory"]
-
 // ─── Component ────────────────────────────────────────────────────────
 
 export const Memory = memo((props: { focused?: boolean }) => {
@@ -44,18 +42,10 @@ export const Memory = memo((props: { focused?: boolean }) => {
   const config = useHome("config")
   const memory = useHome("memory")
   const userProfile = useHome("userProfile")
-  const found = useHome("memoryProviders")
+  const providers = useHome("memoryProviders") ?? []
 
   const cfg = config?.memory
   const active = cfg?.provider || ""
-
-  const providers = useMemo(
-    () => ALL.map(name =>
-      found?.find(p => p.name === name)
-        ?? { name, active: name === "builtin" || name === active, config: {} },
-    ),
-    [found, active],
-  )
 
   const cur = providers[sel]
   const on = !!cur && (cur.name === "builtin" || cur.name === active)

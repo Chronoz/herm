@@ -10,7 +10,7 @@
 
 import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
-import { openSync, readSync, closeSync } from "node:fs";
+import { openSync, readSync, closeSync, readdirSync } from "node:fs";
 import { homedir } from "os";
 import { parse as parseYaml } from "yaml";
 import * as perf from "./perf";
@@ -485,32 +485,41 @@ export interface MemoryProviderInfo {
   config: Record<string, string | number | boolean>;
 }
 
-/** Read memory provider configs from ~/.hermes/ */
+// Per-provider local config/state file locations under HERMES_HOME.
+// This is lookup data, not an enumeration — discovery comes from
+// discoverMemoryProviders() below.
+const MEMORY_CFG_FILES: Record<string, string[]> = {
+  mem0: ["mem0.json"],
+  honcho: ["honcho.json"],
+  hindsight: ["hindsight/config.json"],
+  supermemory: ["supermemory.json"],
+  holographic: ["holographic.db"],
+};
+
+/** Scan the bundled hermes-agent memory-plugin dir for provider names
+    (mirrors plugins/memory/__init__.py discover's dir walk). User-
+    installed providers in $HERMES_HOME/plugins/ aren't distinguished
+    from non-memory plugins without importing them — wait for the
+    memory.providers RPC for those. */
+export function discoverMemoryProviders(): string[] {
+  const names = new Set<string>(["builtin"]);
+  try {
+    for (const e of readdirSync(`${HERMES_HOME}/hermes-agent/plugins/memory`, { withFileTypes: true }))
+      if (e.isDirectory() && !e.name.startsWith("_")) names.add(e.name);
+  } catch {}
+  return [...names];
+}
+
+/** Read memory provider configs from ~/.hermes/ — one entry per
+    discovered provider, with any local config file parsed in. */
 export async function readMemoryProviders(
   activeProvider: string,
 ): Promise<MemoryProviderInfo[]> {
-  const providers: MemoryProviderInfo[] = [];
-
-  // Built-in is always present
-  providers.push({ name: "builtin", active: true, config: {} });
-
-  // Known providers and their config file patterns
-  const known: Array<{ name: string; files: string[] }> = [
-    { name: "mem0", files: ["mem0.json"] },
-    { name: "honcho", files: ["honcho.json"] },
-    { name: "hindsight", files: ["hindsight/config.json"] },
-    { name: "supermemory", files: ["supermemory.json"] },
-    { name: "holographic", files: ["holographic.db"] },
-    { name: "openviking", files: [] },
-    { name: "retaindb", files: [] },
-    { name: "byterover", files: [] },
-  ];
-
-  for (const p of known) {
+  const out: MemoryProviderInfo[] = [];
+  for (const name of discoverMemoryProviders()) {
+    if (name === "builtin") { out.push({ name, active: true, config: {} }); continue; }
     const cfg: Record<string, string | number | boolean> = {};
-    let found = false;
-
-    for (const f of p.files) {
+    for (const f of MEMORY_CFG_FILES[name] ?? []) {
       try {
         const file = Bun.file(hermesPath(f));
         if (f.endsWith(".json")) {
@@ -526,30 +535,15 @@ export async function readMemoryProviders(
               }
             }
           }
-          found = true;
         } else {
-          // Non-JSON (like .db) — just check existence
-          const stat = await file.stat();
-          if (stat) {
-            cfg["db_size"] = `${Math.round(stat.size / 1024)}KB`;
-            found = true;
-          }
+          const st = await file.stat();
+          if (st) cfg["db_size"] = `${Math.round(st.size / 1024)}KB`;
         }
-      } catch {
-        // file doesn't exist
-      }
+      } catch {}
     }
-
-    if (found || p.name === activeProvider) {
-      providers.push({
-        name: p.name,
-        active: p.name === activeProvider,
-        config: cfg,
-      });
-    }
+    out.push({ name, active: name === activeProvider, config: cfg });
   }
-
-  return providers;
+  return out;
 }
 
 /** Read SOUL.md */

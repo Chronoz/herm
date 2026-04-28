@@ -15,6 +15,7 @@ beforeAll(async () => {
   mkdirSync(HH, { recursive: true })
   mkdirSync(join(HH, "memories"), { recursive: true })
   mkdirSync(join(HH, "sessions"), { recursive: true })
+  mkdirSync(join(HH, "hermes-agent", "plugins", "memory", "mem0"), { recursive: true })
   writeConfig("mem0")
   writeFileSync(join(HH, "SOUL.md"), "# Soul\ncontent")
   writeFileSync(join(HH, "sessions", "sessions.json"),
