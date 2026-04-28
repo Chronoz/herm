@@ -15,7 +15,7 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KV, KVBlock } from "../ui/kv"
-import { Col, Hdr } from "../ui/table"
+import { Col, Hdr, Marquee } from "../ui/table"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
@@ -191,9 +191,10 @@ const Item = memo((props: {
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
          onMouseDown={() => props.onActivate(i)} onMouseOver={() => props.onHover(i)}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
-      <Col grow fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
+      <Marquee grow active={props.selected}
+               fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
         {r.title || "Untitled"}
-      </Col>
+      </Marquee>
       <Col w={9} fg={theme.info}>{badge(r.source ?? "")}</Col>
       <Col w={7} fg={theme.textMuted}>{stamp(r.started_at)}</Col>
       <Col w={7} fg={theme.textMuted} right>{String(r.message_count)}</Col>

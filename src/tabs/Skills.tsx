@@ -10,7 +10,7 @@ import { useTheme } from "../theme";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { KVLink } from "../components/ui/FileLink";
-import { Col, Hdr } from "../ui/table";
+import { Col, Hdr, Marquee } from "../ui/table";
 import { openConfirm } from "../dialogs/confirm";
 
 type Hit = { name: string; description?: string }
@@ -31,8 +31,8 @@ const SkillRow = memo((props: {
     <box flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseOver={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
-      <Col w={26} fg={props.selected ? theme.accent : theme.text}>{s.name}</Col>
-      <Col grow min={8} fg={theme.textMuted}>{s.description || "—"}</Col>
+      <Marquee w={26} active={props.selected} fg={props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
+      <Marquee grow min={8} active={props.selected} fg={theme.textMuted}>{s.description || "—"}</Marquee>
     </box>
   );
 });

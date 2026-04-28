@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test"
+import { act } from "react"
 import { mountNode, until, MockGateway } from "./harness"
-import { Col, Hdr } from "../src/ui/table"
+import { Col, Hdr, Marquee } from "../src/ui/table"
 import { Toolsets } from "../src/tabs/Toolsets"
 
 describe("ui/table", () => {
@@ -60,6 +61,34 @@ describe("ui/table", () => {
     expect(row(narrow)).toContain("3 tools")
     expect(row(narrow)).toContain("enabled")
     expect(narrow.split("\n").filter(l => /●.*an_extremely/.test(l)).length).toBe(1)
+    t.destroy()
+  })
+
+  test("Marquee: static when fits; scrolls when truncated+active; static when inactive", async () => {
+    const long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    const t = await mountNode(
+      <box flexDirection="column" width={10}>
+        <Marquee w={10} active>{long}</Marquee>
+        <Marquee w={10} active>short</Marquee>
+        <Marquee w={10} active={false}>{long}</Marquee>
+      </box>,
+      { width: 20, height: 8 },
+    )
+    await t.settle()
+    // Initial frame: all three show their head.
+    expect(t.frame()).toContain("ABCDEFGHIJ")
+    expect(t.frame()).toContain("short")
+
+    // After hold + a few ticks, row 1 has rotated.
+    await act(async () => { await Bun.sleep(1100) })
+    await t.settle()
+    const lines = t.frame().split("\n")
+    // Active+truncated row: head advanced past 'A'.
+    expect(lines.find(l => /[B-Z].*[A-Z]/.test(l) && !l.includes("ABCDEFGHIJ"))).toBeDefined()
+    // Fitting row never scrolls.
+    expect(lines.some(l => l.includes("short"))).toBe(true)
+    // Inactive+truncated row stays at head.
+    expect(lines.filter(l => l.includes("ABCDEFGHIJ")).length).toBe(1)
     t.destroy()
   })
 })
