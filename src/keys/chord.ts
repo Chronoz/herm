@@ -118,3 +118,8 @@ export function toBindings<A extends string>(list: ReadonlyArray<Chord>, action:
     action,
   }))
 }
+
+/** Canonical string key for a Chord — for Map-bucketing by chord equality. */
+export function key(c: Chord): string {
+  return `${c.leader ? "L" : ""}${c.ctrl ? "C" : ""}${c.meta ? "M" : ""}${c.shift ? "S" : ""}${c.super ? "W" : ""}-${c.name}`
+}

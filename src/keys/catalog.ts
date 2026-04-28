@@ -100,3 +100,16 @@ export type ActionId = keyof typeof DEFAULTS
 export function inScope(s: Scope): ActionId[] {
   return (Object.keys(DEFAULTS) as ActionId[]).filter(id => DEFAULTS[id].scope === s)
 }
+
+// Two scopes overlap if both handlers can be live for the same keypress.
+// global fires everywhere; list is active on every admin tab alongside that
+// tab's own scope; dialog and composer are modal/focused surfaces that
+// displace the rest; distinct tab scopes are mutually exclusive.
+const TAB_SCOPES = new Set<Scope>(["sessions", "cron", "env", "agents", "skills", "config"])
+export function scopesOverlap(a: Scope, b: Scope): boolean {
+  if (a === b) return true
+  if (a === "global" || b === "global") return true
+  if (a === "list") return TAB_SCOPES.has(b)
+  if (b === "list") return TAB_SCOPES.has(a)
+  return false
+}

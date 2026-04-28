@@ -63,6 +63,15 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("user keybind override that collides surfaces a system-line warning", async () => {
+    // agents.kill → 'r' collides with list.refresh (list↔agents overlap).
+    prefs.set("keys", { "agents.kill": "r" })
+    const t = await mount()
+    await until(t, () => t.frame().includes("Keybinding conflict"))
+    expect(t.frame()).toMatch(/R → .*list\.refresh.*agents\.kill|R → .*agents\.kill.*list\.refresh/)
+    t.destroy()
+  })
+
   test("tab.next rebind via preferences.keys is honored end-to-end", async () => {
     prefs.set("keys", { "tab.next": "ctrl+l", "tab.prev": "ctrl+h" })
     const t = await mount()

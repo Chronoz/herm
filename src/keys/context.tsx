@@ -31,6 +31,8 @@ export type Keys = {
   chord(id: ActionId): ReadonlyArray<Chord>
   /** All actions in a scope, resolved. */
   all(scope: Scope): ReadonlyArray<Entry>
+  /** Full resolved id→Chord[] table (for conflict detection / rebind UI). */
+  readonly table: ReadonlyMap<ActionId, ReadonlyArray<Chord>>
 }
 
 const Ctx = createContext<Keys | null>(null)
@@ -97,6 +99,7 @@ export const KeysProvider = ({ children }: { children: ReactNode }) => {
       (Object.keys(DEFAULTS) as ActionId[])
         .filter(id => DEFAULTS[id].scope === scope)
         .map(id => ({ id, desc: DEFAULTS[id].desc, scope, chord: table.get(id) ?? [] })),
+    table,
   }), [table, leadLabel])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

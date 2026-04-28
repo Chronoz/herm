@@ -3,10 +3,11 @@
 // there is exactly one global useKeyboard.
 
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { useRef, type RefObject } from "react"
+import { useRef, useEffect, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
 import { editInEditor } from "../utils/editor"
-import { useKeys } from "../keys"
+import { useKeys, conflicts } from "../keys"
+import { print as chordPrint } from "../keys/chord"
 import type { ComposerHandle } from "../components/chat/Composer"
 
 const INTERRUPT_MS = 5000
@@ -39,6 +40,20 @@ export function useAppKeys(o: Opts) {
   // Tabs with their own keyboard surface own focus on entry; Chat keeps
   // the composer since its content region has no keybinds.
   const regionFor = (t: number): Region => t === o.chatTab ? "input" : "content"
+
+  // One-shot conflict scan whenever the resolved table changes (i.e. a
+  // user override was written). DEFAULTS are swept by a test, so any
+  // hit here is user-introduced — warn but honor the override.
+  useEffect(() => {
+    const found = conflicts(keys.table)
+      .filter(c => !(c.a === "session.interrupt" && c.b === "dialog.cancel"))
+    if (found.length === 0) return
+    const first = found[0]
+    o.onNotice(
+      `Keybinding conflict: ${chordPrint([first.chord])} → ${first.a} and ${first.b}` +
+      (found.length > 1 ? ` (+${found.length - 1} more)` : ""),
+    )
+  }, [keys.table])
 
   useKeyboard((key) => {
     const c = o.composer.current
