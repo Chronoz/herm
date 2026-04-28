@@ -52,17 +52,20 @@ describe("Config tab", () => {
     t.destroy()
   })
 
-  test("readonly key: '<N items>' + '⧉ yaml' hint; Enter → YAML mode", async () => {
+  test("list/dict key is read-only: '<N items>' + 🔒, Enter is a no-op", async () => {
     const cfg = { terminal: { docker_volumes: ["/a:/b", "/c:/d"] } }
     const gw = new MockGateway({ "config.get": () => ({ config: cfg }) })
     const t = await mountNode(<Config focused />, { gw, width: 160, height: 48 })
     await until(t, () => t.frame().includes("general"))
     await navTo(t, cfg, "terminal.docker_volumes")
     expect(t.frame()).toContain("2 items")
-    expect(t.frame()).toContain("⧉ yaml")
+    expect(t.frame()).toContain("🔒")
     expect(t.frame()).toContain("⟳")   // restart-tier glyph on selected row
     act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes("Config · YAML"))
+    await t.settle()
+    // v1: structured values are locked — no YAML-mode bounce, no edit buf.
+    expect(t.frame()).not.toContain("Config · YAML")
+    expect(t.frame()).toContain("2 items")
     t.destroy()
   })
 

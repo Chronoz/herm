@@ -81,43 +81,45 @@ const FieldRow = memo((props: {
   };
 
   const hint = (): string => {
-    if (props.readonly) return "🔒";
-    if (f.type === "readonly") return "⧉ yaml";
+    if (props.readonly || f.type === "readonly") return "🔒";
     if (f.type === "boolean") return "[space]";
     if (f.type === "select") return "[h/l]";
     return "[enter]";
   };
 
-  const valFg = props.readonly || !f.set ? theme.textMuted
-    : f.type === "readonly" ? theme.textMuted
+  const ro = props.readonly || f.type === "readonly";
+  const valFg = ro || !f.set ? theme.textMuted
     : f.type === "boolean" ? (f.value ? theme.success : theme.error)
     : theme.text;
+  const labelFg = ro ? theme.textMuted : props.active ? theme.accent : theme.text;
 
-  const lead = 4 + (props.badge !== undefined ? 12 : 0) + 28;
+  const lead = 4 + (props.badge !== undefined ? 12 : 0);
   const glyph = props.active ? EFFECT_GLYPH[f.effect] : "";
 
   return (
-    <box id={props.id} flexDirection="column">
-      <box flexDirection="row" height={1} backgroundColor={bg}>
+    <box id={props.id} flexDirection="column" backgroundColor={bg}>
+      <box flexDirection="row" height={1}>
         <Col w={2} fg={markFg}>{mark}</Col>
         <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
         {props.badge !== undefined
           ? <Col w={12} fg={theme.textMuted}>{props.badge}</Col>
           : null}
-        <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
+        <Col w={40} fg={labelFg}>{f.label}</Col>
         <Col grow min={6} fg={valFg}>{display()}</Col>
         <Col w={2} fg={theme.textMuted}>{glyph}</Col>
         <Col w={9} fg={theme.textMuted} right>{props.active ? hint() : ""}</Col>
       </box>
       {props.error ? (
-        <box flexDirection="row" height={1} backgroundColor={bg}>
-          <Col w={lead} fg={theme.textMuted}>{""}</Col>
+        <box flexDirection="row" height={1}>
+          <Col w={lead + 40} fg={theme.textMuted}>{""}</Col>
           <Col grow min={6} fg={theme.error}>{`✗ ${props.error}`}</Col>
         </box>
       ) : props.active && f.doc ? (
-        <box flexDirection="row" height={1} backgroundColor={bg}>
-          <Col w={lead} fg={theme.textMuted}>{""}</Col>
-          <Col grow min={6} fg={theme.textMuted}>{f.doc}</Col>
+        <box flexDirection="row" minHeight={1}>
+          <box width={lead} flexShrink={0} />
+          <box width={40} flexShrink={0} minHeight={1}>
+            <text wrapMode="word" fg={theme.textMuted}>{f.doc}</text>
+          </box>
         </box>
       ) : null}
     </box>
@@ -332,10 +334,7 @@ export const Config = memo((props: { focused?: boolean }) => {
       count, setSel: setCursor, ...follow.opts,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onToggle: writable && f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
-      onActivate: !f ? undefined
-        : f.type === "readonly"
-        ? () => setMode("yaml")
-        : writable && (f.type === "string" || f.type === "number")
+      onActivate: f && writable && (f.type === "string" || f.type === "number")
         ? () => { setEditing(true); setBuf(String(f.value ?? "")) }
         : undefined,
     });
@@ -432,7 +431,7 @@ export const Config = memo((props: { focused?: boolean }) => {
           <Hdr>
             <Col w={4} fg={theme.textMuted}>{""}</Col>
             {searching ? <Col w={12} fg={theme.textMuted} bold>Category</Col> : null}
-            <Col w={28} fg={theme.textMuted} bold>Field</Col>
+            <Col w={40} fg={theme.textMuted} bold>Field</Col>
             <Col grow min={6} fg={theme.textMuted} bold>Value</Col>
             <Col w={2} fg={theme.textMuted}>{""}</Col>
             <Col w={9} fg={theme.textMuted}>{""}</Col>
