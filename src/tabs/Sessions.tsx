@@ -193,7 +193,7 @@ const Item = memo((props: {
   return (
     <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseDown={() => props.onActivate(i)} onMouseOver={() => props.onHover(i)}>
+         onMouseDown={() => props.onActivate(i)} onMouseMove={() => props.onHover(i)}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Marquee grow active={props.selected}
                fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
@@ -235,7 +235,7 @@ const SearchItem = memo((props: {
   return (
     <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
-         onMouseDown={() => props.onActivate(i)} onMouseOver={() => props.onHover(i)}>
+         onMouseDown={() => props.onActivate(i)} onMouseMove={() => props.onHover(i)}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col grow fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
         {r.title ?? "Untitled"}
@@ -343,6 +343,10 @@ export const Sessions = memo((props: Props) => {
   }, [query, searching])
 
   // ── Stable row callbacks (identity never changes) ────────────────
+  // Hover-to-select is onMouseMove, not onMouseOver — the latter fires
+  // when scrollChildIntoView moves rows under a stationary cursor and
+  // would snap sel back during ↓-repeat (the "stutter"). Mouse motion
+  // events only arrive on real pointer movement.
   const rowHover = useCallback((i: number) => setSel(i), [])
   // Switching sessions reset()s the current chat; confirm unless it's
   // a no-op (same id) or there's nothing to switch to.

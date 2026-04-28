@@ -282,6 +282,37 @@ describe("Sessions tab", () => {
     t.destroy()
   })
 
+  test("key-nav ignores synthetic hover from scroll-under-cursor (stutter regression)", async () => {
+    const many = Array.from({ length: 80 }, (_, i) => ({
+      id: `sid-${i}`, title: `Session ${i}`, preview: "",
+      message_count: i + 1, started_at: 1700000000 - i * 60, source: "tui",
+    }))
+    const gw = new MockGateway({ "session.list": () => ({ sessions: many }) })
+    const t = await mountNode(<Sessions focused io={NOIO} />, { gw, width: 120, height: 20 })
+    await until(t, () => t.frame().includes("Sessions (80)"))
+
+    // Park the cursor over a visible row.
+    const rowY = (f: string, n: number) =>
+      f.split("\n").findIndex(l => l.includes(`Session ${n} `))
+    await act(async () => { await t.mouse.moveTo(10, rowY(t.frame(), 3)) })
+    await t.settle()
+    expect(t.frame()).toContain("▸ Session 3")
+
+    // Drive ↓ past the viewport — scrollChildIntoView moves rows under
+    // the parked cursor. With onMouseOver this fired hover→snap-back;
+    // with onMouseMove it doesn't, so sel lands at 33.
+    for (let k = 0; k < 30; k++) act(() => t.keys.pressArrow("down"))
+    await t.settle(); await t.settle()
+    const selLine = t.frame().split("\n").find(l => l.includes("▸ Session "))!
+    expect(Number(selLine.match(/Session (\d+)/)![1])).toBe(33)
+
+    // Real pointer motion still selects.
+    await act(async () => { await t.mouse.moveTo(10, rowY(t.frame(), 30)) })
+    await t.settle()
+    expect(t.frame()).toContain("▸ Session 30")
+    t.destroy()
+  })
+
   test("handles full list; arrow/PgDn/End scroll viewport", async () => {
     const many = Array.from({ length: 300 }, (_, i) => ({
       id: `sid-${i}`, title: `Session ${i}`, preview: "",
