@@ -531,7 +531,7 @@ const AppInner = () => {
         case 7: return <Toolsets focused={contentFocused} />
         case 8: return <Config focused={contentFocused} />
         case 9: return <Env focused={contentFocused} />
-        case 10: return <Memory />
+        case 10: return <Memory focused={contentFocused} />
         default: return null
       }
     })()

@@ -2,6 +2,8 @@ import { useState, useMemo, memo } from "react"
 import type { MemoryProviderInfo, MemoryFileInfo } from "../utils/hermes-home"
 import { useHome } from "../home"
 import { useTheme, type Theme } from "../theme"
+import { useListKeys } from "../keys"
+import { useDialog } from "../ui/dialog"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 
@@ -34,8 +36,9 @@ const ALL = ["builtin", "mem0", "honcho", "hindsight", "holographic", "openvikin
 
 // ─── Component ────────────────────────────────────────────────────────
 
-export const Memory = memo(() => {
+export const Memory = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme
+  const dialog = useDialog()
   const [sel, setSel] = useState(0)
 
   const config = useHome("config")
@@ -57,9 +60,14 @@ export const Memory = memo(() => {
   const cur = providers[sel]
   const on = !!cur && (cur.name === "builtin" || cur.name === active)
 
+  const keys = useListKeys({
+    active: !!props.focused && dialog.stack.length === 0,
+    count: providers.length, setSel,
+  })
+
   return (
     <box flexDirection="row" flexGrow={1}>
-      <TabShell title="Memory Providers" hint="click to inspect" grow={1}>
+      <TabShell title="Memory Providers" hint={`${keys.print("list.up")}${keys.print("list.down")} select`} grow={1}>
         <scrollbox scrollY flexGrow={1}>
           {providers.map((p, i) => {
             const pOn = p.name === "builtin" || p.name === active
