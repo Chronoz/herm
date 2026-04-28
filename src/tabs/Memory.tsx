@@ -1,9 +1,12 @@
 import { useState, memo } from "react"
 import type { MemoryProviderInfo, MemoryFileInfo } from "../utils/hermes-home"
-import { useHome } from "../home"
+import { useHome, home } from "../home"
 import { useTheme, type Theme } from "../theme"
 import { useListKeys } from "../keys"
 import { useDialog } from "../ui/dialog"
+import { useToast } from "../ui/toast"
+import { useGateway } from "../app/gateway"
+import { openConfirm } from "../dialogs/confirm"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 
@@ -37,6 +40,8 @@ const DESC: Record<string, string> = {
 export const Memory = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme
   const dialog = useDialog()
+  const toast = useToast()
+  const gw = useGateway()
   const [sel, setSel] = useState(0)
 
   const config = useHome("config")
@@ -50,14 +55,40 @@ export const Memory = memo((props: { focused?: boolean }) => {
   const cur = providers[sel]
   const on = !!cur && (cur.name === "builtin" || cur.name === active)
 
+  // Activate/deactivate writes config.memory.provider via config.set
+  // and invalidates the config slice so the UI reflects it. Setup
+  // wizard (env schema etc.) waits on the memory.providers RPC.
+  const toggle = async () => {
+    if (!cur || cur.name === "builtin") return
+    const isOn = cur.name === active
+    const ok = await openConfirm(dialog, {
+      title: isOn ? "Deactivate memory provider?" : "Activate memory provider?",
+      body: isOn
+        ? `Clear '${cur.name}' as the active provider (revert to built-in only).`
+        : `Set '${cur.name}' as the active provider. Ensure required env vars are set (Env tab).`,
+      yes: isOn ? "deactivate" : "activate",
+    })
+    if (!ok) return
+    gw.request("config.set", { key: "memory.provider", value: isOn ? "" : cur.name })
+      .then(() => {
+        home.invalidate("config")
+        home.invalidate("memoryProviders")
+        toast.show({ variant: "success", message: isOn ? "Deactivated" : `Activated ${cur.name}` })
+      })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+  }
+
   const keys = useListKeys({
     active: !!props.focused && dialog.stack.length === 0,
     count: providers.length, setSel,
+    onToggle: toggle,
+    onRefresh: () => { home.invalidate("memoryProviders"); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
   })
 
   return (
     <box flexDirection="row" flexGrow={1}>
-      <TabShell title="Memory Providers" hint={`${keys.print("list.up")}${keys.print("list.down")} select`} grow={1}>
+      <TabShell title="Memory Providers" grow={1}
+                hint={`${keys.print("list.up")}${keys.print("list.down")} select  ${keys.print("list.toggle")} activate`}>
         <scrollbox scrollY flexGrow={1}>
           {providers.map((p, i) => {
             const pOn = p.name === "builtin" || p.name === active
