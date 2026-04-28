@@ -6,6 +6,7 @@ import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
+import { Col, Hdr } from "../ui/table";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -32,21 +33,16 @@ const Row = memo((props: {
 
   return (
     <box flexDirection="column">
-      <box backgroundColor={bg} onMouseDown={props.onSelect} onMouseOver={props.onHover}>
-        <text>
-          <span fg={props.selected ? theme.primary : theme.text}>
-            {props.selected ? "▸ " : "  "}
-          </span>
-          <span fg={theme.textMuted}>{props.expanded ? "▾" : "▸"} </span>
-          <span fg={ts.enabled ? theme.success : theme.textMuted}>{glyph} </span>
-          <span fg={props.selected ? theme.accent : theme.text}>
-            {ts.name.padEnd(16)}
-          </span>
-          <span fg={theme.info}>{String(ts.tool_count).padStart(2)} tools   </span>
-          <span fg={ts.enabled ? theme.success : theme.textMuted}>
-            {ts.enabled ? "enabled" : "disabled"}
-          </span>
-        </text>
+      <box flexDirection="row" height={1} backgroundColor={bg}
+           onMouseDown={props.onSelect} onMouseOver={props.onHover}>
+        <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+        <Col w={2} fg={theme.textMuted}>{props.expanded ? "▾ " : "▸ "}</Col>
+        <Col w={2} fg={ts.enabled ? theme.success : theme.textMuted}>{`${glyph} `}</Col>
+        <Col grow fg={props.selected ? theme.accent : theme.text}>{ts.name}</Col>
+        <Col w={11} fg={theme.info} right>{`${ts.tool_count} tools`}</Col>
+        <Col w={11} fg={ts.enabled ? theme.success : theme.textMuted} right>
+          {ts.enabled ? "enabled" : "disabled"}
+        </Col>
       </box>
       {props.expanded ? (
         <box flexDirection="column" marginLeft={6} marginBottom={1}>
@@ -150,24 +146,21 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
         error={err}
         hint={`↑↓ nav  ${keys.print("list.toggle")} toggle  ${keys.print("list.activate")} expand  ${keys.print("list.refresh")} refresh`}
       >
-        {/* Column headers */}
-        <box height={1}>
-          <text fg={theme.textMuted}>
-            {"      "}{"Name".padEnd(16)}{"Tools".padEnd(12)}{"Status"}
-          </text>
-        </box>
-        <box height={1}>
-          <text fg={theme.borderSubtle}>
-            {"      "}{"─".repeat(14)}{"  "}{"─".repeat(10)}{"  "}{"─".repeat(10)}
-          </text>
-        </box>
+        <Hdr>
+          <Col w={6} fg={theme.textMuted}>{""}</Col>
+          <Col grow fg={theme.textMuted} bold>Name</Col>
+          <Col w={11} fg={theme.textMuted} bold right>Tools</Col>
+          <Col w={11} fg={theme.textMuted} bold right>Status</Col>
+        </Hdr>
+        <box height={1} />
 
         {count === 0 ? (
           <box key="empty" flexGrow={1} padding={2}>
             <text fg={theme.textMuted}>No toolsets found</text>
           </box>
         ) : (
-          <scrollbox key="list" scrollY flexGrow={1}>
+          <scrollbox key="list" scrollY flexGrow={1}
+                     verticalScrollbarOptions={{ visible: true }}>
             {list.map((t, i) => (
               <Row
                 key={t.name}

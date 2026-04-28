@@ -7,6 +7,7 @@ import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
+import { Col, Hdr } from "../ui/table"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { openConfirm } from "../dialogs/confirm"
 
@@ -31,21 +32,14 @@ const VarRow = memo((props: {
   const set = props.value !== undefined
   const bg = props.selected ? theme.backgroundElement : undefined
   return (
-    <box backgroundColor={bg} onMouseDown={props.onSelect} onMouseOver={props.onSelect}>
-      <text>
-        <span fg={props.selected ? theme.primary : theme.text}>
-          {props.selected ? "▸ " : "  "}
-        </span>
-        <span fg={props.selected ? theme.accent : theme.text}>
-          {props.name.padEnd(28)}
-        </span>
-        <span fg={set ? theme.success : theme.textMuted}>
-          {(set ? " SET " : "UNSET").padEnd(8)}
-        </span>
-        <span fg={props.shown ? theme.text : theme.textMuted}>
-          {set ? (props.shown ? props.value! : mask(props.value!)) : "—"}
-        </span>
-      </text>
+    <box flexDirection="row" height={1} backgroundColor={bg}
+         onMouseDown={props.onSelect} onMouseOver={props.onSelect}>
+      <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+      <Col w={28} fg={props.selected ? theme.accent : theme.text}>{props.name}</Col>
+      <Col w={8} fg={set ? theme.success : theme.textMuted}>{set ? " SET " : "UNSET"}</Col>
+      <Col grow min={4} fg={props.shown ? theme.text : theme.textMuted}>
+        {set ? (props.shown ? props.value! : mask(props.value!)) : "—"}
+      </Col>
     </box>
   )
 })
@@ -175,16 +169,13 @@ export const Env = memo((props: { focused?: boolean }) => {
         </box>
       ) : null}
 
-      <box height={1}>
-        <text fg={theme.textMuted}>
-          {"  "}{"Name".padEnd(28)}{"Status".padEnd(8)}Value
-        </text>
-      </box>
-      <box height={1}>
-        <text fg={theme.borderSubtle}>
-          {"  "}{"─".repeat(26)}{"  "}{"─".repeat(6)}{"  "}{"─".repeat(30)}
-        </text>
-      </box>
+      <Hdr>
+        <Col w={2} fg={theme.textMuted}>{""}</Col>
+        <Col w={28} fg={theme.textMuted} bold>Name</Col>
+        <Col w={8} fg={theme.textMuted} bold>Status</Col>
+        <Col grow min={4} fg={theme.textMuted} bold>Value</Col>
+      </Hdr>
+      <box height={1} />
 
       {count === 0 ? (
         <box key="empty" flexGrow={1} padding={2}>
@@ -193,7 +184,8 @@ export const Env = memo((props: { focused?: boolean }) => {
           </text>
         </box>
       ) : (
-        <scrollbox key="list" scrollY flexGrow={1}>
+        <scrollbox key="list" scrollY flexGrow={1}
+                   verticalScrollbarOptions={{ visible: true }}>
           <box flexDirection="column" width="100%">
             {rows.map((row, i) => row.type === "header" ? (
               <box

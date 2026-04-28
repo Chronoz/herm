@@ -5,6 +5,7 @@ import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useToast } from "../ui/toast";
 import { TabShell } from "../ui/shell";
+import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 
 // ─── Schema ──────────────────────────────────────────────────────────
@@ -129,20 +130,14 @@ const FieldRow = memo((props: {
   };
 
   return (
-    <box backgroundColor={bg}>
-      <text>
-        <span fg={props.changed ? theme.warning : theme.textMuted}>{mark}</span>
-        <span fg={props.active ? theme.primary : theme.text}>{indicator}</span>
-        <span fg={props.active ? theme.accent : theme.text}>
-          {f.label.padEnd(28)}
-        </span>
-        <span fg={f.type === "boolean" ? (f.value ? theme.success : theme.error) : theme.text}>
-          {display().padEnd(30)}
-        </span>
-        <span fg={theme.textMuted}>
-          {props.active ? hint() : ""}
-        </span>
-      </text>
+    <box flexDirection="row" height={1} backgroundColor={bg}>
+      <Col w={2} fg={props.changed ? theme.warning : theme.textMuted}>{mark}</Col>
+      <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
+      <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
+      <Col grow min={6} fg={f.type === "boolean" ? (f.value ? theme.success : theme.error) : theme.text}>
+        {display()}
+      </Col>
+      <Col w={9} fg={theme.textMuted} right>{props.active ? hint() : ""}</Col>
     </box>
   );
 });
@@ -385,16 +380,13 @@ export const Config = memo((props: { focused?: boolean }) => {
           </box>
         ) : null}
 
-        <box height={1}>
-          <text fg={theme.textMuted}>
-            {"    "}{"Field".padEnd(28)}{"Value".padEnd(30)}Action
-          </text>
-        </box>
-        <box height={1}>
-          <text fg={theme.borderSubtle}>
-            {"    "}{"─".repeat(26)}{"  "}{"─".repeat(28)}{"  "}{"─".repeat(10)}
-          </text>
-        </box>
+        <Hdr>
+          <Col w={4} fg={theme.textMuted}>{""}</Col>
+          <Col w={28} fg={theme.textMuted} bold>Field</Col>
+          <Col grow min={6} fg={theme.textMuted} bold>Value</Col>
+          <Col w={9} fg={theme.textMuted}>{""}</Col>
+        </Hdr>
+        <box height={1} />
 
         {count === 0 ? (
           <box key="empty" flexGrow={1} padding={2}>
@@ -403,7 +395,8 @@ export const Config = memo((props: { focused?: boolean }) => {
             </text>
           </box>
         ) : (
-          <scrollbox key="list" scrollY flexGrow={1}>
+          <scrollbox key="list" scrollY flexGrow={1}
+                     verticalScrollbarOptions={{ visible: true }}>
             {fields.map((f, i) => (
               <FieldRow
                 key={f.key}

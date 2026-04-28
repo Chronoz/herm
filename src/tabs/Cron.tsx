@@ -8,8 +8,9 @@ import { useToast } from "../ui/toast";
 import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
+import { Col, Hdr } from "../ui/table";
 import { openTextPrompt } from "../dialogs/text-prompt";
-import { trunc, ago, until } from "../ui/fmt";
+import { ago, until } from "../ui/fmt";
 import { readCronOutput, type CronOutput } from "../utils/hermes-home";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -100,17 +101,16 @@ const JobRow = memo((props: {
     : theme.textMuted;
 
   return (
-    <box backgroundColor={bg} onMouseDown={props.onSelect} onMouseOver={props.onHover}>
-      <text>
-        <span fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</span>
-        <span fg={glyphColor}>{glyph} </span>
-        <span fg={props.selected ? theme.accent : theme.text}>
-          {trunc(j.name || j.id, 20).padEnd(22)}
-        </span>
-        <span fg={theme.textMuted}>{(j.schedule || "—").padEnd(18)}</span>
-        <span fg={theme.textMuted}>{` last: ${last(j.last_run).padEnd(10)}`}</span>
-        <span fg={j.enabled ? theme.text : theme.textMuted}>{` next: ${(j.enabled ? next(j.next_run) : "paused").padEnd(10)}`}</span>
-      </text>
+    <box flexDirection="row" height={1} backgroundColor={bg}
+         onMouseDown={props.onSelect} onMouseOver={props.onHover}>
+      <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+      <Col w={2} fg={glyphColor}>{`${glyph} `}</Col>
+      <Col grow fg={props.selected ? theme.accent : theme.text}>{j.name || j.id}</Col>
+      <Col w={18} fg={theme.textMuted}>{j.schedule || "—"}</Col>
+      <Col w={16} fg={theme.textMuted}>{`last: ${last(j.last_run)}`}</Col>
+      <Col w={16} fg={j.enabled ? theme.text : theme.textMuted}>
+        {`next: ${j.enabled ? next(j.next_run) : "paused"}`}
+      </Col>
     </box>
   );
 });
@@ -270,17 +270,27 @@ export const Cron = memo((props: { focused?: boolean }) => {
             <text fg={theme.textMuted}>No cron jobs. Press n to create one.</text>
           </box>
         ) : (
-          <scrollbox key="list" scrollY flexGrow={1}>
-            {jobs.map((j, i) => (
-              <JobRow
-                key={j.id}
-                job={j}
-                selected={i === sel}
-                onSelect={() => setSel(i)}
-                onHover={() => setSel(i)}
-              />
-            ))}
-          </scrollbox>
+          <box key="table" flexDirection="column" flexGrow={1} minWidth={0}>
+            <Hdr>
+              <Col w={4} fg={theme.textMuted}>{""}</Col>
+              <Col grow fg={theme.textMuted} bold>Name</Col>
+              <Col w={18} fg={theme.textMuted} bold>Schedule</Col>
+              <Col w={16} fg={theme.textMuted} bold>Last</Col>
+              <Col w={16} fg={theme.textMuted} bold>Next</Col>
+            </Hdr>
+            <box height={1} />
+            <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+              {jobs.map((j, i) => (
+                <JobRow
+                  key={j.id}
+                  job={j}
+                  selected={i === sel}
+                  onSelect={() => setSel(i)}
+                  onHover={() => setSel(i)}
+                />
+              ))}
+            </scrollbox>
+          </box>
         )}
       </TabShell>
 

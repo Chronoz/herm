@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import type { RGBA } from "@opentui/core"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
 import {
@@ -16,6 +15,7 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
+import { Col, Hdr } from "../ui/table"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
@@ -150,43 +150,14 @@ const SearchDetail = memo((props: { result: SessionHit }) => {
   )
 })
 // ─── Rows ────────────────────────────────────────────────────────────
-//
-// Columns are flex boxes, not padded strings — the title column takes
-// all remaining width (grows on wide terminals, truncates via overflow
-// on narrow ones) while meta columns hold fixed width. height={1}
-// forces single-line truncation instead of wrap.
-//
-// Header and body rows share the same Col structure so they stay
-// aligned under resize. The body scrolls vertically; horizontal
-// scroll is deliberately not nested — OpenTUI's inner vbar becomes
-// part of the scrolled content and both leaks 1px width (phantom
-// h-bar) and scrolls off-screen with the table. The width cascade
-// (sidebar hides <120, detail panel <140) gives the list enough room
-// that the title column only hits its minWidth at ~80 terminal cols.
-
-type ColProps = { w?: number; grow?: boolean; fg: RGBA; bold?: boolean; right?: boolean; children: string }
-const Col = (p: ColProps) => (
-  <box width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
-       minWidth={p.grow ? 12 : p.w} height={1} overflow="hidden"
-       flexDirection="row" justifyContent={p.right ? "flex-end" : "flex-start"}>
-    <text>{p.bold
-      ? <span fg={p.fg}><strong>{p.children}</strong></span>
-      : <span fg={p.fg}>{p.children}</span>}</text>
-  </box>
-)
-
-// Body scrollbox forces its vbar visible so it always reserves VBAR_W;
-// header pads by the same so both flex containers have identical
-// available width and the grow column (Title) lands on the same x.
-// (Auto-hide would make the gutter conditional, which can only be
-// detected post-layout — not worth the re-render feedback loop.)
-const VBAR_W = 1
+// Col/Hdr live in ui/table; header pads by VBAR_W so its grow column
+// matches body rows inside the forced-visible v-bar scrollbox.
 
 const HeaderRow = memo((props: { detail: boolean }) => {
   const theme = useTheme().theme
   const fg = theme.textMuted
   return (
-    <box flexDirection="row" height={1} paddingRight={VBAR_W}>
+    <Hdr>
       <Col w={2} fg={fg}>{"  "}</Col>
       <Col grow fg={fg} bold>Title</Col>
       <Col w={9} fg={fg} bold>Source</Col>
@@ -197,7 +168,7 @@ const HeaderRow = memo((props: { detail: boolean }) => {
         <Col w={9} fg={fg} bold right>Cost</Col>
       </> : null}
       <box width={3} />
-    </box>
+    </Hdr>
   )
 })
 
@@ -245,13 +216,13 @@ const SearchHeaderRow = memo(() => {
   const theme = useTheme().theme
   const fg = theme.textMuted
   return (
-    <box flexDirection="row" height={1} paddingRight={VBAR_W}>
+    <Hdr>
       <Col w={2} fg={fg}>{"  "}</Col>
       <Col grow fg={fg} bold>Title</Col>
       <Col w={9} fg={fg} bold>Source</Col>
       <Col w={10} fg={fg} bold>When</Col>
       <Col w={20} fg={fg} bold>Model</Col>
-    </box>
+    </Hdr>
   )
 })
 

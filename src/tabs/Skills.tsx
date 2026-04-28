@@ -9,7 +9,7 @@ import { useToast } from "../ui/toast";
 import { useTheme } from "../theme";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
-import { trunc } from "../ui/fmt";
+import { Col, Hdr } from "../ui/table";
 import { openConfirm } from "../dialogs/confirm";
 
 type Hit = { name: string; description?: string }
@@ -25,28 +25,13 @@ const SkillRow = memo((props: {
   const theme = useTheme().theme;
   const s = props.skill;
   const bg = props.selected ? theme.backgroundElement : undefined;
-  const indicator = props.selected ? "▸ " : "  ";
 
   return (
-    <box
-      backgroundColor={bg}
-      onMouseDown={props.onSelect}
-      onMouseOver={props.onHover}
-    >
-      <text>
-        <span fg={props.selected ? theme.primary : theme.text}>
-          {indicator}
-        </span>
-        <span fg={props.selected ? theme.accent : theme.text}>
-          {s.name.padEnd(24)}
-        </span>
-        <span fg={theme.info}>
-          {(s.category || "—").padEnd(16)}
-        </span>
-        <span fg={theme.textMuted}>
-          {trunc(s.description || "—", 60)}
-        </span>
-      </text>
+    <box flexDirection="row" height={1} backgroundColor={bg}
+         onMouseDown={props.onSelect} onMouseOver={props.onHover}>
+      <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+      <Col w={26} fg={props.selected ? theme.accent : theme.text}>{s.name}</Col>
+      <Col grow min={8} fg={theme.textMuted}>{s.description || "—"}</Col>
     </box>
   );
 });
@@ -57,13 +42,11 @@ const HitRow = memo((props: { hit: Hit; selected: boolean; onHover: () => void }
   const theme = useTheme().theme;
   const on = props.selected;
   return (
-    <box height={1} backgroundColor={on ? theme.backgroundElement : undefined}
+    <box flexDirection="row" height={1} backgroundColor={on ? theme.backgroundElement : undefined}
          onMouseOver={props.onHover}>
-      <text>
-        <span fg={on ? theme.primary : theme.textMuted}>{on ? "▸ " : "  "}</span>
-        <span fg={on ? theme.accent : theme.text}>{props.hit.name.padEnd(28)}</span>
-        <span fg={theme.textMuted}>{trunc(props.hit.description || "—", 70)}</span>
-      </text>
+      <Col w={2} fg={on ? theme.primary : theme.textMuted}>{on ? "▸ " : "  "}</Col>
+      <Col w={28} fg={on ? theme.accent : theme.text}>{props.hit.name}</Col>
+      <Col grow min={8} fg={theme.textMuted}>{props.hit.description || "—"}</Col>
     </box>
   );
 });
@@ -259,21 +242,14 @@ export const Skills = memo((props: { focused?: boolean }) => {
           </box>
         ) : null}
 
-        {/* Column headers (installed mode only) */}
         {searching ? null : (
-          <box height={1}>
-            <text fg={theme.textMuted}>
-              {"  "}{"Name".padEnd(24)}{"Category".padEnd(16)}{"Description"}
-            </text>
-          </box>
+          <Hdr>
+            <Col w={2} fg={theme.textMuted}>{""}</Col>
+            <Col w={26} fg={theme.textMuted} bold>Name</Col>
+            <Col grow min={8} fg={theme.textMuted} bold>Description</Col>
+          </Hdr>
         )}
-        {searching ? null : (
-          <box height={1}>
-            <text fg={theme.borderSubtle}>
-              {"  "}{"─".repeat(22)}{"  "}{"─".repeat(14)}{"  "}{"─".repeat(40)}
-            </text>
-          </box>
-        )}
+        {searching ? null : <box height={1} />}
 
         {/* List */}
         {count === 0 ? (
@@ -288,7 +264,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
             </box>
           </scrollbox>
         ) : (
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
             {flat.map((row, i) => {
               if (row.type === "header") {
                 return (

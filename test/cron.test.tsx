@@ -141,7 +141,7 @@ describe("Cron tab", () => {
     await until(t, () => t.frame().includes("Cron Jobs (3)"))
 
     const f = t.frame()
-    const row = (name: string) => f.split("\n").find(l => l.includes(name))!
+    const row = (name: string) => f.split("\n").find(l => /[●○]/.test(l) && l.includes(name))!
 
     expect(row("nightly")).toContain("last: 1h ago")
     expect(row("nightly")).toMatch(/next: in (29|30)m/)
