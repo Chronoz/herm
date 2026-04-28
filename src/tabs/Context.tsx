@@ -449,7 +449,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
 
   // Breakdown panel
   const breakdown = () => (
-    <box borderStyle="single" padding={1} marginBottom={1}>
+    <box flexDirection="column" marginBottom={1}>
       <text>
         <strong>Breakdown</strong>
         {drilledGroup ? (
@@ -496,7 +496,10 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
               <text fg={theme.warning}>×{compressions} compressed</text>
             </box>
           ) : null}
-          <box borderStyle="single" paddingTop={1} paddingX={2}>
+          <box border
+               customBorderChars={{ topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
+                 horizontal: " ", vertical: " ", topT: " ", bottomT: " ", leftT: " ", rightT: " ", cross: " " }}
+               borderColor={theme.border}>
             {[...Array(COLS)].map((_, row) => (
               <box key={row} flexDirection="row" height={1}>
                 {[...Array(COLS)].map((_, col) => {
