@@ -55,9 +55,10 @@ export const Memory = memo((props: { focused?: boolean }) => {
   const cur = providers[sel]
   const on = !!cur && (cur.name === "builtin" || cur.name === active)
 
-  // Activate/deactivate writes config.memory.provider via config.set
-  // and invalidates the config slice so the UI reflects it. Setup
-  // wizard (env schema etc.) waits on the memory.providers RPC.
+  // Activate/deactivate writes memory.provider to disk via cli.exec
+  // (the gateway's config.set whitelist doesn't include it, so the RPC
+  // path 4002s). Applies on the next session — the running agent keeps
+  // the provider it was constructed with.
   const toggle = async () => {
     if (!cur || cur.name === "builtin") return
     const isOn = cur.name === active
@@ -69,13 +70,12 @@ export const Memory = memo((props: { focused?: boolean }) => {
       yes: isOn ? "deactivate" : "activate",
     })
     if (!ok) return
-    gw.request("config.set", { key: "memory.provider", value: isOn ? "" : cur.name })
-      .then(() => {
-        home.invalidate("config")
-        home.invalidate("memoryProviders")
-        toast.show({ variant: "success", message: isOn ? "Deactivated" : `Activated ${cur.name}` })
-      })
-      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+    const { writeConfig } = await import("../config/lane")
+    const r = await writeConfig(gw, [{ key: "memory.provider", to: isOn ? "" : cur.name }])
+    if (r.failed.length) return toast.show({ variant: "error", message: r.failed[0].err })
+    home.invalidate("config")
+    home.invalidate("memoryProviders")
+    toast.show({ variant: "success", message: isOn ? "Deactivated" : `Activated ${cur.name} — new sessions pick this up` })
   }
 
   const keys = useListKeys({

@@ -48,6 +48,7 @@ export class MockGateway extends EventEmitter implements Gateway {
       path: "/tmp/p.txt",
     }))
     this.on$("config.get", p => p.key === "full" ? { config: {} } : {})
+    this.on$("cli.exec", () => ({ blocked: false, code: 0, output: "✓" }))
     this.on$("session.title", p => ({ title: p.title ?? "" }))
     this.on$("session.undo", () => ({ removed: 2 }))
     this.on$("session.history", () => ({ count: 0, messages: [] }))

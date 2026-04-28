@@ -9,6 +9,7 @@ import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
 import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
+import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
 
 // ─── Schema ──────────────────────────────────────────────────────────
 
@@ -240,16 +241,29 @@ export const Config = memo((props: { focused?: boolean }) => {
       body, yes: "save",
     });
     if (!ok) return;
-    const results = await Promise.allSettled(
-      diffs.map(d => gw.request("config.set", { key: d.key, value: d.to }))
-    );
-    const n = results.filter(r => r.status === "fulfilled").length;
-    const fail = results.length - n;
-    setRaw(structuredClone(target));
-    setOriginal(structuredClone(target));
-    if (mode === "form") setYaml(yamlStringify(target));
-    if (fail > 0) toast.show({ variant: "error", message: `Saved ${n}, ${fail} failed` });
-    else toast.show({ variant: "success", message: "Config saved" });
+    const res = await writeConfig(gw, diffs.map(d => ({ key: d.key, to: d.to })));
+    for (const w of res.warnings) toast.show({ variant: "info", message: `${w.key}: ${w.msg}` });
+    load();
+    if (res.failed.length > 0) {
+      toast.show({
+        variant: "error",
+        message: `${res.failed.length} failed: ${res.failed.map(f => f.key).join(", ")}`,
+      });
+      return;
+    }
+    const landed = diffs.filter(d => res.ok.includes(d.key));
+    const miss = await verifyWrite(gw, landed.map(d => ({ key: d.key, to: d.to })));
+    if (miss.length > 0) {
+      toast.show({ variant: "error", message: `Write didn't land: ${miss.join(", ")}` });
+      return;
+    }
+    const tier = maxEffect(res.ok);
+    toast.show({
+      variant: "success",
+      message: tier === "live" ? "Saved"
+        : tier === "session" ? "Saved — new sessions pick this up"
+        : "Saved — restart gateway to apply",
+    });
   };
 
   const keys = useKeys();

@@ -449,9 +449,11 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
     })
     if (v === null) return
     const n = Math.max(10, Math.min(95, Number(v) || cur))
-    gw.request("config.set", { key: "compression.threshold", value: n / 100 })
-      .then(() => { home.invalidate("config"); toast.show({ variant: "success", message: `Threshold → ${n}%` }) })
-      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+    const { writeConfig } = await import("../config/lane")
+    const r = await writeConfig(gw, [{ key: "compression.threshold", to: n / 100 }])
+    if (r.failed.length) return toast.show({ variant: "error", message: r.failed[0].err })
+    home.invalidate("config")
+    toast.show({ variant: "success", message: `Threshold → ${n}%` })
   }
 
   // Detail panel router

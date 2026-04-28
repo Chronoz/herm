@@ -3,18 +3,24 @@ import { act } from "react"
 import { mountNode, until, MockGateway } from "./harness"
 import { Config } from "../src/tabs/Config"
 
-const CFG = { terminal: { backend: "local", debug: false } }
+const CFG = { terminal: { backend: "local", container_persistent: false } }
 
 describe("Config tab", () => {
-  test("toggle dirties; title shows count; Ctrl+S confirms diff then config.set", async () => {
+  test("toggle dirties; title shows count; Ctrl+S routes through cli.exec and reloads", async () => {
+    let cfg = structuredClone(CFG)
     const gw = new MockGateway({
-      "config.get": () => ({ config: CFG }),
-      "config.set": () => ({ ok: true }),
+      "config.get": () => ({ config: cfg }),
+      "cli.exec": (p) => {
+        const [, , k, v] = p.argv as string[]
+        if (k === "terminal.container_persistent")
+          cfg = { terminal: { ...cfg.terminal, container_persistent: v === "true" } }
+        return { blocked: false, code: 0, output: "✓" }
+      },
     })
     const t = await mountNode(<Config focused />, { gw, width: 160, height: 40 })
     await until(t, () => t.frame().includes("terminal"))
 
-    // Move to terminal category → fields pane → debug row → Space.
+    // Move to terminal category → fields pane → row[1] → Space.
     act(() => { for (let i = 0; i < 2; i++) t.keys.pressArrow("down") })
     act(() => t.keys.pressArrow("right"))
     act(() => t.keys.pressArrow("down"))
@@ -26,14 +32,18 @@ describe("Config tab", () => {
     // Ctrl+S → confirm diff dialog.
     act(() => t.keys.pressKey("s", { ctrl: true }))
     await until(t, () => t.frame().includes("Write 1 change to config.yaml?"))
-    expect(t.frame()).toContain("terminal.debug: false → true")
+    expect(t.frame()).toContain("terminal.container_persistent: false → true")
 
     await act(async () => { await t.keys.typeText("y") })
-    await until(t, () => t.frame().includes("Config saved"))
-    const c = gw.last("config.set")
-    expect(c?.params).toMatchObject({ key: "terminal.debug", value: true })
-    // Pill cleared.
+    await until(t, () => t.frame().includes("Saved"))
+    // terminal.* is not whitelisted → cli lane, serialized, bool → "true".
+    const c = gw.last("cli.exec")
+    expect(c?.params.argv).toEqual(["config", "set", "terminal.container_persistent", "true"])
+    expect(gw.last("config.set")).toBeUndefined()
+    // Pill cleared after reload from disk truth.
     expect(t.frame()).not.toContain("unsaved")
+    // terminal.* → restart tier.
+    expect(t.frame()).toContain("restart gateway")
     t.destroy()
   })
 
