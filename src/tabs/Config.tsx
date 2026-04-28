@@ -4,6 +4,8 @@ import { useKeys, handleListKey } from "../keys";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useToast } from "../ui/toast";
+import { useDialog } from "../ui/dialog";
+import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
 import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
@@ -148,6 +150,7 @@ export const Config = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme;
   const gw = useGateway();
   const toast = useToast();
+  const dialog = useDialog();
   const [raw, setRaw] = useState<Record<string, unknown>>({});
   const [original, setOriginal] = useState<Record<string, unknown>>({});
   const [yaml, setYaml] = useState("");
@@ -204,7 +207,7 @@ export const Config = memo((props: { focused?: boolean }) => {
   const changed = (key: string): boolean =>
     JSON.stringify(getNested(raw, key)) !== JSON.stringify(getNested(original, key));
 
-  const hasChanges = entries.some(([key]) => changed(key));
+  const nChanged = entries.reduce((n, [k]) => n + (changed(k) ? 1 : 0), 0);
 
   const update = (key: string, val: unknown) => {
     const next = structuredClone(raw);
@@ -213,26 +216,40 @@ export const Config = memo((props: { focused?: boolean }) => {
     setYaml(yamlStringify(next));
   };
 
+  const fmt = (v: unknown) =>
+    v === undefined ? "—" : Array.isArray(v) ? v.join(", ") : String(v);
+
   const save = async () => {
     const target = mode === "yaml" ? (yamlParse(yaml) ?? {}) : raw;
     const flat = flatten(target as Record<string, unknown>);
+    const diffs = flat
+      .filter(([key]) => JSON.stringify(getNested(target as Record<string, unknown>, key)) !== JSON.stringify(getNested(original, key)))
+      .map(([key, val]) => ({ key, from: getNested(original, key), to: val }));
+    if (diffs.length === 0) {
+      toast.show({ variant: "info", message: "No changes" });
+      return;
+    }
+    const body = diffs.map(d => `${d.key}: ${fmt(d.from)} → ${fmt(d.to)}`).join("\n");
+    const ok = await openConfirm(dialog, {
+      title: `Write ${diffs.length} change${diffs.length === 1 ? "" : "s"} to config.yaml?`,
+      body, yes: "save",
+    });
+    if (!ok) return;
     const results = await Promise.allSettled(
-      flat
-        .filter(([key]) => JSON.stringify(getNested(target as Record<string, unknown>, key)) !== JSON.stringify(getNested(original, key)))
-        .map(([key, val]) => gw.request("config.set", { key, value: val }))
+      diffs.map(d => gw.request("config.set", { key: d.key, value: d.to }))
     );
-    const ok = results.filter(r => r.status === "fulfilled").length;
-    const fail = results.length - ok;
+    const n = results.filter(r => r.status === "fulfilled").length;
+    const fail = results.length - n;
     setRaw(structuredClone(target));
     setOriginal(structuredClone(target));
     if (mode === "form") setYaml(yamlStringify(target));
-    if (fail > 0) toast.show({ variant: "error", message: `Saved ${ok}, ${fail} failed` });
-    else toast.show({ variant: "success", message: results.length === 0 ? "No changes" : "Config saved" });
+    if (fail > 0) toast.show({ variant: "error", message: `Saved ${n}, ${fail} failed` });
+    else toast.show({ variant: "success", message: "Config saved" });
   };
 
   const keys = useKeys();
   useKeyboard((key) => {
-    if (!props.focused) return;
+    if (!props.focused || dialog.stack.length > 0) return;
     if (key.name === "tab" && !editing && !searching) {
       setMode(m => m === "form" ? "yaml" : "form");
       return;
@@ -320,11 +337,11 @@ export const Config = memo((props: { focused?: boolean }) => {
     }
   });
 
-  const dirty = hasChanges ? "● unsaved  " : "";
+  const dirty = nChanged > 0 ? `● ${nChanged} unsaved  ` : "";
 
   if (mode === "yaml") {
     return (
-      <TabShell title="Config · YAML" hint={`${dirty}Tab form  ${keys.print("config.save")} save`}>
+      <TabShell title="Config · YAML" hint={`Tab form  ${keys.print("config.save")} save`}>
         <scrollbox scrollY flexGrow={1}>
           <text wrapMode="word">
             <span fg={theme.text}>{yaml}</span>
@@ -365,7 +382,7 @@ export const Config = memo((props: { focused?: boolean }) => {
       </TabShell>
 
       <TabShell
-        title={searching ? `${count} matches` : active}
+        title={searching ? `${count} matches` : nChanged > 0 ? `${active} · ${nChanged} unsaved` : active}
         hint={`${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
         grow={3} focus={focus === "fields" || searching}
       >
