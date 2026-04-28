@@ -1,7 +1,9 @@
 import { describe, test, expect } from "bun:test"
+import { act } from "react"
 import { mountNode } from "./harness"
 import { Context } from "../src/tabs/Context"
 import type { SessionInfo } from "../src/utils/gateway-types"
+import type { Message } from "../src/types/message"
 
 // Strip ANSI so regex matches the visual text, not escape codes.
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "")
@@ -120,6 +122,61 @@ describe("Context tab", () => {
       const { DEFAULT_THEMES, DEFAULT_THEME, resolveTheme } = await import("../src/theme")
       const theme = resolveTheme(DEFAULT_THEMES[DEFAULT_THEME], "dark")
       expect(clr("does_not_exist", theme)).toEqual(clr("other", theme))
+    })
+  })
+
+  // Grid keyboard nav routes through list.* (rebind-aware) with ←/→
+  // as tab-local aliases. With an empty sandbox (no system prompt, no
+  // tools) top-level segments reduce to Conversation + Free. Asserts
+  // target the focus legend line (` tok `), the only selection-driven
+  // surface — the breakdown rows render `◼ Conversation` regardless.
+  describe("keyboard nav", () => {
+    const msgs: Message[] = [{
+      id: "m1", role: "user", timestamp: 0,
+      parts: [{ type: "text", content: "hello world ".repeat(50) }],
+      usage: { input: 200, output: 0, total: 200 },
+    }]
+    const info: SessionInfo = { model: "test", context_max: 10_000 }
+    const legend = (f: string) => f.split("\n").find(l => l.includes(" tok ")) ?? ""
+
+    test("↓ selects first; clamps at last; ← steps back; Esc clears", async () => {
+      const t = await mountNode(<Context focused messages={msgs} info={info} />)
+      await t.settle()
+      expect(legend(strip(t.frame()))).toBe("")
+
+      act(() => t.keys.pressArrow("down"))
+      await t.settle()
+      expect(legend(strip(t.frame()))).toContain("Conversation")
+
+      // Two segs → three ↓ clamps on Free (list.* clamps, does not wrap)
+      act(() => { t.keys.pressArrow("down"); t.keys.pressArrow("down"); t.keys.pressArrow("down") })
+      await t.settle()
+      expect(legend(strip(t.frame()))).toContain("Free")
+
+      // ← alias behaves like list.up
+      act(() => t.keys.pressArrow("left"))
+      await t.settle()
+      expect(legend(strip(t.frame()))).toContain("Conversation")
+
+      // Enter on leaf with no children: no drill, selection holds
+      act(() => t.keys.pressEnter())
+      await t.settle()
+      expect(legend(strip(t.frame()))).toContain("Conversation")
+      expect(strip(t.frame())).toContain("Esc back")
+
+      act(() => t.keys.pressEscape())
+      await t.settle()
+      expect(strip(t.frame())).not.toContain("Esc back")
+      expect(legend(strip(t.frame()))).toBe("")
+      t.destroy()
+    })
+
+    test("ignores keys when not focused", async () => {
+      const t = await mountNode(<Context messages={msgs} info={info} />)
+      act(() => t.keys.pressArrow("down"))
+      await t.settle()
+      expect(legend(strip(t.frame()))).toBe("")
+      t.destroy()
     })
   })
 })

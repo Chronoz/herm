@@ -11,7 +11,7 @@
  * At level 1, cells are proportional to the drilled group's total.
  */
 
-import { useEffect, useState, useRef, useMemo, memo } from "react"
+import { useEffect, useState, useRef, useMemo, memo, type Dispatch, type SetStateAction } from "react"
 import { useKeyboard } from "@opentui/react"
 
 import type { Message } from "../types/message"
@@ -20,6 +20,7 @@ import type { ToolInfo, HermesConfig } from "../utils/hermes-home"
 import type { SessionInfo } from "../utils/gateway-types"
 import { useHome, home } from "../home"
 import { useGateway } from "../app/gateway"
+import { useKeys, handleListKey } from "../keys"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { openTextPrompt } from "../dialogs/text-prompt"
@@ -408,8 +409,30 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
   // overview' row, which stole a line above the grid and broke
   // top-alignment with the breakdown pane.
   const lastEsc = useRef(0)
+  // Keyboard: grid navigates via shared list.* vocabulary so rebinds
+  // (j/k, home/end, PgUp/PgDn) flow here for free. Flattened row-major
+  // segs is the 'list'; setSel maps index ↔ selected id. ←/→ are tab-
+  // local aliases since the grid reads 2D but traversal is linear.
+  const segs = view.filter(s => s.tokens > 0)
+  const idx = selected ? segs.findIndex(s => s.id === selected) : -1
+  const setSel: Dispatch<SetStateAction<number>> = (v) => {
+    const n = Math.max(0, Math.min(segs.length - 1, typeof v === "function" ? v(idx) : v))
+    setSelected(segs[n]?.id ?? null)
+  }
+  const keys = useKeys()
   useKeyboard((key) => {
-    if (!focused || dialog.stack.length > 0 || key.name !== "escape") return
+    if (!focused || dialog.stack.length > 0) return
+    if (handleListKey(keys, key, {
+      count: segs.length, setSel,
+      onActivate: () => {
+        if (drilled || !selected) return
+        const seg = top.find(s => s.id === selected)
+        if (seg?.children?.length) { setDrilled(selected); setSelected(null) }
+      },
+    })) return
+    if (key.name === "right") return setSel(p => p + 1)
+    if (key.name === "left")  return setSel(p => p - 1)
+    if (key.name !== "escape") return
     const now = Date.now()
     if (now - lastEsc.current < 400) {
       setSelected(null); setDrilled(null); lastEsc.current = 0; return
@@ -506,7 +529,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
     : wire.calls === 0 && fill === 0 ? "[no data]"
     : cumulative ? "[cumulative — not current fill]"
     : wire.calls === 0 && fill > 0 ? "[live session]"
-    : "click a group to drill in"
+    : "↑↓ nav  ·  click a group to drill in"
   const escHint = selected || drilled ? "  ·  Esc back" : ""
 
   const focus = selected || hovered
