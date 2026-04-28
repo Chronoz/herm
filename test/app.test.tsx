@@ -332,13 +332,14 @@ describe("app", () => {
     await until(t, () => t.frame().includes("Ready"))
 
     await act(async () => { await t.keys.typeText("/") })
-    await until(t, () => t.frame().includes("/model"))
-    expect(t.frame()).toContain("Configuration") // category header from pairs shape
+    await until(t, () => t.frame().includes("/clear"))
 
     // filter by prefix — would fail if names still carried leading "/"
-    await act(async () => { await t.keys.typeText("re") })
-    await until(t, () => !t.frame().includes("/model"))
-    expect(t.frame()).toContain("/retry")
+    await act(async () => { await t.keys.typeText("mo") })
+    await until(t, () => t.frame().includes("/model"))
+    expect(t.frame()).toContain("Configuration") // category header from pairs shape
+    expect(t.frame()).not.toContain("/retry")
+    expect(t.frame()).not.toContain("/clear")
     t.destroy()
   })
 

@@ -29,6 +29,7 @@ import { ToastProvider, useToast } from "./ui/toast"
 import { CommandProvider, useCommand } from "./ui/command"
 import { KeysProvider } from "./keys"
 import { HelpDialog } from "./dialogs/help"
+import { openKeys } from "./dialogs/keys"
 import { openLogs } from "./dialogs/logs"
 import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
@@ -257,6 +258,7 @@ const AppInner = () => {
         case "new": newSession(); return
         case "theme": openThemePicker(dialog, themeCtx); return
         case "help": dialog.replace(<HelpDialog />); return
+        case "keys": openKeys(dialog); return
         case "logs": openLogs(dialog); return
         case "eikon": pickEikon(); return
         case "title": editTitle(); return
@@ -440,6 +442,8 @@ const AppInner = () => {
   useEffect(() => cmd.register([
     { title: "Help", value: "help", action: "help.open", category: "General",
       onSelect: () => dialog.replace(<HelpDialog />) },
+    { title: "Keybindings", value: "keys", description: "View & rebind shortcuts", category: "General",
+      onSelect: () => openKeys(dialog) },
     { title: "Gateway Logs", value: "logs", description: "Show gateway stderr", category: "General",
       onSelect: () => openLogs(dialog) },
     { title: "Switch Theme", value: "theme", action: "theme.pick", category: "General",
