@@ -1,6 +1,6 @@
 import { useState, useCallback, memo } from "react"
 import { useKeyboard } from "@opentui/react"
-import { useKeys, handleListKey } from "../keys"
+import { useKeys, handleListKey, useFollow } from "../keys"
 import { writeEnvVar, removeEnvVar, ENV_CATALOG } from "../utils/hermes-home"
 import { useHome, home } from "../home"
 import { useTheme } from "../theme"
@@ -22,6 +22,7 @@ const mask = (val: string) => "•".repeat(Math.min(val.length, 12))
 // ─── Var Row ──────────────────────────────────────────────────────
 
 const VarRow = memo((props: {
+  id: string
   name: string
   value: string | undefined
   shown: boolean
@@ -33,7 +34,7 @@ const VarRow = memo((props: {
   const set = props.value !== undefined
   const bg = props.selected ? theme.backgroundElement : undefined
   return (
-    <box flexDirection="row" height={1} backgroundColor={bg}
+    <box id={props.id} flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onClick} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col w={28} fg={props.selected ? theme.accent : theme.text}>{props.name}</Col>
@@ -80,6 +81,7 @@ export const Env = memo((props: { focused?: boolean }) => {
   const count = rows.length
   const cur = rows[sel]
   const setKeys = rows.flatMap(r => r.type === "var" && r.value !== undefined ? [r.key] : [])
+  const follow = useFollow("env")
 
   const edit = useCallback(async (key: string, initial: string) => {
     const val = await openTextPrompt(dialog, { title: `Edit ${key}`, label: "Value", initial })
@@ -147,7 +149,7 @@ export const Env = memo((props: { focused?: boolean }) => {
     }
 
     handleListKey(keys, key, {
-      count, setSel,
+      count, setSel, ...follow.opts,
       onActivate: activate,
       onToggle: revealAll,
       onNew: add,
@@ -189,11 +191,12 @@ export const Env = memo((props: { focused?: boolean }) => {
           </text>
         </box>
       ) : (
-        <scrollbox key="list" scrollY flexGrow={1}
+        <scrollbox ref={follow.ref} key="list" scrollY flexGrow={1}
                    verticalScrollbarOptions={{ visible: true }}>
           <box flexDirection="column" width="100%">
             {rows.map((row, i) => row.type === "header" ? (
               <box
+                id={follow.id(i)}
                 key={`h-${row.category}`}
                 marginTop={i > 0 ? 1 : 0}
                 backgroundColor={i === sel ? theme.backgroundElement : undefined}
@@ -206,6 +209,7 @@ export const Env = memo((props: { focused?: boolean }) => {
               </box>
             ) : (
               <VarRow
+                id={follow.id(i)}
                 key={row.key}
                 name={row.key}
                 value={row.value}

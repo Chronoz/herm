@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
-import { useKeys, handleListKey } from "../keys";
+import { useKeys, handleListKey, useFollow } from "../keys";
 import { makeSource, readSkillFrontmatter, type SkillInfo } from "../utils/hermes-home";
 import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
@@ -18,6 +18,7 @@ type Hit = { name: string; description?: string }
 // ─── Skill Row ───────────────────────────────────────────────────────
 
 const SkillRow = memo((props: {
+  id: string;
   skill: SkillInfo;
   selected: boolean;
   onSelect: () => void;
@@ -28,7 +29,7 @@ const SkillRow = memo((props: {
   const bg = props.selected ? theme.backgroundElement : undefined;
 
   return (
-    <box flexDirection="row" height={1} backgroundColor={bg}
+    <box id={props.id} flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Marquee grow min={8} active={props.selected} fg={props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
@@ -172,6 +173,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
   const count = searching ? hits.length : skillRows.length;
   const current = !searching && skillRows[selected]?.type === "skill"
     ? skillRows[selected].skill : null;
+  const follow = useFollow("sk");
 
   const exit = useCallback(() => {
     setSearching(false); setQuery(""); setHits([]); setSelected(0);
@@ -215,7 +217,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
     }
 
     handleListKey(keys, key, {
-      count, setSel: setSelected,
+      count, setSel: setSelected, ...follow.opts,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onSearch: () => { setSearching(true); setQuery(""); setHits([]); setSelected(0) },
     });
@@ -264,7 +266,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
             </box>
           </scrollbox>
         ) : (
-          <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+          <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
             {flat.map((row, i) => {
               if (row.type === "header") {
                 return (
@@ -278,6 +280,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
               return (
                 <SkillRow
                   key={row.skill.name}
+                  id={follow.id(idx)}
                   skill={row.skill}
                   selected={idx === selected}
                   onSelect={() => setSelected(idx)}

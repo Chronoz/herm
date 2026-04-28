@@ -12,9 +12,9 @@
 // keys.match(): list.* chords have leader=false, so a bare letter while
 // armed never matches here and falls through to useAppKeys.
 
-import type { Dispatch, SetStateAction } from "react"
+import { useRef, type Dispatch, type SetStateAction } from "react"
 import { useKeyboard } from "@opentui/react"
-import type { ParsedKey } from "@opentui/core"
+import type { ParsedKey, ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, type Keys } from "./context"
 
 export type ListOpts = {
@@ -68,4 +68,27 @@ export function useListKeys(o: ListOpts & {
     o.also?.(key, keys)
   })
   return keys
+}
+
+// Scroll-follow for list tabs: returns a scrollbox ref, a row-id
+// generator, and the two ListOpts fields (scrollTo, page) derived from
+// them. `scrollChildIntoView` resolves by element id, so each row's
+// root box must set `id={follow.id(i)}` and the scrollbox
+// `ref={follow.ref}`. Spread the rest into handleListKey/useListKeys:
+//
+//   const follow = useFollow("tab")
+//   handleListKey(keys, key, { count, setSel, ...follow.opts, ... })
+//   <scrollbox ref={follow.ref}>
+//     <Row id={follow.id(i)} ... />
+//
+export function useFollow(prefix: string) {
+  const ref = useRef<ScrollBoxRenderable | null>(null)
+  const id = (i: number) => `${prefix}-row-${i}`
+  return {
+    ref, id,
+    opts: {
+      scrollTo: (n: number) => ref.current?.scrollChildIntoView(id(n)),
+      get page() { return Math.max(1, (ref.current?.viewport.height ?? 10) - 1) },
+    },
+  }
 }

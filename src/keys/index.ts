@@ -1,5 +1,5 @@
 export { KeysProvider, useKeys, type Keys, type Entry } from "./context"
-export { useListKeys, handleListKey, type ListOpts } from "./list"
+export { useListKeys, handleListKey, useFollow, type ListOpts } from "./list"
 export { DEFAULTS, inScope, scopesOverlap, type ActionId, type Scope } from "./catalog"
 export { parse, match, print, from, toBindings, key, type Chord } from "./chord"
 export { conflicts, conflictsWith, type Conflict } from "./conflicts"

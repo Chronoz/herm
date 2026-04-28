@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo, type ReactNode } from "react";
 import { useGateway } from "../app/gateway";
-import { useListKeys } from "../keys";
+import { useListKeys, useFollow } from "../keys";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
@@ -57,6 +57,7 @@ const group = (list: Toolset[]): Section[] => {
 // ─── Toolset Row ──────────────────────────────────────────────────────
 
 const Row = memo((props: {
+  id: string;
   ts: Toolset;
   selected: boolean;
   onSelect: () => void;
@@ -71,7 +72,7 @@ const Row = memo((props: {
   const statusFg = unavail ? theme.warning : ts.enabled ? theme.success : theme.textMuted;
 
   return (
-    <box flexDirection="row" height={1} backgroundColor={bg}
+    <box id={props.id} flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col w={2} fg={statusFg}>{`${glyph} `}</Col>
@@ -169,10 +170,11 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
 
   const count = flat.length;
   const ts = flat[sel] ?? null;
+  const follow = useFollow("ts");
 
   const keys = useListKeys({
     active: !!props.focused && dialog.stack.length === 0,
-    count, setSel,
+    count, setSel, ...follow.opts,
     onToggle: toggle,
     onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
   });
@@ -197,7 +199,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
             <text fg={theme.textMuted}>No toolsets found</text>
           </box>
         ) : (
-          <scrollbox key="list" scrollY flexGrow={1}
+          <scrollbox ref={follow.ref} key="list" scrollY flexGrow={1}
                      verticalScrollbarOptions={{ visible: true }}>
             {secs.reduce<{ base: number; out: ReactNode[] }>((acc, s) => {
               acc.out.push(
@@ -210,6 +212,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
                 acc.out.push(
                   <Row
                     key={t.name}
+                    id={follow.id(i)}
                     ts={t}
                     selected={i === sel}
                     onSelect={() => setSel(i)}

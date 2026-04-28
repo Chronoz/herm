@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import { useKeys, handleListKey } from "../keys"
+import { useKeys, handleListKey, useFollow } from "../keys"
 import { useGateway, useGatewayEvent } from "../app/gateway"
 import { trail } from "../app/spawnHistory"
 import { useTheme } from "../theme"
@@ -37,6 +37,7 @@ import type { DelegationStatus, DelegationRecord } from "../utils/gateway-types"
 // ─── Profiles pane ───────────────────────────────────────────────────
 
 const ProfileRow = memo((props: {
+  id: string
   p: ProfileInfo; idx: number; selected: boolean
   onHover: (i: number) => void; onEnter: (i: number) => void; onDelete: (i: number) => void
 }) => {
@@ -44,7 +45,7 @@ const ProfileRow = memo((props: {
   const { p, idx: i } = props
   const [x, setX] = useState(false)
   return (
-    <box flexDirection="row" height={1}
+    <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
          onMouseOver={() => props.onHover(i)}
          onMouseDown={() => props.onEnter(i)}>
@@ -116,6 +117,7 @@ const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => 
 // ─── Delegation pane ─────────────────────────────────────────────────
 
 const DelegRow = memo((props: {
+  id: string
   r: DelegationRecord; idx: number; selected: boolean; now: number
   onHover: (i: number) => void; onKill: (i: number) => void
 }) => {
@@ -124,7 +126,7 @@ const DelegRow = memo((props: {
   const [x, setX] = useState(false)
   const up = r.started_at ? dur(now - r.started_at) : "—"
   return (
-    <box flexDirection="row" height={1}
+    <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
          onMouseOver={() => props.onHover(i)}>
       <box width={2}><text fg={props.selected ? theme.primary : theme.text}>
@@ -438,6 +440,8 @@ export const Agents = memo((props: Props) => {
   const dims = useTerminalDimensions()
   const wide = dims.width >= 130
   const pWide = dims.width >= 170 || (!wide && dims.width >= 90)
+  const pFollow = useFollow("prof")
+  const dFollow = useFollow("deleg")
 
   const keys = useKeys()
   useKeyboard((key) => {
@@ -447,7 +451,7 @@ export const Agents = memo((props: Props) => {
     if (pane === "profiles") {
       if (key.name === "escape" && !pWide && pView === "detail") return setPView("list")
       handleListKey(keys, key, {
-        count: profiles.length, setSel: setPSel,
+        count: profiles.length, setSel: setPSel, ...pFollow.opts,
         onNew: create,
         onDelete: () => pDelete(pSel),
         onActivate: () => {
@@ -458,7 +462,7 @@ export const Agents = memo((props: Props) => {
       return
     }
     const matched = handleListKey(keys, key, {
-      count: active.length, setSel: setDSel,
+      count: active.length, setSel: setDSel, ...dFollow.opts,
       onDelete: () => dKill(dSel),
     })
     if (matched) return
@@ -506,9 +510,9 @@ export const Agents = memo((props: Props) => {
         <box flexDirection="row" flexGrow={1} minWidth={0}>
           {showList ? (
           <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={14}>
-            <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+            <scrollbox ref={pFollow.ref} scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
               {profiles.map((p, i) => (
-                <ProfileRow key={p.name} p={p} idx={i} selected={i === pSel}
+                <ProfileRow key={p.name} id={pFollow.id(i)} p={p} idx={i} selected={i === pSel}
                   onHover={pHover} onEnter={pEnter} onDelete={pDelete} />
               ))}
             </scrollbox>
@@ -549,11 +553,11 @@ export const Agents = memo((props: Props) => {
           </box>
         ) : (
           <box key="body" flexDirection="column" flexGrow={1} minHeight={0}>
-            <scrollbox scrollY flexGrow={3} flexBasis={0} verticalScrollbarOptions={{ visible: true }}>
+            <scrollbox ref={dFollow.ref} scrollY flexGrow={3} flexBasis={0} verticalScrollbarOptions={{ visible: true }}>
               {active.map((r, i) => {
                 const lv = liveMap.get(r.subagent_id)
                 const row = lv ? { ...r, tool_count: lv.tool_count } : r
-                return <DelegRow key={r.subagent_id} r={row} idx={i} selected={i === dSel} now={now}
+                return <DelegRow key={r.subagent_id} id={dFollow.id(i)} r={row} idx={i} selected={i === dSel} now={now}
                   onHover={dHover} onKill={dKill} />
               })}
             </scrollbox>

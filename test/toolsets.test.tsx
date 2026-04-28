@@ -95,4 +95,24 @@ describe("Toolsets tab", () => {
     expect(f).toContain("· web_search")
     t.destroy()
   })
+
+  // o3d: scroll follows selection at the viewport edge. With 30 rows in
+  // a short viewport, row-29 is clipped; End key → selection jumps to it
+  // and scrollChildIntoView brings it into frame.
+  test("scroll follows selection (End reveals last row)", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      name: `ts-${String(i).padStart(2, "0")}`, description: "", tool_count: i, enabled: true,
+    }))
+    const gw = new MockGateway({ "toolsets.list": () => ({ toolsets: many }) })
+    const t = await mountNode(<Toolsets focused />, { gw, width: 160, height: 18 })
+    await until(t, () => t.frame().includes("Toolsets (30)"))
+    expect(strip(t.frame())).not.toContain("ts-29")
+
+    act(() => t.keys.pressKey("END"))
+    await t.settle(); await t.settle()
+    const f = strip(t.frame())
+    expect(f).toContain("▸ ● ts-29")
+    expect(f).not.toContain("ts-00")
+    t.destroy()
+  })
 })

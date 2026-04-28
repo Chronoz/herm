@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useTerminalDimensions } from "@opentui/react";
 import { useGateway } from "../app/gateway";
-import { useListKeys } from "../keys";
+import { useListKeys, useFollow } from "../keys";
 import { useTheme } from "../theme";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
@@ -85,6 +85,7 @@ const next = (iso?: string) => { const t = sec(iso); return t ? until(t) : "—"
 // ─── Job Row ─────────────────────────────────────────────────────────
 
 const JobRow = memo((props: {
+  id: string;
   job: CronJob;
   selected: boolean;
   onSelect: () => void;
@@ -101,7 +102,7 @@ const JobRow = memo((props: {
     : theme.textMuted;
 
   return (
-    <box flexDirection="row" height={1} backgroundColor={bg}
+    <box id={props.id} flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col w={2} fg={glyphColor}>{`${glyph} `}</Col>
@@ -248,9 +249,10 @@ export const Cron = memo((props: { focused?: boolean }) => {
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
   }, [gw, dialog, toast, load]);
 
+  const follow = useFollow("cron");
   const keys = useListKeys({
     active: !!props.focused && dialog.stack.length === 0,
-    count: jobs.length, setSel,
+    count: jobs.length, setSel, ...follow.opts,
     onActivate: run,
     onToggle: toggle,
     onDelete: remove,
@@ -279,10 +281,11 @@ export const Cron = memo((props: { focused?: boolean }) => {
               <Col w={16} fg={theme.textMuted} bold>Next</Col>
             </Hdr>
             <box height={1} />
-            <scrollbox scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+            <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
               {jobs.map((j, i) => (
                 <JobRow
                   key={j.id}
+                  id={follow.id(i)}
                   job={j}
                   selected={i === sel}
                   onSelect={() => setSel(i)}

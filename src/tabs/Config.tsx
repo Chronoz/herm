@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, memo, type ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
-import { useKeys, handleListKey } from "../keys";
+import { useKeys, handleListKey, useFollow } from "../keys";
 import { useGateway } from "../app/gateway";
 import { useTheme } from "../theme";
 import { useToast } from "../ui/toast";
@@ -50,6 +50,7 @@ const getNested = (obj: Record<string, unknown>, path: string): unknown => {
 // ─── Field Row ───────────────────────────────────────────────────────
 
 const FieldRow = memo((props: {
+  id: string;
   field: Field;
   active: boolean;
   changed: boolean;
@@ -96,7 +97,7 @@ const FieldRow = memo((props: {
   const glyph = props.active ? EFFECT_GLYPH[f.effect] : "";
 
   return (
-    <box flexDirection="column">
+    <box id={props.id} flexDirection="column">
       <box flexDirection="row" height={1} backgroundColor={bg}>
         <Col w={2} fg={markFg}>{mark}</Col>
         <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
@@ -180,6 +181,7 @@ export const Config = memo((props: { focused?: boolean }) => {
   const fields = secs.flatMap(s => s.items);
 
   const count = fields.length;
+  const follow = useFollow("cfg");
 
   const changed = (key: string): boolean =>
     JSON.stringify(getNested(raw, key)) !== JSON.stringify(getNested(original, key));
@@ -327,7 +329,7 @@ export const Config = memo((props: { focused?: boolean }) => {
     const f = fields[cursor];
     const writable = !managed;
     const matched = handleListKey(keys, key, {
-      count, setSel: setCursor,
+      count, setSel: setCursor, ...follow.opts,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onToggle: writable && f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
       onActivate: !f ? undefined
@@ -444,7 +446,7 @@ export const Config = memo((props: { focused?: boolean }) => {
               </text>
             </box>
           ) : (
-            <scrollbox key="list" scrollY flexGrow={1}
+            <scrollbox ref={follow.ref} key="list" scrollY flexGrow={1}
                        verticalScrollbarOptions={{ visible: true }}>
               {secs.reduce<{ base: number; out: ReactNode[] }>((acc, s) => {
                 if (s.head !== null) acc.out.push(
@@ -457,6 +459,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                   acc.out.push(
                     <FieldRow
                       key={f.key}
+                      id={follow.id(i)}
                       field={f}
                       active={i === cursor && (focus === "fields" || searching)}
                       changed={changed(f.key)}
