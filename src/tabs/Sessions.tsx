@@ -443,7 +443,9 @@ export const Sessions = memo((props: Props) => {
   })
 
   const empty = searching ? results.length === 0 && query.length > 0 : rows.length === 0
-  const showDetailPanel = dims.width >= 140
+  // Sidebar yields at <140 on non-Chat tabs (app.tsx), so detail can
+  // stay mounted down to the shell's own floor.
+  const showDetailPanel = dims.width >= 120
 
   return (
     <box flexDirection="row" flexGrow={1}>

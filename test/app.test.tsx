@@ -217,6 +217,23 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("non-Chat tab: sidebar yields before detail pane (130 cols)", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [
+      { id: "a", title: "X", preview: "", message_count: 1, started_at: 1700000000, source: "tui" },
+    ]}) })
+    const t = await mount({ gw, width: 130, height: 40 })
+    await until(t, () => t.frame().includes("Ready"))
+    // Chat tab: sidebar visible at 130.
+    expect(t.frame()).toContain("Identity")
+
+    act(() => t.keys.pressKey("3", { ctrl: true }))
+    await until(t, () => t.frame().includes("Sessions (1)"))
+    // Sidebar dropped, detail pane kept.
+    expect(t.frame()).not.toContain("Identity")
+    expect(t.frame()).toContain("Session Detail")
+    t.destroy()
+  })
+
   test("gateway stream renders into transcript", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))

@@ -564,7 +564,7 @@ const AppInner = () => {
               />
             </box>
           </box>
-          {dims.width >= 120 ? (
+          {dims.width >= (tab === CHAT_TAB ? 120 : 140) ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
               <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()}
                        cloud={tab === 0 && cloud} pulse={turn.streaming}

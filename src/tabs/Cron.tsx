@@ -259,7 +259,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
   });
 
   const job = jobs[sel] ?? null;
-  const showDetail = dims.width >= 140 && job !== null;
+  const showDetail = dims.width >= 120 && job !== null;
 
   return (
     <box flexDirection="row" flexGrow={1}>

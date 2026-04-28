@@ -116,9 +116,9 @@ describe("Cron tab", () => {
     t.destroy()
   })
 
-  test("detail pane hidden below 140 cols", async () => {
+  test("detail pane hidden below 120 cols", async () => {
     const gw = mk()
-    const t = await mountNode(<Cron focused />, { gw, width: 120 })
+    const t = await mountNode(<Cron focused />, { gw, width: 110 })
     await until(t, () => t.frame().includes("Cron Jobs (3)"))
     expect(t.frame()).not.toContain("Job Detail")
     t.destroy()
