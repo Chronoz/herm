@@ -99,16 +99,22 @@ export const Memory = memo((props: { focused?: boolean }) => {
             return (
               <box
                 key={p.name}
-                height={1}
+                flexDirection="column"
+                marginBottom={1}
                 backgroundColor={i === sel ? theme.backgroundElement : undefined}
                 onMouseDown={() => setSel(i)}
                 onMouseMove={() => setSel(i)}
               >
-                <text>
-                  <span fg={fg}>{dot} </span>
-                  <span fg={i === sel ? theme.accent : theme.text}>{p.name}</span>
-                  {tag ? <span fg={fg}> ({tag})</span> : null}
-                </text>
+                <box height={1}>
+                  <text>
+                    <span fg={fg}>{dot} </span>
+                    <span fg={i === sel ? theme.accent : theme.text}>{p.name}</span>
+                    {tag ? <span fg={fg}> ({tag})</span> : null}
+                  </text>
+                </box>
+                <box height={1} overflow="hidden" paddingLeft={2}>
+                  <text fg={theme.textMuted}>{DESC[p.name] || "—"}</text>
+                </box>
               </box>
             )
           })}
