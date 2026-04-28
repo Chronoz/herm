@@ -11,62 +11,11 @@ import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
 import { check as checkRule } from "../config/rules";
+import { buildFields, groupOf, GROUPS, EFFECT_GLYPH, type Field } from "../config";
 import { managedSystem, makeSource } from "../utils/hermes-home";
 import { FileLink } from "../components/ui/FileLink";
 
-// ─── Schema ──────────────────────────────────────────────────────────
-
-const CATEGORIES = [
-  "general", "agent", "terminal", "display", "delegation",
-  "memory", "compression", "security", "browser", "voice",
-  "tts", "stt", "logging", "discord", "auxiliary",
-] as const;
-
-type Category = (typeof CATEGORIES)[number];
-
-const MERGES: Record<string, Category> = {
-  privacy: "security",
-  context: "agent",
-  skills: "agent",
-  cron: "agent",
-  network: "agent",
-  checkpoints: "agent",
-  approvals: "security",
-  human_delay: "display",
-  smart_model_routing: "agent",
-};
-
-const SELECTS: Record<string, string[]> = {
-  "terminal.backend": ["local", "docker", "ssh", "modal", "daytona", "singularity"],
-  "tts.provider": ["edge", "elevenlabs", "openai", "neutts"],
-  "display.skin": ["default", "ares", "mono", "slate"],
-  "approvals.mode": ["ask", "yolo", "deny"],
-  "logging.level": ["DEBUG", "INFO", "WARNING", "ERROR"],
-  "agent.reasoning_effort": ["none", "minimal", "low", "medium", "high", "xhigh"],
-  "model.provider": ["auto", "openai", "anthropic", "openrouter", "local"],
-  "memory.provider": ["", "sqlite", "file"],
-  "display.personality": ["default", "minimal", "verbose"],
-};
-
 // ─── Helpers ─────────────────────────────────────────────────────────
-
-type FieldType = "boolean" | "select" | "number" | "string" | "list";
-
-type Field = {
-  key: string;
-  label: string;
-  type: FieldType;
-  value: unknown;
-  options?: string[];
-};
-
-const classify = (key: string, val: unknown): FieldType => {
-  if (SELECTS[key]) return "select";
-  if (typeof val === "boolean") return "boolean";
-  if (typeof val === "number") return "number";
-  if (Array.isArray(val)) return "list";
-  return "string";
-};
 
 const flatten = (obj: Record<string, unknown>, prefix = ""): [string, unknown][] =>
   Object.entries(obj).flatMap(([k, v]) => {
@@ -75,14 +24,6 @@ const flatten = (obj: Record<string, unknown>, prefix = ""): [string, unknown][]
       return flatten(v as Record<string, unknown>, key);
     return [[key, v]];
   });
-
-const categorize = (key: string): Category => {
-  const root = key.split(".")[0];
-  if (MERGES[root]) return MERGES[root];
-  if (CATEGORIES.includes(root as Category)) return root as Category;
-  if (root === "model" || root === "gateway") return "general";
-  return "auxiliary";
-};
 
 const setNested = (obj: Record<string, unknown>, path: string, val: unknown) => {
   const parts = path.split(".");
@@ -123,45 +64,59 @@ const FieldRow = memo((props: {
   const f = props.field;
   const bg = props.active ? theme.backgroundElement : undefined;
   const indicator = props.active ? "▸ " : "  ";
-  const mark = props.changed ? "● " : "  ";
+  const mark = props.changed ? "● " : f.set ? "·" : " ";
+  const markFg = props.changed ? theme.warning : theme.textMuted;
 
   const display = (): string => {
     if (props.editing) return props.buf + "█";
+    if (f.type === "readonly") {
+      const n = Array.isArray(f.value) ? f.value.length
+        : f.value && typeof f.value === "object" ? Object.keys(f.value).length
+        : 0;
+      return n === 0 ? "—" : `${n} item${n === 1 ? "" : "s"}`;
+    }
     if (f.type === "boolean") return f.value ? "✓ ON" : "✗ OFF";
-    if (f.type === "list") return Array.isArray(f.value) ? (f.value as string[]).join(", ") : String(f.value ?? "");
-    if (f.type === "select") return String(f.value ?? "");
     return String(f.value ?? "");
   };
 
   const hint = (): string => {
     if (props.readonly) return "🔒";
+    if (f.type === "readonly") return "⧉ yaml";
     if (f.type === "boolean") return "[space]";
     if (f.type === "select") return "[h/l]";
     return "[enter]";
   };
 
-  const valFg = props.readonly ? theme.textMuted
+  const valFg = props.readonly || !f.set ? theme.textMuted
+    : f.type === "readonly" ? theme.textMuted
     : f.type === "boolean" ? (f.value ? theme.success : theme.error)
     : theme.text;
 
   const lead = 4 + (props.badge !== undefined ? 12 : 0) + 28;
+  const glyph = props.active ? EFFECT_GLYPH[f.effect] : "";
 
   return (
     <box flexDirection="column">
       <box flexDirection="row" height={1} backgroundColor={bg}>
-        <Col w={2} fg={props.changed ? theme.warning : theme.textMuted}>{mark}</Col>
+        <Col w={2} fg={markFg}>{mark}</Col>
         <Col w={2} fg={props.active ? theme.primary : theme.text}>{indicator}</Col>
         {props.badge !== undefined
           ? <Col w={12} fg={theme.textMuted}>{props.badge}</Col>
           : null}
         <Col w={28} fg={props.active ? theme.accent : theme.text}>{f.label}</Col>
         <Col grow min={6} fg={valFg}>{display()}</Col>
+        <Col w={2} fg={theme.textMuted}>{glyph}</Col>
         <Col w={9} fg={theme.textMuted} right>{props.active ? hint() : ""}</Col>
       </box>
       {props.error ? (
         <box flexDirection="row" height={1} backgroundColor={bg}>
           <Col w={lead} fg={theme.textMuted}>{""}</Col>
           <Col grow min={6} fg={theme.error}>{`✗ ${props.error}`}</Col>
+        </box>
+      ) : props.active && f.doc ? (
+        <box flexDirection="row" height={1} backgroundColor={bg}>
+          <Col w={lead} fg={theme.textMuted}>{""}</Col>
+          <Col grow min={6} fg={theme.textMuted}>{f.doc}</Col>
         </box>
       ) : null}
     </box>
@@ -209,26 +164,18 @@ export const Config = memo((props: { focused?: boolean }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const entries = flatten(raw);
-  const grouped = entries.reduce((map, [key, val]) => {
-    const c = categorize(key);
-    const label = key.split(".").slice(1).join(".") || key;
-    if (!map.has(c)) map.set(c, []);
-    map.get(c)!.push({ key, label, type: classify(key, val), value: val, options: SELECTS[key] });
+  const all = buildFields(raw);
+  const grouped = all.reduce((map, f) => {
+    const g = groupOf(f.key);
+    if (!map.has(g)) map.set(g, []);
+    map.get(g)!.push(f);
     return map;
-  }, new Map<Category, Field[]>(CATEGORIES.map(c => [c, []])));
+  }, new Map<string, Field[]>(GROUPS.map(g => [g, []])));
+  const groups = [...grouped.keys()];
 
-  const active = CATEGORIES[cat];
+  const active = groups[cat] ?? groups[0];
   const fields = searching && query.trim()
-    ? entries
-        .filter(([key]) => key.toLowerCase().includes(query.toLowerCase()))
-        .map(([key, val]) => ({
-          key,
-          label: key.split(".").slice(1).join(".") || key,
-          type: classify(key, val),
-          value: val,
-          options: SELECTS[key],
-        }))
+    ? all.filter(f => f.key.toLowerCase().includes(query.toLowerCase()))
     : (grouped.get(active) ?? []);
 
   const count = fields.length;
@@ -236,7 +183,7 @@ export const Config = memo((props: { focused?: boolean }) => {
   const changed = (key: string): boolean =>
     JSON.stringify(getNested(raw, key)) !== JSON.stringify(getNested(original, key));
 
-  const nChanged = entries.reduce((n, [k]) => n + (changed(k) ? 1 : 0), 0);
+  const nChanged = all.reduce((n, f) => n + (changed(f.key) ? 1 : 0), 0);
 
   const update = (key: string, val: unknown) => {
     const next = structuredClone(raw);
@@ -353,9 +300,7 @@ export const Config = memo((props: { focused?: boolean }) => {
           const msg = checkRule(f.key, buf);
           if (msg) { setErr(e => ({ ...e, [f.key]: msg })); return; }
           setErr(e => { const { [f.key]: _, ...rest } = e; return rest });
-          const val = f.type === "number" ? Number(buf) || 0
-            : f.type === "list" ? buf.split(",").map(s => s.trim())
-            : buf;
+          const val = f.type === "number" ? Number(buf) || 0 : buf;
           update(f.key, val);
         }
         setEditing(false);
@@ -373,7 +318,7 @@ export const Config = memo((props: { focused?: boolean }) => {
 
     if (focus === "categories") {
       if (key.name === "up") { setCat(c => Math.max(0, c - 1)); setCursor(0); return; }
-      if (key.name === "down") { setCat(c => Math.min(CATEGORIES.length - 1, c + 1)); setCursor(0); return; }
+      if (key.name === "down") { setCat(c => Math.min(groups.length - 1, c + 1)); setCursor(0); return; }
       if (key.name === "return") { setFocus("fields"); return; }
       return;
     }
@@ -384,11 +329,11 @@ export const Config = memo((props: { focused?: boolean }) => {
       count, setSel: setCursor,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onToggle: writable && f?.type === "boolean" ? () => update(f.key, !f.value) : undefined,
-      onActivate: writable && f && (f.type === "string" || f.type === "number" || f.type === "list")
-        ? () => {
-            setEditing(true);
-            setBuf(f.type === "list" && Array.isArray(f.value) ? (f.value as string[]).join(", ") : String(f.value ?? ""));
-          }
+      onActivate: !f ? undefined
+        : f.type === "readonly"
+        ? () => setMode("yaml")
+        : writable && (f.type === "string" || f.type === "number")
+        ? () => { setEditing(true); setBuf(String(f.value ?? "")) }
         : undefined,
     });
     if (matched || !f || !writable) return;
@@ -433,7 +378,7 @@ export const Config = memo((props: { focused?: boolean }) => {
             <span fg={theme.accent}>┃ </span>
             <span fg={theme.text}>{query}</span>
             <span fg={theme.accent}>█</span>
-            <span fg={theme.textMuted}>{`   ${count} of ${entries.length}  ·  ↑↓ nav  ·  Esc close`}</span>
+            <span fg={theme.textMuted}>{`   ${count} of ${all.length}  ·  ↑↓ nav  ·  Esc close`}</span>
           </text>
         </box>
       ) : null}
@@ -442,7 +387,7 @@ export const Config = memo((props: { focused?: boolean }) => {
           <TabShell title="Config" hint="↑↓ → select" grow={1}
                     focus={focus === "categories"}>
             <scrollbox scrollY flexGrow={1}>
-              {CATEGORIES.map((c, i) => {
+              {groups.map((c, i) => {
                 const sel = i === cat;
                 const hot = sel && focus === "categories";
                 const items = grouped.get(c) ?? [];
@@ -486,6 +431,7 @@ export const Config = memo((props: { focused?: boolean }) => {
             {searching ? <Col w={12} fg={theme.textMuted} bold>Category</Col> : null}
             <Col w={28} fg={theme.textMuted} bold>Field</Col>
             <Col grow min={6} fg={theme.textMuted} bold>Value</Col>
+            <Col w={2} fg={theme.textMuted}>{""}</Col>
             <Col w={9} fg={theme.textMuted}>{""}</Col>
           </Hdr>
           <box height={1} />
@@ -509,7 +455,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                   buf={buf}
                   readonly={!!managed}
                   error={err[f.key]}
-                  badge={searching ? categorize(f.key) : undefined}
+                  badge={searching ? groupOf(f.key) : undefined}
                 />
               ))}
             </scrollbox>
