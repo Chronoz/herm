@@ -18,7 +18,11 @@ import type { Message } from "../types/message"
 import { text as msgText } from "../types/message"
 import type { ToolInfo, HermesConfig } from "../utils/hermes-home"
 import type { SessionInfo } from "../utils/gateway-types"
-import { useHome } from "../home"
+import { useHome, home } from "../home"
+import { useGateway } from "../app/gateway"
+import { useDialog } from "../ui/dialog"
+import { useToast } from "../ui/toast"
+import { openTextPrompt } from "../dialogs/text-prompt"
 import { count } from "../utils/tokens"
 import {
   parse,
@@ -251,8 +255,10 @@ const ConvPanel = memo(({ seg, theme, messages, output }: {
 })
 
 /** Free space detail */
-const FreePanel = memo(({ seg, theme, ctxLen, comp }: {
-  seg: Segment; theme: Theme; ctxLen: number; comp: HermesConfig["compression"] | undefined
+const FreePanel = memo(({ seg, theme, ctxLen, comp, onEditThreshold }: {
+  seg: Segment; theme: Theme; ctxLen: number
+  comp: HermesConfig["compression"] | undefined
+  onEditThreshold: () => void
 }) => {
   const used = ctxLen - seg.tokens
   const threshold = Math.round(ctxLen * (comp?.threshold ?? 0.5))
@@ -268,7 +274,13 @@ const FreePanel = memo(({ seg, theme, ctxLen, comp }: {
       {comp ? (
         <>
           <text><strong>Compression</strong></text>
-          <text>{comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold {Math.round(comp.threshold * 100)}% ({fmt(threshold)})</text>
+          <box height={1} flexDirection="row">
+            <text>{comp.enabled ? "✓ Enabled" : "✗ Disabled"} · threshold </text>
+            <box flexShrink={0} onMouseDown={onEditThreshold}>
+              <text fg={theme.info}><u>{Math.round(comp.threshold * 100)}%</u></text>
+            </box>
+            <text> ({fmt(threshold)})</text>
+          </box>
           <text>{bar(pct)} {pct}%</text>
           <text>Protect last {comp.protect_last_n} messages · target ratio {Math.round(comp.target_ratio * 100)}%</text>
           {comp.summary_model ? <text>Summary model: {comp.summary_model}</text> : null}
@@ -288,6 +300,9 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
   const config = useHome("config")
   const memory = useHome("memory")
   const userProfile = useHome("userProfile")
+  const gw = useGateway()
+  const dialog = useDialog()
+  const toast = useToast()
   const systemPrompt = useHome("systemPrompt")
   const toolsInfo = useHome("toolsInfo")
   const soul = useHome("soul")
@@ -394,7 +409,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
   // top-alignment with the breakdown pane.
   const lastEsc = useRef(0)
   useKeyboard((key) => {
-    if (!focused || key.name !== "escape") return
+    if (!focused || dialog.stack.length > 0 || key.name !== "escape") return
     const now = Date.now()
     if (now - lastEsc.current < 400) {
       setSelected(null); setDrilled(null); lastEsc.current = 0; return
@@ -403,6 +418,18 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
     if (selected) return setSelected(null)
     if (drilled) return setDrilled(null)
   })
+
+  const editThreshold = async () => {
+    const cur = Math.round((config?.compression?.threshold ?? 0.5) * 100)
+    const v = await openTextPrompt(dialog, {
+      title: "Compression threshold", label: "Percent (10–95)", initial: String(cur),
+    })
+    if (v === null) return
+    const n = Math.max(10, Math.min(95, Number(v) || cur))
+    gw.request("config.set", { key: "compression.threshold", value: n / 100 })
+      .then(() => { home.invalidate("config"); toast.show({ variant: "success", message: `Threshold → ${n}%` }) })
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+  }
 
   // Detail panel router
   const detail = () => {
@@ -443,7 +470,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
       return <SectionPanel seg={soulSeg} theme={theme} />
     }
     if (selected === "conversation") return <ConvPanel seg={seg} theme={theme} messages={messages} output={output} />
-    if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} comp={config?.compression} />
+    if (selected === "free") return <FreePanel seg={seg} theme={theme} ctxLen={ctxLen} comp={config?.compression} onEditThreshold={editThreshold} />
     return <SectionPanel seg={seg} theme={theme} />
   }
 
