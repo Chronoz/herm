@@ -118,9 +118,30 @@ const MERGE: Record<string, string> = {
   discord: "platforms", whatsapp: "platforms",
 }
 
+export const rawGroupOf = (key: string): string =>
+  SCHEMA[key]?.group ?? (key.includes(".") ? key.split(".")[0] : "general")
+
 export const groupOf = (key: string): string => {
-  const raw = SCHEMA[key]?.group ?? (key.includes(".") ? key.split(".")[0] : "general")
+  const raw = rawGroupOf(key)
   return MERGE[raw] ?? raw
+}
+
+export type Section = { head: string | null; items: Field[] }
+
+/** Chunk a merged-group field list by its raw (pre-merge) groups so the
+ *  UI can render sub-headers. Single-chunk → head=null. Multi-chunk →
+ *  the self-named chunk (raw === merged name) floats to the front. */
+export const sections = (group: string, fields: Field[]): Section[] => {
+  const by = new Map<string, Field[]>()
+  for (const f of fields) {
+    const r = rawGroupOf(f.key)
+    if (!by.has(r)) by.set(r, [])
+    by.get(r)!.push(f)
+  }
+  if (by.size <= 1) return [{ head: null, items: fields }]
+  const order = [...by.keys()].sort((a, b) =>
+    a === group ? -1 : b === group ? 1 : a.localeCompare(b))
+  return order.map(r => ({ head: r, items: by.get(r)! }))
 }
 
 /** Distinct groups in schema after merging, 'general' pinned first. */

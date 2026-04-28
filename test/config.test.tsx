@@ -2,7 +2,7 @@ import { describe, test, expect, afterEach } from "bun:test"
 import { act } from "react"
 import { mountNode, until, MockGateway } from "./harness"
 import { Config } from "../src/tabs/Config"
-import { buildFields, groupOf, GROUPS } from "../src/config"
+import { buildFields, groupOf, sections, GROUPS } from "../src/config"
 
 type H = Awaited<ReturnType<typeof mountNode>>
 
@@ -10,7 +10,8 @@ type H = Awaited<ReturnType<typeof mountNode>>
 const navTo = async (t: H, cfg: Record<string, unknown>, key: string) => {
   const g = groupOf(key)
   const gi = GROUPS.indexOf(g)
-  const rows = buildFields(cfg).filter(f => groupOf(f.key) === g)
+  const rows = sections(g, buildFields(cfg).filter(f => groupOf(f.key) === g))
+    .flatMap(s => s.items)
   const ri = rows.findIndex(f => f.key === key)
   if (gi < 0 || ri < 0) throw new Error(`navTo: ${key} not found (group=${g})`)
   act(() => { for (let i = 0; i < gi; i++) t.keys.pressArrow("down") })

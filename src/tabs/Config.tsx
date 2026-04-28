@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, memo, type ReactNode } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useKeys, handleListKey } from "../keys";
 import { useGateway } from "../app/gateway";
@@ -11,7 +11,7 @@ import { Col, Hdr } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
 import { check as checkRule } from "../config/rules";
-import { buildFields, groupOf, GROUPS, EFFECT_GLYPH, type Field } from "../config";
+import { buildFields, groupOf, sections, GROUPS, EFFECT_GLYPH, type Field, type Section } from "../config";
 import { managedSystem, makeSource } from "../utils/hermes-home";
 import { FileLink } from "../components/ui/FileLink";
 
@@ -174,9 +174,10 @@ export const Config = memo((props: { focused?: boolean }) => {
   const groups = [...grouped.keys()];
 
   const active = groups[cat] ?? groups[0];
-  const fields = searching && query.trim()
-    ? all.filter(f => f.key.toLowerCase().includes(query.toLowerCase()))
-    : (grouped.get(active) ?? []);
+  const secs: Section[] = searching && query.trim()
+    ? [{ head: null, items: all.filter(f => f.key.toLowerCase().includes(query.toLowerCase())) }]
+    : sections(active, grouped.get(active) ?? []);
+  const fields = secs.flatMap(s => s.items);
 
   const count = fields.length;
 
@@ -445,19 +446,31 @@ export const Config = memo((props: { focused?: boolean }) => {
           ) : (
             <scrollbox key="list" scrollY flexGrow={1}
                        verticalScrollbarOptions={{ visible: true }}>
-              {fields.map((f, i) => (
-                <FieldRow
-                  key={f.key}
-                  field={f}
-                  active={i === cursor && (focus === "fields" || searching)}
-                  changed={changed(f.key)}
-                  editing={editing && i === cursor}
-                  buf={buf}
-                  readonly={!!managed}
-                  error={err[f.key]}
-                  badge={searching ? groupOf(f.key) : undefined}
-                />
-              ))}
+              {secs.reduce<{ base: number; out: ReactNode[] }>((acc, s) => {
+                if (s.head !== null) acc.out.push(
+                  <box key={`§${s.head}`} height={1} marginTop={acc.base > 0 ? 1 : 0}>
+                    <text fg={theme.textMuted}>─ {s.head} </text>
+                  </box>
+                );
+                s.items.forEach((f, j) => {
+                  const i = acc.base + j;
+                  acc.out.push(
+                    <FieldRow
+                      key={f.key}
+                      field={f}
+                      active={i === cursor && (focus === "fields" || searching)}
+                      changed={changed(f.key)}
+                      editing={editing && i === cursor}
+                      buf={buf}
+                      readonly={!!managed}
+                      error={err[f.key]}
+                      badge={searching ? groupOf(f.key) : undefined}
+                    />
+                  );
+                });
+                acc.base += s.items.length;
+                return acc;
+              }, { base: 0, out: [] }).out}
             </scrollbox>
           )}
         </TabShell>
