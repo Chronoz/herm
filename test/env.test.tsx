@@ -55,6 +55,34 @@ describe("Env tab", () => {
     t.destroy()
   })
 
+  test("click row reveals; second click opens edit; click header collapses", async () => {
+    const SECRET = "sk-ant-" + "secret123"
+    const t = await mountNode(<Env focused />, { width: 120, height: 40 })
+    await until(t, () => t.frame().includes("ANTHROPIC_API_KEY"))
+
+    const rowY = (s: string) => t.frame().split("\n").findIndex(l => l.includes(s))
+    const tap = async (s: string) => {
+      const y = rowY(s)
+      await act(async () => { await t.mouse.pressDown(30, y) })
+      await t.settle()
+      await act(async () => { await t.mouse.release(30, y) })
+      await t.settle()
+    }
+    // Click a set var → reveals value (Enter-parity path 1).
+    expect(t.frame()).not.toContain(SECRET)
+    await tap("ANTHROPIC_API_KEY")
+    await until(t, () => t.frame().includes(SECRET))
+    // Second click → edit prompt (Enter-parity path 2).
+    await tap("ANTHROPIC_API_KEY")
+    await until(t, () => t.frame().includes("Edit ANTHROPIC_API_KEY"))
+    act(() => t.keys.pressEscape())
+    await t.settle()
+    // Click header → collapses group.
+    await tap("LLM Providers")
+    expect(t.frame()).not.toContain("ANTHROPIC_API_KEY")
+    t.destroy()
+  })
+
   test("n prompts for key then value and writes to .env", async () => {
     const t = await mountNode(<Env focused />)
     await until(t, () => t.frame().includes("ANTHROPIC_API_KEY"))

@@ -26,14 +26,15 @@ const VarRow = memo((props: {
   value: string | undefined
   shown: boolean
   selected: boolean
-  onSelect: () => void
+  onHover: () => void
+  onClick: () => void
 }) => {
   const theme = useTheme().theme
   const set = props.value !== undefined
   const bg = props.selected ? theme.backgroundElement : undefined
   return (
     <box flexDirection="row" height={1} backgroundColor={bg}
-         onMouseDown={props.onSelect} onMouseOver={props.onSelect}>
+         onMouseDown={props.onClick} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
       <Col w={28} fg={props.selected ? theme.accent : theme.text}>{props.name}</Col>
       <Col w={8} fg={set ? theme.success : theme.textMuted}>{set ? " SET " : "UNSET"}</Col>
@@ -115,15 +116,19 @@ export const Env = memo((props: { focused?: boolean }) => {
       ? new Set()
       : new Set(setKeys)), [setKeys])
 
-  const activate = useCallback(() => {
-    if (cur?.type === "header")
-      return setCollapsed(p => ({ ...p, [cur.category]: !p[cur.category] }))
-    if (cur?.type === "var") {
-      if (cur.value !== undefined && !reveal.has(cur.key))
-        return setReveal(s => new Set(s).add(cur.key))
-      return void edit(cur.key, cur.value ?? "")
+  const activateAt = useCallback((i: number) => {
+    const r = rows[i]
+    if (r?.type === "header")
+      return setCollapsed(p => ({ ...p, [r.category]: !p[r.category] }))
+    if (r?.type === "var") {
+      if (r.value !== undefined && !reveal.has(r.key))
+        return setReveal(s => new Set(s).add(r.key))
+      return void edit(r.key, r.value ?? "")
     }
-  }, [cur, reveal, edit])
+  }, [rows, reveal, edit])
+  const activate = useCallback(() => activateAt(sel), [activateAt, sel])
+
+  const rowClick = useCallback((i: number) => { setSel(i); activateAt(i) }, [activateAt])
 
   const keys = useKeys()
   useKeyboard((key) => {
@@ -192,7 +197,8 @@ export const Env = memo((props: { focused?: boolean }) => {
                 key={`h-${row.category}`}
                 marginTop={i > 0 ? 1 : 0}
                 backgroundColor={i === sel ? theme.backgroundElement : undefined}
-                onMouseDown={() => setSel(i)}
+                onMouseMove={() => setSel(i)}
+                onMouseDown={() => rowClick(i)}
               >
                 <text fg={theme.info}>
                   <strong>{`${row.collapsed ? "▸" : "▾"} ${row.category}`}</strong>
@@ -205,7 +211,8 @@ export const Env = memo((props: { focused?: boolean }) => {
                 value={row.value}
                 shown={reveal.has(row.key)}
                 selected={i === sel}
-                onSelect={() => setSel(i)}
+                onHover={() => setSel(i)}
+                onClick={() => rowClick(i)}
               />
             ))}
           </box>
