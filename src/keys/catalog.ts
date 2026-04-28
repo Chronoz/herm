@@ -74,7 +74,7 @@ export const DEFAULTS = {
   "dialog.cancel":     def("escape",               "Cancel / close",                     "dialog"),
   "dialog.confirm":    def("y",                    "Yes",                                "dialog"),
   "dialog.deny":       def("n",                    "No",                                 "dialog"),
-  "dialog.copy":       def("c",                    "Copy body",                          "dialog"), // k: keep  → mouse path herm-9xu
+  "dialog.copy":       def("c",                    "Copy body",                          "dialog"),
 
   // ── composer (fed to <textarea keyBindings> via toBindings) ───── // k: I think you need to ELI5 what you mean here
   "input.submit":      def("return",               "Send",                               "composer"),

@@ -1,5 +1,6 @@
 // Scrollable read-only text dialog — oc ui/dialog-alert equivalent.
 
+import { useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useKeys } from "../keys"
 import { useTheme } from "../theme"
@@ -13,9 +14,17 @@ export function openAlert(dialog: DialogContext, title: string, body: string) {
 const Alert = (props: { title: string; body: string; onClose: () => void }) => {
   const theme = useTheme().theme
   const keys = useKeys()
+  const [copied, setCopied] = useState(false)
+
+  const doCopy = () => {
+    void copy(props.body)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 900)
+  }
+
   useKeyboard((key) => {
     if (keys.match("dialog.cancel", key) || keys.match("dialog.accept", key)) props.onClose()
-    if (keys.match("dialog.copy", key)) void copy(props.body)
+    if (keys.match("dialog.copy", key)) doCopy()
   })
   return (
     <box flexDirection="column" width={84} maxHeight={28}
@@ -30,8 +39,13 @@ const Alert = (props: { title: string; body: string; onClose: () => void }) => {
       <scrollbox scrollY flexGrow={1}>
         <text fg={theme.text} wrapMode="word">{props.body}</text>
       </scrollbox>
-      <box height={1}>
-        <text fg={theme.textMuted}>{`${keys.print("dialog.cancel")} close · ${keys.print("dialog.copy")} copy`}</text>
+      <box height={1} flexDirection="row">
+        <box flexShrink={0}>
+          <text fg={theme.textMuted}>{`${keys.print("dialog.cancel")} close · ${keys.print("dialog.copy")} `}</text>
+        </box>
+        <box flexShrink={0} onMouseDown={(e) => { e.stopPropagation(); doCopy() }}>
+          <text fg={copied ? theme.success : theme.textMuted}><u>{copied ? "copied" : "copy"}</u></text>
+        </box>
       </box>
     </box>
   )
