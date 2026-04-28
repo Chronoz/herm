@@ -116,12 +116,11 @@ const bar = (pct: number, w = 20) => {
 
 // ─── Detail Panels ──────────────────────────────────────────────────
 
-/** Generic section detail — shows raw content */
+/** Generic section detail — renders the raw document body as markdown. */
 const SectionPanel = memo(({ seg, theme }: { seg: Segment; theme: Theme }) => {
+  const { syntaxStyle } = useTheme()
   const sec = seg.section
   if (!sec) return null
-  const lines = sec.text.split("\n").filter(l => l.trim())
-  const preview = lines.slice(0, 80)
   return (
     <scrollbox borderStyle="single" padding={1} flexGrow={1} scrollY>
       <text>
@@ -130,8 +129,7 @@ const SectionPanel = memo(({ seg, theme }: { seg: Segment; theme: Theme }) => {
       <text>{sec.chars.toLocaleString()} chars · ~{fmt(sec.tokens)} tokens</text>
       {sec.source ? <box flexDirection="row" height={1}><text>Source: </text><FileLink source={sec.source} /></box> : null}
       <text> </text>
-      {preview.map((l, i) => <text key={i} fg={theme.text}>{l}</text>)}
-      {lines.length > 80 ? <text fg={theme.textMuted}>... {lines.length - 80} more lines</text> : null}
+      <markdown content={sec.text} fg={theme.markdownText} syntaxStyle={syntaxStyle} />
     </scrollbox>
   )
 })
