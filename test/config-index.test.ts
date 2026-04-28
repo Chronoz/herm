@@ -81,6 +81,6 @@ describe("config/index", () => {
     expect(heads).toEqual([...heads].sort())
     for (const c of s)
       for (const f of c.items)
-        expect(rawGroupOf(f.key)).toBe(c.head)
+        expect(rawGroupOf(f.key)).toBe(c.head!)
   })
 })

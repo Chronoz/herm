@@ -1,6 +1,8 @@
 import { useState, memo } from "react"
 import type { MemoryProviderInfo, MemoryFileInfo } from "../utils/hermes-home"
+import type { MemoryActivity } from "../utils/memory-activity"
 import { useHome, home } from "../home"
+import { ago } from "../ui/fmt"
 import { useTheme, type Theme } from "../theme"
 import { useListKeys } from "../keys"
 import { useDialog } from "../ui/dialog"
@@ -48,6 +50,7 @@ export const Memory = memo((props: { focused?: boolean }) => {
   const memory = useHome("memory")
   const userProfile = useHome("userProfile")
   const providers = useHome("memoryProviders") ?? []
+  const activity = useHome("memoryActivity") ?? []
 
   const cfg = config?.memory
   const active = cfg?.provider || ""
@@ -82,8 +85,16 @@ export const Memory = memo((props: { focused?: boolean }) => {
     active: !!props.focused && dialog.stack.length === 0,
     count: providers.length, setSel,
     onToggle: toggle,
-    onRefresh: () => { home.invalidate("memoryProviders"); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
+    onRefresh: () => {
+      home.invalidate("memoryProviders")
+      home.invalidate("memoryActivity")
+      toast.show({ variant: "info", message: "Reloaded", duration: 1000 })
+    },
   })
+
+  const feed = !cur ? []
+    : cur.name === "builtin" ? activity
+    : activity.filter(a => a.provider === cur.name)
 
   return (
     <box flexDirection="row" flexGrow={1}>
@@ -127,7 +138,8 @@ export const Memory = memo((props: { focused?: boolean }) => {
         grow={2}
       >
         {cur ? (
-          <ProviderDetail provider={cur} active={active} cfg={cfg} memory={memory} userProfile={userProfile} />
+          <ProviderDetail provider={cur} active={active} cfg={cfg}
+                          memory={memory} userProfile={userProfile} feed={feed} />
         ) : (
           <text fg={theme.textMuted}>Select a provider</text>
         )}
@@ -154,6 +166,7 @@ const ProviderDetail = memo((props: {
   cfg: MemoryCfg | undefined
   memory: MemoryFileInfo | null | undefined
   userProfile: MemoryFileInfo | null | undefined
+  feed: MemoryActivity[]
 }) => {
   const theme = useTheme().theme
   const p = props.provider
@@ -207,8 +220,50 @@ const ProviderDetail = memo((props: {
             <text fg={theme.textMuted}>No local config found. Run `hermes memory setup` to configure.</text>
           </box>
         ) : null}
+
+        <ActivityFeed items={props.feed} own={p.name} />
       </box>
     </scrollbox>
+  )
+})
+
+// ─── Activity Feed ────────────────────────────────────────────────────
+
+const OP_GLYPH = { write: "+", read: "?" } as const
+
+const ActivityFeed = memo((props: { items: MemoryActivity[]; own: string }) => {
+  const theme = useTheme().theme
+  const all = props.own === "builtin"
+  const nW = props.items.filter(a => a.op === "write").length
+  return (
+    <box flexDirection="column" marginTop={1}>
+      <box height={1}>
+        <text>
+          <span fg={theme.accent}><strong>Recent Activity</strong></span>
+          {props.items.length
+            ? <span fg={theme.textMuted}> · {nW} writes, {props.items.length - nW} reads</span>
+            : null}
+        </text>
+      </box>
+      {props.items.length === 0 ? (
+        <box height={1}>
+          <text fg={theme.textMuted}>No memory-tool calls in the last ~2000 messages</text>
+        </box>
+      ) : null}
+      {props.items.map((a, i) => (
+        <box key={i} height={1} flexDirection="row" overflow="hidden">
+          <text>
+            <span fg={a.op === "write" ? theme.success : theme.textMuted}>{OP_GLYPH[a.op]} </span>
+            <span fg={theme.textMuted}>{ago(a.ts).padEnd(8)}</span>
+            {all && a.provider !== "builtin"
+              ? <span fg={theme.primary}>{a.provider}·</span>
+              : null}
+            <span fg={theme.text}>{a.verb}</span>
+            <span fg={theme.textMuted}>  {a.summary}</span>
+          </text>
+        </box>
+      ))}
+    </box>
   )
 })
 

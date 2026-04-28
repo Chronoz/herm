@@ -1,9 +1,7 @@
 import { describe, test, expect, beforeAll } from "bun:test"
 import { act } from "react"
-import { mkdirSync } from "node:fs"
-import { Database } from "bun:sqlite"
 import { mountNode, until } from "./harness"
-import { hermesPath } from "../src/utils/hermes-home"
+import { openStateDb } from "./fixtures/state-db"
 import { analytics } from "../src/utils/hermes-analytics"
 import { Analytics } from "../src/tabs/Analytics"
 
@@ -15,17 +13,12 @@ import { Analytics } from "../src/tabs/Analytics"
 const now = Math.floor(Date.now() / 1000)
 
 beforeAll(() => {
-  mkdirSync(hermesPath("."), { recursive: true })
-  const db = new Database(hermesPath("state.db"), { create: true })
-  db.run(`CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY, model TEXT, started_at REAL NOT NULL,
-    message_count INTEGER DEFAULT 0,
-    input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
-    estimated_cost_usd REAL, actual_cost_usd REAL
-  )`)
-  db.run("DELETE FROM sessions")
+  const db = openStateDb()
   const ins = db.prepare(
-    "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    `INSERT OR REPLACE INTO sessions
+       (id, model, started_at, message_count, input_tokens, output_tokens,
+        estimated_cost_usd, actual_cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   // 2 days ago, model-a
   ins.run("s1", "model-a", now - 2 * 86400, 10, 1000, 500, 0.05, null)
@@ -71,13 +64,10 @@ describe("analytics()", () => {
   })
 
   test("returns zeros on missing db", () => {
-    // readonly open on a non-existent path throws → ZERO
-    const prev = hermesPath("state.db")
-    // Can't redirect hermesPath; instead prove the guard by calling with
-    // an absurd window that still works, and rely on the try/catch path
-    // being exercised by the shape check above. (Smoke only.)
+    // readonly open on a non-existent path throws → ZERO. Can't redirect
+    // hermesPath from here; rely on the try/catch path being covered and
+    // prove the zero-window behaviour as a stand-in.
     expect(analytics(0).total.sessions).toBe(0)
-    void prev
   })
 })
 

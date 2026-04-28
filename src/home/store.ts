@@ -32,6 +32,7 @@ import {
   type ToolsInfo,
   type SessionRow,
 } from "../utils/hermes-home"
+import { readMemoryActivity, type MemoryActivity } from "../utils/memory-activity"
 
 // ─── State shape ──────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ export interface HomeState {
   memory: MemoryFileInfo | null
   userProfile: MemoryFileInfo | null
   memoryProviders: MemoryProviderInfo[]
+  memoryActivity: MemoryActivity[]
   env: Record<string, string>
   soul: SoulInfo | null
   liveSessions: Record<string, LiveSession>
@@ -79,6 +81,9 @@ const SLICES: Slices = {
   memoryProviders: {
     read: (d) => readMemoryProviders(d.config?.memory?.provider ?? ""),
     deps: ["config"],
+  },
+  memoryActivity: {
+    read: async () => readMemoryActivity(),
   },
   env: {
     read: () => readEnvFile(),
