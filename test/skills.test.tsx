@@ -1,9 +1,29 @@
 import { describe, test, expect } from "bun:test"
 import { act } from "react"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { mountNode, until, MockGateway } from "./harness"
+import { hermesPath } from "../src/utils/hermes-home"
 import { Skills } from "../src/tabs/Skills"
 
 describe("Skills tab", () => {
+  test("enriches description/tags from SKILL.md frontmatter on disk", async () => {
+    const dir = hermesPath("skills/general/local-skill")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(`${dir}/SKILL.md`,
+      "---\nname: local-skill\ndescription: A test skill description\ntags: [alpha, beta]\n---\n\nbody")
+    const gw = new MockGateway({
+      "skills.manage": p => p.action === "list"
+        ? { skills: { general: ["local-skill"] } } : {},
+    })
+    const t = await mountNode(<Skills focused />, { gw, width: 160 })
+    await until(t, () => t.frame().includes("Skills (1)"))
+    const row = t.frame().split("\n").find(l => l.includes("▸ local-skill"))!
+    expect(row).toContain("A test skill description")
+    // Detail pane shows tags.
+    expect(t.frame()).toMatch(/Tags\s+alpha, beta/)
+    t.destroy()
+  })
+
   test("/ searches hub, Enter→confirm→install reloads", async () => {
     const installed: string[] = []
     const gw = new MockGateway({

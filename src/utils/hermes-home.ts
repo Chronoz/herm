@@ -10,6 +10,7 @@
 
 import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
+import { openSync, readSync, closeSync } from "node:fs";
 import { homedir } from "os";
 import { parse as parseYaml } from "yaml";
 import * as perf from "./perf";
@@ -169,6 +170,28 @@ export interface SkillInfo {
    * only loads on skill_view() and shows up as a tool result.
    */
   tokenEstimate: number;
+}
+
+/**
+ * Read description/tags from a SKILL.md YAML frontmatter block.
+ * Cheap — reads only the first ~2KB. Missing file / no `---` → empty.
+ */
+export function readSkillFrontmatter(source: Source): { description: string; tags: string[] } {
+  try {
+    const fd = openSync(source.file, "r");
+    const buf = Buffer.alloc(2048);
+    const n = readSync(fd, buf, 0, 2048, 0);
+    closeSync(fd);
+    const head = buf.toString("utf-8", 0, n);
+    if (!head.startsWith("---")) return { description: "", tags: [] };
+    const end = head.indexOf("\n---", 3);
+    if (end < 0) return { description: "", tags: [] };
+    const fm = parseYaml(head.slice(3, end)) as Record<string, unknown>;
+    const tags = Array.isArray(fm.tags) ? fm.tags.map(String) : [];
+    return { description: String(fm.description ?? ""), tags };
+  } catch {
+    return { description: "", tags: [] };
+  }
 }
 
 /** SOUL.md info */

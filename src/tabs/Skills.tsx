@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useKeys, handleListKey } from "../keys";
-import { makeSource, type SkillInfo } from "../utils/hermes-home";
+import { makeSource, readSkillFrontmatter, type SkillInfo } from "../utils/hermes-home";
 import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
 import { useDialog } from "../ui/dialog";
@@ -122,16 +122,17 @@ export const Skills = memo((props: { focused?: boolean }) => {
       .then(res => {
         const raw = res.skills ?? {};
         const rows: SkillInfo[] = Object.entries(raw).flatMap(([cat, names]) =>
-          names.map(n => ({
-            source: makeSource(`skills/${cat}/${n}/SKILL.md`, `${n}/SKILL.md`),
-            category: cat,
-            name: n,
-            description: "",
-            tags: [],
-            // No description available from the gateway list — estimate
-            // from name only until skills.manage returns frontmatter.
-            tokenEstimate: tokenCount(n),
-          }))
+          names.map(n => {
+            const source = makeSource(`skills/${cat}/${n}/SKILL.md`, `${n}/SKILL.md`);
+            // Gateway list returns names only; enrich from on-disk
+            // frontmatter so Description/Tags aren't dead columns.
+            const fm = readSkillFrontmatter(source);
+            return {
+              source, category: cat, name: n,
+              description: fm.description, tags: fm.tags,
+              tokenEstimate: tokenCount(`${n} ${fm.description}`),
+            };
+          })
         );
         rows.sort((a, b) => a.source.relative.localeCompare(b.source.relative));
         setSkills(rows);
