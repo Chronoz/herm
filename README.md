@@ -92,9 +92,9 @@ Composer supports `{!cmd}` shell interpolation, e.g. `review {!git diff --cached
 
 ## Avatars (`.eikon`)
 
-The sidebar avatar animates through states (`idle`, `thinking`, `streaming`, …) via an NDJSON ASCII animation format. Herm scans `~/Dev/eikon/avatars` and `~/.hermes/eikons` — if neither has `*.eikon` files, a placeholder renders. Use `/eikon` to browse.
+The sidebar avatar animates through states (`idle`, `thinking`, `streaming`, …) via an NDJSON ASCII animation format. Herm scans `~/.hermes/eikons` and `~/Dev/eikon/avatars` by default — drop `*.eikon` files into either, or set `HERM_EIKON_DIRS` (colon-separated) to point elsewhere. Use `/eikon` in-app to browse.
 
-Eikon tooling (editor, registry) lives in a separate repo.
+Eikon authoring tooling lives in a separate repo.
 
 ## Environment variables
 
@@ -102,9 +102,14 @@ Eikon tooling (editor, registry) lives in a separate repo.
 |---|---|
 | `HERMES_AGENT_ROOT` | override gateway source tree location |
 | `HERMES_PYTHON` | override Python interpreter |
+| `HERMES_HOME` | override `~/.hermes` (sessions, memory, skills, config) |
+| `HERM_CONFIG_DIR` | override `~/.config/herm` (herm's TUI prefs) |
+| `HERM_EIKON_DIRS` | colon-separated `.eikon` search paths |
 | `PERF=1` | periodic memory + render timing logs |
 | `PERF=verbose` | per-frame render stats |
 | `CONTROL=1` | expose control server on `:7777` for headless testing |
+
+See `.env.example` for a copy-pastable template.
 
 ## Development
 

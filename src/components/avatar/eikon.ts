@@ -6,7 +6,7 @@
  * (`{f, data, ...}`) belonging to the most recent state. Unknown
  * fields are ignored; unknown format versions are tolerated.
  *
- * See ~/Dev/eikon/docs/SPEC.md.
+ * Spec: https://github.com/liftaris/eikon (separate repo).
  */
 
 import { readdirSync, openSync, readSync, closeSync } from "fs"
