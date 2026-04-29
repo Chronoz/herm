@@ -1,19 +1,19 @@
 // Up/down history for composer input.
-// Persisted to ~/.config/herm/history (one line per entry, newest last).
+// Persisted under the herm config dir (typically ~/.hermes/herm/history).
 
 import { useState, useRef, useCallback } from "react"
-import { homedir } from "os"
 import { join } from "path"
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "fs"
+import { configDir } from "../utils/paths"
 
 const MAX = 500
 
-const DIR = process.env.HERM_CONFIG_DIR || join(homedir(), ".config", "herm")
-const FILE = join(DIR, "history")
+const file = () => join(configDir(), "history")
 
 // In-memory order is newest-first (index 0 = most recent); on-disk is
 // append-only newest-last, so load() reverses.
 function load() {
+  const FILE = file()
   if (!existsSync(FILE)) return []
   return readFileSync(FILE, "utf-8").split("\n").filter(Boolean)
     .map(l => l.replace(/\0/g, "\n")).slice(-MAX).reverse()
@@ -34,6 +34,8 @@ export function useInputHistory(input: string, setInput: (v: string) => void) {
     const h = hist.current!
     if (msg === h[0]) return
     h.unshift(msg)
+    const DIR = configDir()
+    const FILE = file()
     if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true })
     if (h.length > MAX) {
       h.length = MAX

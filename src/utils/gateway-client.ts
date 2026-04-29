@@ -12,15 +12,13 @@ const LOG_PREVIEW = 240
 const STARTUP_MS = 15_000
 const REQUEST_MS = 120_000
 
-/** Locate the hermes-agent source tree (gateway + hermes_cli live here). */
+/** Locate the hermes-agent source tree (gateway + hermes_cli live here).
+ *  Default: ~/.hermes/hermes-agent (where `hermes update` installs it).
+ *  Override with HERMES_AGENT_ROOT for dev clones / exotic layouts. */
 export function hermesAgentRoot(): string {
   if (process.env.HERMES_AGENT_ROOT) return process.env.HERMES_AGENT_ROOT
   const home = process.env.HOME || homedir()
-  const paths = [
-    `${home}/.hermes/hermes-agent`,
-    `${home}/Dev/hermes-agent`,
-  ]
-  return paths.find(p => existsSync(resolve(p, "tui_gateway"))) || paths[0]
+  return `${home}/.hermes/hermes-agent`
 }
 
 type Pending = {

@@ -52,8 +52,9 @@ const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {
 
 // ─── Paths ───────────────────────────────────────────────────────────
 
-const CONFIG_DIR = process.env.HERM_CONFIG_DIR || join(homedir(), ".config", "herm")
-const CONFIG_FILE = join(CONFIG_DIR, "tui.json")
+import { configDir } from "./paths"
+
+function configFile() { return join(configDir(), "tui.json") }
 
 // ─── Load ────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ export function reset(): void {
 export function load(): TuiPreferences {
   if (cached) return cached
 
+  const CONFIG_FILE = configFile()
   try {
     if (!existsSync(CONFIG_FILE)) {
       const prefs = { ...DEFAULTS }
@@ -100,12 +102,13 @@ export function save(partial?: Partial<TuiPreferences>): void {
   cached = current
 
   try {
+    const CONFIG_DIR = configDir()
     if (!existsSync(CONFIG_DIR)) {
       mkdirSync(CONFIG_DIR, { recursive: true })
     }
     // Write with sorted keys for stable diffs
     const json = JSON.stringify(current, null, 2) + "\n"
-    writeFileSync(CONFIG_FILE, json, "utf-8")
+    writeFileSync(configFile(), json, "utf-8")
   } catch (err) {
     // Silently fail — preferences are non-critical
     if (process.env.PERF) {

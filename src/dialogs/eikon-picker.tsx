@@ -13,16 +13,12 @@ import { listEikons, parseEikon, type ParsedEikon } from "../components/avatar/e
 
 const trunc = (s: string, n: number) => s.length <= n ? s : s.slice(0, n - 1) + "…"
 
-// Default search paths for .eikon avatars. Override with HERM_EIKON_DIRS
-// (colon-separated). If nothing is found the picker shows an empty state —
-// see README "Avatars (.eikon)" for where to drop files.
+// Default search path for .eikon avatars: $HERMES_HOME/eikons.
+// If nothing is found the picker shows an empty state — see README
+// "Avatars (.eikon)" for where to drop files.
 const defaultDirs = (): string[] => {
-  const env = process.env.HERM_EIKON_DIRS?.trim()
-  if (env) return env.split(":").filter(Boolean)
-  return [
-    join(homedir(), ".hermes", "eikons"),
-    join(homedir(), "Dev", "eikon", "avatars"),
-  ]
+  const hermesHome = process.env.HERMES_HOME || join(homedir(), ".hermes")
+  return [join(hermesHome, "eikons")]
 }
 
 export const EikonPickerDialog = (props: {
