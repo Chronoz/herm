@@ -41,7 +41,7 @@ export const MessageList = memo(({ messages, streaming, onRewind, onPick }: Prop
             <span fg={theme.primary}>╰─────────────────────────╯</span>
           </text>
           <text fg={theme.textMuted}> </text>
-          <text fg={theme.textMuted}>Terminal interface for Hermes Agent</text>
+          <text fg={theme.textMuted}>Terminal interface for Hermes</text>
           <text fg={theme.textMuted}>Type a message below to begin.</text>
           <text fg={theme.textMuted}> </text>
           <text>

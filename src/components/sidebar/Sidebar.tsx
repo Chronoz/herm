@@ -1,20 +1,20 @@
-import { useState, useEffect, useCallback, memo, type ReactNode } from "react"
-import { useGateway } from "../../app/gateway"
+import { useState, useCallback, memo, type ReactNode } from "react"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
 import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
-import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
+import type { SessionInfo } from "../../utils/gateway-types"
 import type { Usage } from "../../types/message"
 import { useGitBranch, rtrunc } from "../../utils/git"
 import { Tail } from "../chat/ThoughtCloud"
 import { ContextGauge } from "./ContextGauge"
 
-// The pillar body carries a compact identity block + operational sections
-// (MCP servers, plugins). Stats/Memory/Recent/Identity wrapper were removed
-// — they duplicated dedicated tabs and cluttered the most-visible surface.
+// The pillar body carries a compact identity block, the MCP operational
+// section, and a context-usage gauge at the bottom. Stats/Memory/Recent/
+// Identity wrapper and the Plugins section were removed — they duplicated
+// dedicated tabs and cluttered the most-visible surface.
 
-type SectionId = "mcp" | "plugins"
+type SectionId = "mcp"
 
 const WIDTH = 48
 const PAD_L = 12
@@ -80,18 +80,10 @@ export const Sidebar = memo((props: {
   const state = props.agentState ?? "idle"
   const info = props.info
 
-  const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [open, setOpen] = useState<Set<SectionId>>(() => new Set())
 
   const cwd = info?.cwd ?? process.cwd()
   const branch = useGitBranch(cwd)
-
-  const gw = useGateway()
-  useEffect(() => {
-    gw.request<{ plugins: PluginInfo[] }>("plugins.list")
-      .then(r => setPlugins(r.plugins ?? []))
-      .catch(() => setPlugins([]))
-  }, [gw])
 
   const toggle = useCallback((id: SectionId) => {
     setOpen(prev => {
@@ -144,27 +136,6 @@ export const Sidebar = memo((props: {
                     <span fg={theme.hermBodyTextMuted}>
                       {s.connected ? ` ${s.transport} · ${s.tools}t` : " failed"}
                     </span>
-                  </text>
-                </box>
-              ))}
-            </Section>
-          )
-        })() : null}
-
-        {plugins.length > 0 ? (() => {
-          const on = plugins.filter(p => p.enabled).length
-          return (
-            <Section id="plugins" title="Plugins"
-                     hint={`${on}/${plugins.length} on`}
-                     open={open.has("plugins")} onToggle={toggle}>
-              {plugins.map(p => (
-                <box key={p.name} height={1}>
-                  <text>
-                    <span fg={theme.hermBodyTextMuted}>{"  "}</span>
-                    <span fg={p.enabled ? theme.hermBodyText : theme.hermBodyTextMuted}>
-                      {(p.enabled ? "● " : "○ ") + trunc(p.name, 16).padEnd(16)}
-                    </span>
-                    <span fg={theme.hermBodyTextMuted}>{` v${p.version ?? "?"}`}</span>
                   </text>
                 </box>
               ))}
