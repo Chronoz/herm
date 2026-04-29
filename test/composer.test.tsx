@@ -4,6 +4,7 @@ import { mountNode, until, MockGateway, type Harness } from "./harness"
 import { Composer, type ComposerHandle } from "../src/components/chat/Composer"
 import * as prefs from "../src/utils/preferences"
 import type { SlashCommand } from "../src/commands/slash"
+import { LOCAL_COMMANDS } from "../src/commands/slash"
 import { atWordAt } from "../src/app/useAtRefPopover"
 
 async function setup(gw = new MockGateway()) {
@@ -18,7 +19,7 @@ async function setup(gw = new MockGateway()) {
       <box flexGrow={1} />
       <Composer
         ref={ref}
-        focused ready streaming={false}
+        focused ready streaming={false} cmds={LOCAL_COMMANDS}
         model="test" onSend={m => sent.push(m)} onSlash={c => slashed.push(c)}
       />
     </box>,
@@ -34,7 +35,7 @@ describe("composer", () => {
       <box flexDirection="column" flexGrow={1} width="100%" height="100%">
         <box flexGrow={1} />
         <Composer focused ready streaming={false} model="m" contextPct={73}
-          onSend={() => {}} onSlash={() => {}} />
+          cmds={[]} onSend={() => {}} onSlash={() => {}} />
       </box>,
       { width: 120, height: 20 },
     )
@@ -298,7 +299,7 @@ describe("composer", () => {
         <box flexDirection="column" flexGrow={1} width="100%" height="100%">
           <box flexGrow={1} />
           <Composer
-            ref={ref} focused ready streaming model="test" queue={q}
+            ref={ref} focused ready streaming model="test" queue={q} cmds={[]}
             onSend={m => sent.push(m)} onSlash={() => {}}
             onEnqueue={m => setQ(v => [...v, m])}
             onDequeue={i => { dequeued.push(i); setQ(v => v.filter((_, j) => j !== i)) }}

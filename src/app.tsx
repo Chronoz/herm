@@ -43,7 +43,8 @@ import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
 import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
-import type { SlashCommand } from "./commands/slash"
+import { resolve as resolveSlash, type SlashCommand } from "./commands/slash"
+import { useSlashCommands } from "./app/useSlashCommands"
 import { Composer, type ComposerHandle } from "./components/chat/Composer"
 import * as preferences from "./utils/preferences"
 import { turnReducer, initialTurn, transcriptToMessages } from "./app/turnReducer"
@@ -109,6 +110,10 @@ const AppInner = () => {
   const interrupted = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
+  const { cmds } = useSlashCommands()
+  // Live ref so send() (stable for queue-drain) reads the current catalog
+  // without re-creating itself on every catalog refresh.
+  const cmdsRef = useRef(cmds); cmdsRef.current = cmds
 
   const agentState: AvatarState = !ready
     ? "error"
@@ -257,7 +262,7 @@ const AppInner = () => {
   }, [gw, toast])
 
   // ── Slash dispatch ────────────────────────────────────────────────
-  const slash = useCallback((c: SlashCommand) => {
+  const slash = useCallback((c: SlashCommand, arg = "") => {
     if (c.target === "local") {
       switch (c.name) {
         case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
@@ -267,7 +272,7 @@ const AppInner = () => {
         case "keys": openKeys(dialog); return
         case "logs": openLogs(dialog); return
         case "eikon": pickEikon(); return
-        case "title": editTitle(); return
+        case "title": arg ? applyTitle(arg) : editTitle(); return
         case "rollback": openRollback(dialog, gw, toast); return
         case "history": openHistory(dialog, gw); return
         case "status": openStatus(dialog, info, sid); return
@@ -299,21 +304,34 @@ const AppInner = () => {
     }
     if (c.target !== "gateway" || !ready || turn.streaming) return
     const jump = TAB_SLASH[c.name]
-    if (jump !== undefined) { goToTab(jump); return }
-    dispatch({ kind: "user", text: `/${c.name}` })
-    gw.request<{ output?: string }>("slash.exec", { command: `/${c.name}` })
+    if (jump !== undefined && !arg) { goToTab(jump); return }
+    const full = `/${c.name}${arg ? " " + arg : ""}`
+    dispatch({ kind: "user", text: full })
+    gw.request<{ output?: string }>("slash.exec", { command: full })
       .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
-      .catch(() => { gw.request("prompt.submit", { text: `/${c.name}` }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, toast, info, sid])
+      .catch(() => { gw.request("prompt.submit", { text: full }).catch(() => {}) })
+  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, applyTitle, toast, info, sid])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback(async (raw: string) => {
-    // Arg-bearing local slashes bypass the popover (it closes on space).
-    const m = raw.match(/^\/(title|queue|q)\s+(.+)$/)
+    // Slash-shaped input resolves against the merged catalog: exact
+    // name/alias wins, else unique prefix. This covers the "typed with
+    // arg" path the popover can't — e.g. `/mod gpt-4`, `/q follow-up`.
+    // Unknown `/xxx` falls through to prompt.submit verbatim (lets the
+    // agent interpret paths like `/etc/hosts`).
+    const m = raw.match(/^\/(\S+)(?:\s+([\s\S]*))?$/)
     if (m) {
-      const arg = m[2].trim()
-      if (m[1] === "title") return applyTitle(arg)
-      return setQueue(q => [...q, arg])
+      const [, name, arg = ""] = m
+      if (name === "queue" || name === "q") return setQueue(q => [...q, arg.trim()])
+      const r = resolveSlash(cmdsRef.current, name)
+      if ("hit" in r) return slash(r.hit, arg.trim())
+      if ("ambiguous" in r) {
+        const head = r.ambiguous.slice(0, 6).join(", ")
+        return dispatch({
+          kind: "system",
+          text: `ambiguous: /${name} → ${head}${r.ambiguous.length > 6 ? ", …" : ""}`,
+        })
+      }
     }
     // {!cmd} spans resolve via shell.exec before submit so the
     // transcript shows what was actually sent. The await is short
@@ -329,7 +347,7 @@ const AppInner = () => {
     setAttachments([])
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
-  }, [gw, applyTitle])
+  }, [gw, slash, applyTitle])
 
   // ── Queue drain ───────────────────────────────────────────────────
   // Purely client-side: prompts typed while streaming accumulate in
@@ -594,6 +612,7 @@ const AppInner = () => {
                 contextPct={ctxPct}
                 queue={queue}
                 attachments={attachments}
+                cmds={cmds}
                 onSend={send} onSlash={slash}
                 onEnqueue={onEnqueue}
                 onDequeue={dequeue}

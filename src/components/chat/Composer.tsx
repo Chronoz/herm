@@ -11,7 +11,6 @@ import { useGateway } from "../../app/gateway"
 import type { Usage } from "../../types/message"
 import type { ImageAttachResponse } from "../../utils/gateway-types"
 import type { SlashCommand } from "../../commands/slash"
-import { useSlashCommands } from "../../app/useSlashCommands"
 import { useSlashPopover } from "../../app/useSlashPopover"
 import { useAtRefPopover } from "../../app/useAtRefPopover"
 import { useInputHistory } from "../../app/useInputHistory"
@@ -49,6 +48,7 @@ type Props = {
   contextPct?: number
   queue?: ReadonlyArray<string>
   attachments?: ReadonlyArray<ImageAttachResponse>
+  cmds: ReadonlyArray<SlashCommand>
   onSend: (text: string) => void
   onSlash: (cmd: SlashCommand) => void
   onEnqueue?: (text: string) => void
@@ -79,8 +79,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     return i < 0 ? input : input.slice(0, i)
   }, [input])
 
-  const cmds = useSlashCommands().cmds
-  const pop = useSlashPopover(head, cmds)
+  const pop = useSlashPopover(head, props.cmds)
   const at = useAtRefPopover(head)
 
   const write = useCallback((v: string) => {

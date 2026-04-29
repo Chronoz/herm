@@ -376,6 +376,38 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("send() routes arg-bearing slash via resolve(): unique prefix, gateway arg, ambiguous, miss", async () => {
+    const t = await mount({ handlers: {
+      "commands.catalog": () => ({
+        pairs: [["/reasoning", "set reasoning"], ["/personality", "switch"], ["/persona", "fake"]],
+        sub: {}, canon: {}, categories: [],
+      }),
+      "slash.exec": p => ({ output: `ran ${p.command}` }),
+    }})
+    await until(t, () => t.frame().includes("Ready"))
+
+    // unique prefix → canonical gateway dispatch with arg
+    await act(async () => { await t.keys.typeText("/reaso high") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("slash.exec") !== undefined)
+    expect(t.gw.last("slash.exec")?.params.command).toBe("/reasoning high")
+    expect(t.gw.last("prompt.submit")).toBeUndefined()
+
+    // ambiguous → system line, no dispatch
+    await act(async () => { await t.keys.typeText("/person x") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("ambiguous:"))
+    expect(t.frame()).toContain("/persona")
+    expect(t.frame()).toContain("/personality")
+
+    // miss → falls through to prompt.submit verbatim (path-like arg)
+    await act(async () => { await t.keys.typeText("/etc/hosts please") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("prompt.submit") !== undefined)
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("/etc/hosts please")
+    t.destroy()
+  })
+
   test("gateway catalog commands appear in popover; filter matches bare name", async () => {
     // Regression: gateway sends slash-prefixed names + {name,pairs} categories;
     // old parser stored "/model" verbatim → filter("mo") never matched and

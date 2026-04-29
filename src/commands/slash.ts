@@ -63,6 +63,31 @@ export function filter(list: ReadonlyArray<SlashCommand>, prefix: string): Slash
   )
 }
 
+export type Resolved =
+  | { hit: SlashCommand }
+  | { miss: true }
+  | { ambiguous: string[] }
+
+/**
+ * Resolve a typed command name to a single SlashCommand. Exact name or
+ * alias wins even when it's also a prefix of something longer (`/status`
+ * vs `/statusbar`). Otherwise a unique prefix match across the names +
+ * aliases space resolves; multiple distinct targets is ambiguous.
+ */
+export function resolve(list: ReadonlyArray<SlashCommand>, name: string): Resolved {
+  const q = name.toLowerCase()
+  for (const c of list)
+    if (c.name.toLowerCase() === q || c.aliases.some(a => a.toLowerCase() === q))
+      return { hit: c }
+  const hits = new Set<SlashCommand>()
+  for (const c of list)
+    for (const n of [c.name, ...c.aliases])
+      if (n.toLowerCase().startsWith(q)) { hits.add(c); break }
+  if (hits.size === 1) return { hit: [...hits][0] }
+  if (hits.size === 0) return { miss: true }
+  return { ambiguous: [...hits].map(c => `/${c.name}`).sort() }
+}
+
 /**
  * If input matches `/cmd <sub>` (with space) and the command has declared
  * subcommands, return synthetic entries for subcommand completion.

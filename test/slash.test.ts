@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { filter, matchSub, sort, LOCAL_COMMANDS, type SlashCommand } from "../src/commands/slash"
+import { filter, matchSub, resolve, sort, LOCAL_COMMANDS, type SlashCommand } from "../src/commands/slash"
 
 const cmd = (over: Partial<SlashCommand>): SlashCommand => ({
   name: "x", description: "", category: "Session", aliases: [], argsHint: "",
@@ -34,5 +34,38 @@ describe("slash", () => {
 
   test("LOCAL_COMMANDS includes logs", () => {
     expect(LOCAL_COMMANDS.some(c => c.name === "logs")).toBe(true)
+  })
+
+  describe("resolve", () => {
+    const list = [
+      cmd({ name: "status" }),
+      cmd({ name: "statusbar" }),
+      cmd({ name: "help", aliases: ["h", "?"] }),
+      cmd({ name: "history" }),
+      cmd({ name: "new", aliases: ["reset"] }),
+    ]
+    const hit = (n: string) => {
+      const r = resolve(list, n)
+      return "hit" in r ? r.hit.name : r
+    }
+
+    test("exact name beats longer prefix sibling", () => {
+      expect(hit("status")).toBe("status")
+      expect(hit("statusbar")).toBe("statusbar")
+    })
+    test("exact alias wins even when prefix of other names", () => {
+      // `h` is an exact alias of help, and a prefix of history — help wins.
+      expect(hit("h")).toBe("help")
+    })
+    test("unique prefix resolves", () => {
+      expect(hit("statu")).toEqual({ ambiguous: ["/status", "/statusbar"] })
+      expect(hit("statusb")).toBe("statusbar")
+      expect(hit("Re")).toBe("new")   // via alias "reset", case-insensitive
+    })
+    test("ambiguous and miss", () => {
+      const r = resolve(list, "hi")
+      expect("hit" in r && r.hit.name).toBe("history")
+      expect(resolve(list, "zzz")).toEqual({ miss: true })
+    })
   })
 })
