@@ -73,7 +73,7 @@ describe("app", () => {
   })
 
   test("tab.next rebind via preferences.keys is honored end-to-end", async () => {
-    prefs.set("keys", { "tab.next": "ctrl+l", "tab.prev": "ctrl+h" })
+    prefs.set("keys", { "tab.next": "ctrl+]", "tab.prev": "ctrl+[" })
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
@@ -83,13 +83,13 @@ describe("app", () => {
     expect(t.frame()).toContain("Message Hermes")
 
     // Rebound chord does.
-    act(() => { t.keys.pressKey("l", { ctrl: true }); t.keys.pressKey("l", { ctrl: true }) })
+    act(() => { t.keys.pressKey("]", { ctrl: true }); t.keys.pressKey("]", { ctrl: true }) })
     await t.settle()
     expect(t.frame()).toContain("No sessions")
 
-    act(() => t.keys.pressKey("h", { ctrl: true }))
+    act(() => t.keys.pressKey("[", { ctrl: true }))
     await t.settle()
-    act(() => t.keys.pressKey("h", { ctrl: true }))
+    act(() => t.keys.pressKey("[", { ctrl: true }))
     await t.settle()
     expect(t.frame()).toContain("Message Hermes")
 

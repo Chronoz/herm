@@ -3,6 +3,7 @@
 // there is exactly one global useKeyboard.
 
 import { useKeyboard, useRenderer } from "@opentui/react"
+import { resolveRenderLib, RGBA } from "@opentui/core"
 import { useRef, useEffect, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
 import { editInEditor } from "../utils/editor"
@@ -73,6 +74,24 @@ export function useAppKeys(o: Opts) {
       // Resumes on SIGCONT; OpenTUI's suspend/resume cycle re-enables
       // raw mode and redraws on the next frame.
       process.once("SIGCONT", () => renderer.resume())
+      return
+    }
+
+    if (keys.match("app.redraw", key)) {
+      // OpenTUI's renderNative() only emits cells that diff against
+      // the previous frame, so pty garbage from a child process / ssh
+      // banner / macOS Cmd+K sticks until those cells happen to
+      // change. clearTerminal() writes CSI 2J + CSI H to wipe the
+      // physical screen; zeroing currentRenderBuffer (the diff
+      // baseline — same trick resume() uses) makes the next normal
+      // render see every populated cell as changed and re-emit it.
+      // Calling lib.render(ptr, true) directly would bypass the loop
+      // and rot the native buffer-swap state, so go through
+      // requestRender() instead.
+      resolveRenderLib().clearTerminal(renderer.rendererPtr)
+      renderer.currentRenderBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+      renderer.requestRender()
+      key.stopPropagation()
       return
     }
 
