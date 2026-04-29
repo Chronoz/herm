@@ -39,6 +39,13 @@ export type Usage = {
   input: number
   output: number
   total: number
+  // Context-compression fields — populated when the agent has a
+  // ContextCompressor attached (default). Absent on sessions without
+  // compression, so consumers must guard with `typeof x === "number"`.
+  context_used?: number
+  context_max?: number
+  context_percent?: number
+  compressions?: number
 }
 
 export type Message = {

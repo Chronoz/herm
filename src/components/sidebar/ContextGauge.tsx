@@ -1,12 +1,13 @@
 import { memo } from "react"
 import { useTheme } from "../../theme"
 import type { SessionInfo } from "../../utils/gateway-types"
+import type { Usage } from "../../types/message"
 import { formatTokens } from "../../utils/tokens"
 
 // Context-compaction gauge for the sidebar. Three-line block:
-//   258K / 1M      (used / limit)
-//  [███░░░░░░░]    (10-cell bar)
-//      26%         (percent)
+//   258K / 1M                          (used / limit, centered)
+//  [████████████░░░░░░░░░░░░░░░░░░░]   (bar spans ~full width minus [])
+//              26%                     (percent, centered)
 //
 // Color ramps with ratio:
 //   <0.50 → textMuted   (plenty of room)
@@ -17,7 +18,6 @@ import { formatTokens } from "../../utils/tokens"
 // Hidden entirely when live usage is unavailable — never renders a
 // stale or fabricated value.
 
-const CELLS = 10
 const FILL = "█"
 const EMPTY = "░"
 
@@ -45,20 +45,31 @@ const formatPct = (ratio: number): string => {
 
 export const ContextGauge = memo((props: {
   info?: SessionInfo | null
+  usage?: Usage
   width: number
 }) => {
   const theme = useTheme().theme
   const info = props.info
 
-  const used = info?.usage?.context_used ?? info?.context_used
-  const max = info?.usage?.context_max ?? info?.context_max
+  // Live usage from message.complete events takes priority over the
+  // session.info snapshot (which is captured at session create and
+  // stale after any turn). Fall back to info.usage for the first
+  // render after resume, before any new wire event has arrived.
+  const used = props.usage?.context_used ?? info?.usage?.context_used ?? info?.context_used
+  const max = props.usage?.context_max ?? info?.usage?.context_max ?? info?.context_max
 
   // No live data → hide. Stale gauges are worse than no gauge.
-  if (!used || !max || max <= 0) return null
+  // Note: used=0 is valid (fresh session, no turn yet). Guard on the
+  // max (non-positive → no compression wired up → hide).
+  if (typeof max !== "number" || max <= 0) return null
+  if (typeof used !== "number") return null
 
   const ratio = Math.max(0, Math.min(1, used / max))
-  const filled = Math.round(ratio * CELLS)
-  const bar = FILL.repeat(filled) + EMPTY.repeat(CELLS - filled)
+  // Bar fills the row minus the two bracket chars; min 8 cells for
+  // safety at very narrow widths.
+  const cells = Math.max(8, props.width - 2)
+  const filled = Math.round(ratio * cells)
+  const bar = FILL.repeat(filled) + EMPTY.repeat(cells - filled)
 
   const color = (() => {
     switch (ramp(ratio)) {

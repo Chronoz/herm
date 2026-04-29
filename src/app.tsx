@@ -630,7 +630,7 @@ const AppInner = () => {
           </box>
           {dims.width >= (tab === CHAT_TAB ? 120 : 140) && !hideSidebar ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
-              <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()}
+              <Sidebar agentState={agentState} info={info} usage={usage} eikon={eikon} profile={activeProfileName()}
                        title={title}
                        cloud={tab === 0 && cloud} pulse={turn.streaming}
                        onAvatar={onAvatar} />

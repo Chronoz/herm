@@ -5,6 +5,7 @@ import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
 import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
+import type { Usage } from "../../types/message"
 import { useGitBranch, rtrunc } from "../../utils/git"
 import { Tail } from "../chat/ThoughtCloud"
 import { ContextGauge } from "./ContextGauge"
@@ -67,6 +68,7 @@ const Row = (props: { label: string; value: string; strong?: boolean }) => {
 export const Sidebar = memo((props: {
   agentState?: AvatarState
   info?: SessionInfo | null
+  usage?: Usage
   eikon?: ParsedEikon
   profile?: string
   title?: string
@@ -124,7 +126,7 @@ export const Sidebar = memo((props: {
         <Row label="Model" value={info?.model ?? "—"} />
         {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
         {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
-        <ContextGauge info={info} width={WIDTH - 2} />
+        <ContextGauge info={info} usage={props.usage} width={WIDTH - 4} />
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
           const srv = info!.mcp_servers!
