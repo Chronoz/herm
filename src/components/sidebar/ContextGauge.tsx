@@ -32,7 +32,10 @@ const ramp = (ratio: number): Ramp => {
 
 const centered = (s: string, width: number): string => {
   const pad = Math.max(0, width - s.length)
-  const left = Math.floor(pad / 2)
+  // Bias the extra space to the right when pad is odd. Terminal glyphs
+  // are visually slightly left-weighted, so ceil-left / floor-right
+  // reads as more optically centered than the naive floor/ceil split.
+  const left = Math.ceil(pad / 2)
   const right = pad - left
   return " ".repeat(left) + s + " ".repeat(right)
 }

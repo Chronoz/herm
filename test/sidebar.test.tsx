@@ -46,9 +46,6 @@ describe("Sidebar", () => {
 
     // Operational sections still present (collapsed by default now)
     expect(f).toContain("▸ MCP")
-
-    // State label at bottom
-    expect(f).toContain("idle")
     t.destroy()
   })
 

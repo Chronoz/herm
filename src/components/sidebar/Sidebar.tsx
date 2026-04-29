@@ -126,7 +126,6 @@ export const Sidebar = memo((props: {
         <Row label="Model" value={info?.model ?? "—"} />
         {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
         {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
-        <ContextGauge info={info} usage={props.usage} width={WIDTH - 4} />
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
           const srv = info!.mcp_servers!
@@ -174,9 +173,7 @@ export const Sidebar = memo((props: {
         })() : null}
 
         <box flexGrow={1} />
-        <box height={1} alignItems="center">
-          <text fg={theme.hermBodyTextMuted}>{state}</text>
-        </box>
+        <ContextGauge info={info} usage={props.usage} width={WIDTH - 4} />
       </box>
     </box>
   )
