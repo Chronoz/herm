@@ -34,6 +34,7 @@ export const DEFAULTS = {
   "app.exit":          def("ctrl+c",               "Quit (or copy selection)",           "global"),
   "app.suspend":       def("ctrl+z",               "Suspend to shell",                   "global"),
   "app.redraw":        def("ctrl+l",               "Clear & force-repaint terminal",     "global"), // ☨
+  "app.sidebar":       def("<leader>b",            "Toggle sidebar",                     "global"),
   "palette.open":      def("ctrl+k",               "Command palette",                    "global"), // ø command_list=ctrl+p
   "help.open":         def("f1",                   "Keyboard shortcuts",                 "global"), // ☨
   "tab.next":          def("ctrl+right",           "Next tab",                           "global"), // ☨

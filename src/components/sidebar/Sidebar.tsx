@@ -1,51 +1,26 @@
-import { useState, useEffect, useCallback, useMemo, memo, type ReactNode } from "react"
+import { useState, useEffect, useCallback, memo, type ReactNode } from "react"
 import { useGateway } from "../../app/gateway"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
 import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
 import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
-import type { MemoryFileInfo, SessionRow } from "../../utils/hermes-home"
-import { useHome, home } from "../../home"
 import { useGitBranch, rtrunc } from "../../utils/git"
 import { Tail } from "../chat/ThoughtCloud"
 
-// The pillar body carries what used to be the Overview tab, broken into
-// collapsible sections. Identity uses live `SessionInfo` from the gateway
-// (model/cwd/tool+skill counts); everything else reads per-slice home
-// state, so sections stay fresh without polling or reload-on-toggle.
+// The pillar body carries a compact identity block + operational sections
+// (MCP servers, plugins). Stats/Memory/Recent/Identity wrapper were removed
+// — they duplicated dedicated tabs and cluttered the most-visible surface.
 
-type SectionId = "identity" | "stats" | "memory" | "recent" | "mcp" | "plugins"
+type SectionId = "mcp" | "plugins"
 
 const WIDTH = 48
 const PAD_L = 12
-
-const num = (n: number) =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
-  : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K`
-  : String(n)
-
-const money = (usd: number) => usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
-
-const ago = (t: number) => {
-  const s = Math.floor(Date.now() / 1000 - t)
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
-
-const bar = (pct: number, w: number) => {
-  const n = Math.round((Math.max(0, Math.min(100, pct)) / 100) * w)
-  return "▓".repeat(n) + "░".repeat(w - n)
-}
 
 const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + "…"
 
 const countToolsets = (d?: Record<string, string[]>) =>
   d ? Object.values(d).reduce((n, a) => n + a.length, 0) : 0
-
-const NO_SESSIONS: readonly SessionRow[] = []
 
 // ─── Primitives (pillar-colored) ─────────────────────────────────────
 
@@ -89,23 +64,6 @@ const Row = (props: { label: string; value: string; strong?: boolean }) => {
   )
 }
 
-const Gauge = (props: { label: string; info: MemoryFileInfo }) => {
-  const theme = useTheme().theme
-  const m = props.info
-  return (
-    <>
-      <Row label={props.label} value={`${m.entryCount} · ${num(m.charCount)}/${num(m.charLimit)}`} />
-      <box height={1}>
-        <text>
-          <span fg={theme.hermBodyTextMuted}>{"  " + " ".repeat(PAD_L)}</span>
-          <span fg={theme.hermBodyText}>{bar(m.usagePercent, 18)}</span>
-          <span fg={theme.hermBodyTextMuted}>{` ${m.usagePercent}%`}</span>
-        </text>
-      </box>
-    </>
-  )
-}
-
 // ─── Main ────────────────────────────────────────────────────────────
 
 export const Sidebar = memo((props: {
@@ -113,6 +71,7 @@ export const Sidebar = memo((props: {
   info?: SessionInfo | null
   eikon?: ParsedEikon
   profile?: string
+  title?: string
   cloud?: boolean
   pulse?: boolean
   onAvatar?: () => void
@@ -121,13 +80,8 @@ export const Sidebar = memo((props: {
   const state = props.agentState ?? "idle"
   const info = props.info
 
-  const config = useHome("config")
-  const memory = useHome("memory")
-  const userProfile = useHome("userProfile")
-  const sessions = useHome("recentSessions") ?? NO_SESSIONS
-
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
-  const [open, setOpen] = useState<Set<SectionId>>(() => new Set(["identity"]))
+  const [open, setOpen] = useState<Set<SectionId>>(() => new Set())
 
   const cwd = info?.cwd ?? process.cwd()
   const branch = useGitBranch(cwd)
@@ -145,22 +99,7 @@ export const Sidebar = memo((props: {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
-    // recentSessions is a pull-only slice; refresh on toggle so
-    // Stats/Recent aren't stale when they open. The extra read on
-    // close is one query under a user click — not worth gating.
-    if (id === "stats" || id === "recent") home.invalidate("recentSessions")
   }, [])
-
-  const totals = useMemo(() => sessions.reduce(
-    (a, r) => {
-      a.msgs += r.message_count
-      a.tools += r.tool_call_count
-      a.tok += r.input_tokens + r.output_tokens
-      a.cost += r.estimated_cost_usd ?? 0
-      return a
-    },
-    { msgs: 0, tools: 0, tok: 0, cost: 0 },
-  ), [sessions])
 
   return (
     <box width={WIDTH} flexDirection="column">
@@ -179,17 +118,15 @@ export const Sidebar = memo((props: {
       <box padding={1} flexDirection="column" flexGrow={1}
            backgroundColor={theme.hermBody} overflow="hidden">
 
-        <Section id="identity" title="Identity" open={open.has("identity")} onToggle={toggle}>
-          <Row label="Agent" value="Hermes" strong />
-          <Row label="Profile" value={props.profile ?? "default"}
-               strong={!!props.profile && props.profile !== "default"} />
-          <Row label="Model" value={info?.model ?? config?.model.default ?? "—"} />
-          <Row label="Provider" value={config?.model.provider ?? "—"} />
-          {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
-          {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
-          <Row label="Tools" value={String(countToolsets(info?.tools) || "—")} />
-          <Row label="Skills" value={String(countToolsets(info?.skills) || "—")} />
-        </Section>
+        {/* Flat identity block — Title first (if set), then agent lineage. */}
+        {props.title ? <Row label="Title" value={props.title} strong /> : null}
+        <Row label="Agent" value="Hermes" strong />
+        <Row label="Profile" value={props.profile ?? "default"}
+             strong={!!props.profile && props.profile !== "default"} />
+        <Row label="Model" value={info?.model ?? "—"} />
+        {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
+        {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
+        <Row label="Skills" value={String(countToolsets(info?.skills) || "—")} />
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
           const srv = info!.mcp_servers!
@@ -235,39 +172,6 @@ export const Sidebar = memo((props: {
             </Section>
           )
         })() : null}
-
-        <Section id="stats" title="Stats"
-                 hint={`${sessions.length} sessions`}
-                 open={open.has("stats")} onToggle={toggle}>
-          <Row label="Sessions" value={String(sessions.length)} />
-          <Row label="Messages" value={num(totals.msgs)} />
-          <Row label="Tool calls" value={num(totals.tools)} />
-          <Row label="Tokens" value={num(totals.tok)} />
-          <Row label="Est. cost" value={money(totals.cost)} />
-        </Section>
-
-        <Section id="memory" title="Memory"
-                 hint={memory ? `${memory.usagePercent}%` : undefined}
-                 open={open.has("memory")} onToggle={toggle}>
-          {memory ? <Gauge label="Notes" info={memory} /> : <Row label="Notes" value="—" />}
-          {userProfile ? <Gauge label="Profile" info={userProfile} /> : <Row label="Profile" value="—" />}
-        </Section>
-
-        <Section id="recent" title="Recent"
-                 hint={sessions[0] ? ago(sessions[0].started_at) : undefined}
-                 open={open.has("recent")} onToggle={toggle}>
-          {sessions.length === 0
-            ? <Row label="" value="No sessions" />
-            : sessions.slice(0, 5).map(s => (
-                <box key={s.id} height={1}>
-                  <text>
-                    <span fg={theme.hermBodyTextMuted}>{"  • "}</span>
-                    <span fg={theme.hermBodyText}>{trunc(s.title ?? s.id.slice(0, 8), 28).padEnd(28)}</span>
-                    <span fg={theme.hermBodyTextMuted}>{` ${ago(s.started_at).padStart(4)}`}</span>
-                  </text>
-                </box>
-              ))}
-        </Section>
 
         <box flexGrow={1} />
         <box height={1} alignItems="center">

@@ -84,6 +84,7 @@ const AppInner = () => {
   const [ready, setReady] = useState(false)
   const [sid, setSid] = useState("")
   const [tab, setTab] = useState(CHAT_TAB)
+  const [hideSidebar, setHideSidebar] = useState(false)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
   const [cost, setCost] = useState(0)
   const [ctxPct, setCtxPct] = useState<number | undefined>(undefined)
@@ -535,6 +536,7 @@ const AppInner = () => {
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,
     onNotice: (text) => dispatch({ kind: "system", text }),
+    onToggleSidebar: () => setHideSidebar(v => !v),
   })
 
   // ── Control bridge ────────────────────────────────────────────────
@@ -617,9 +619,10 @@ const AppInner = () => {
               />
             </box>
           </box>
-          {dims.width >= (tab === CHAT_TAB ? 120 : 140) ? (
+          {dims.width >= (tab === CHAT_TAB ? 120 : 140) && !hideSidebar ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
               <Sidebar agentState={agentState} info={info} eikon={eikon} profile={activeProfileName()}
+                       title={title}
                        cloud={tab === 0 && cloud} pulse={turn.streaming}
                        onAvatar={onAvatar} />
             </Profiler>

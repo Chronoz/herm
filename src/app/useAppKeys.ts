@@ -31,6 +31,7 @@ type Opts = {
   onCopyLast: () => void
   onAttachClipboard: () => void
   onNotice: (text: string) => void
+  onToggleSidebar: () => void
 }
 
 export function useAppKeys(o: Opts) {
@@ -92,6 +93,11 @@ export function useAppKeys(o: Opts) {
       renderer.currentRenderBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
       renderer.requestRender()
       key.stopPropagation()
+      return
+    }
+
+    if (keys.match("app.sidebar", key)) {
+      o.onToggleSidebar()
       return
     }
 
