@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test"
-import { count, clearCache } from "../src/utils/tokens"
+import { count, clearCache, formatTokens } from "../src/utils/tokens"
 
 describe("tokens.count", () => {
   beforeEach(clearCache)
@@ -50,5 +50,38 @@ describe("tokens.count", () => {
   test("cache eviction — many unique strings without crash", () => {
     for (let i = 0; i < 1100; i++) count(`unique-string-${i}`)
     expect(count("final")).toBeGreaterThan(0)
+  })
+})
+
+describe("tokens.formatTokens", () => {
+  test("under 1000 → bare number", () => {
+    expect(formatTokens(0)).toBe("0")
+    expect(formatTokens(42)).toBe("42")
+    expect(formatTokens(999)).toBe("999")
+  })
+
+  test("1k–10k → 1-decimal K", () => {
+    expect(formatTokens(1_000)).toBe("1.0K")
+    expect(formatTokens(1_500)).toBe("1.5K")
+    expect(formatTokens(9_999)).toBe("10.0K")
+  })
+
+  test("10k–1M → integer K", () => {
+    expect(formatTokens(10_000)).toBe("10K")
+    expect(formatTokens(258_000)).toBe("258K")
+    expect(formatTokens(999_499)).toBe("999K")
+  })
+
+  test("≥1M → M, one decimal unless whole", () => {
+    expect(formatTokens(1_000_000)).toBe("1M")
+    expect(formatTokens(1_200_000)).toBe("1.2M")
+    expect(formatTokens(2_000_000)).toBe("2M")
+    expect(formatTokens(1_234_567)).toMatch(/^1\.2M$/)
+  })
+
+  test("negative / NaN / Infinity → '0'", () => {
+    expect(formatTokens(-1)).toBe("0")
+    expect(formatTokens(NaN)).toBe("0")
+    expect(formatTokens(Infinity)).toBe("0")
   })
 })

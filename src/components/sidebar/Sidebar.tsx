@@ -7,6 +7,7 @@ import type { AvatarState } from "../avatar/states"
 import type { SessionInfo, PluginInfo } from "../../utils/gateway-types"
 import { useGitBranch, rtrunc } from "../../utils/git"
 import { Tail } from "../chat/ThoughtCloud"
+import { ContextGauge } from "./ContextGauge"
 
 // The pillar body carries a compact identity block + operational sections
 // (MCP servers, plugins). Stats/Memory/Recent/Identity wrapper were removed
@@ -18,9 +19,6 @@ const WIDTH = 48
 const PAD_L = 12
 
 const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + "…"
-
-const countToolsets = (d?: Record<string, string[]>) =>
-  d ? Object.values(d).reduce((n, a) => n + a.length, 0) : 0
 
 // ─── Primitives (pillar-colored) ─────────────────────────────────────
 
@@ -126,7 +124,7 @@ export const Sidebar = memo((props: {
         <Row label="Model" value={info?.model ?? "—"} />
         {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
         {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
-        <Row label="Skills" value={String(countToolsets(info?.skills) || "—")} />
+        <ContextGauge info={info} width={WIDTH - 2} />
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
           const srv = info!.mcp_servers!

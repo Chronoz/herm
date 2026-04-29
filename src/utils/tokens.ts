@@ -66,3 +66,22 @@ export function count(s: string): number {
 export function clearCache(): void {
   cache.clear()
 }
+
+/**
+ * Human-format a token count for compact display:
+ *   999 → "999"   1_000 → "1.0K"   10_000 → "10K"
+ *   258_000 → "258K"   1_000_000 → "1M"   1_250_000 → "1.2M"
+ *
+ * Under 10k keeps one decimal; at/above 10k integer K; at/above 1M uses
+ * one decimal unless the value is a whole multiple.
+ */
+export function formatTokens(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0"
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000
+    return m === Math.floor(m) ? `${m}M` : `${m.toFixed(1)}M`
+  }
+  if (n >= 10_000) return `${Math.round(n / 1000)}K`
+  if (n >= 1_000) return `${(n / 1000).toFixed(1)}K`
+  return String(Math.round(n))
+}

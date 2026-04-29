@@ -33,9 +33,10 @@ describe("Sidebar", () => {
     expect(f).not.toContain("Identity")
     expect(f).toContain("test-model-v9")
 
-    // Tools row removed, Skills stays
+    // Tools + Skills rows both removed — Skills has a dedicated tab
+    // and the context gauge replaces them as the last identity-block row.
     expect(f).not.toMatch(/^\s*Tools\s/m)
-    expect(f).toContain("Skills")
+    expect(f).not.toMatch(/^\s*Skills\s/m)
 
     // Removed sections
     expect(f).not.toContain("▸ Stats")
@@ -86,6 +87,39 @@ describe("Sidebar", () => {
     await act(async () => { await t.mouse.pressDown(p.x, p.y) })
     await until(t, () => t.frame().includes("▸ MCP"))
     expect(t.frame()).not.toContain("● linear")
+    t.destroy()
+  })
+
+  test("context gauge renders used/max + bar + percent when usage present", async () => {
+    const gw = new MockGateway({ "plugins.list": () => ({ plugins: [] }) })
+    const info = {
+      ...INFO,
+      usage: { input: 0, output: 0, total: 0, context_used: 258_000, context_max: 1_000_000 },
+    }
+    const t = await mountNode(
+      <Sidebar agentState="idle" info={info} />,
+      { gw, width: 160, height: 48 },
+    )
+    await until(t, () => t.frame().includes("258K"))
+    const f = t.frame()
+    expect(f).toContain("258K / 1M")
+    expect(f).toContain("█")
+    expect(f).toContain("░")
+    expect(f).toContain("26%")
+    t.destroy()
+  })
+
+  test("context gauge hidden when usage absent", async () => {
+    const gw = new MockGateway({ "plugins.list": () => ({ plugins: [] }) })
+    const t = await mountNode(
+      <Sidebar agentState="idle" info={INFO} />,
+      { gw, width: 160, height: 48 },
+    )
+    await until(t, () => t.frame().includes("Hermes"))
+    const f = t.frame()
+    // No gauge chrome: no bracketed block bar
+    expect(f).not.toMatch(/\[█+░*\]/)
+    expect(f).not.toMatch(/\[░+\]/)
     t.destroy()
   })
 })
