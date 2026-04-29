@@ -68,17 +68,15 @@ const Row = memo((props: {
   const bg = props.selected ? theme.backgroundElement : undefined;
   const unavail = ts.available === false;
   const glyph = unavail ? "◌" : ts.enabled ? "●" : "○";
-  const status = unavail ? "unavailable" : ts.enabled ? "enabled" : "disabled";
-  const statusFg = unavail ? theme.warning : ts.enabled ? theme.success : theme.textMuted;
+  const glyphFg = unavail ? theme.warning : ts.enabled ? theme.success : theme.textMuted;
 
   return (
     <box id={props.id} flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
-      <Col w={2} fg={statusFg}>{`${glyph} `}</Col>
+      <Col w={2} fg={glyphFg}>{`${glyph} `}</Col>
       <Col grow fg={props.selected ? theme.accent : theme.text}>{ts.name}</Col>
       <Col w={9} fg={theme.info} right>{`${ts.tool_count} tools`}</Col>
-      <Col w={13} fg={statusFg} right>{status}</Col>
     </box>
   );
 });
@@ -190,7 +188,6 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
           <Col w={4} fg={theme.textMuted}>{""}</Col>
           <Col grow fg={theme.textMuted} bold>Name</Col>
           <Col w={9} fg={theme.textMuted} bold right>Tools</Col>
-          <Col w={13} fg={theme.textMuted} bold right>Status</Col>
         </Hdr>
         <box height={1} />
 

@@ -564,7 +564,6 @@ const AppInner = () => {
     })
   }, [gw, renderer])
 
-  const model = info?.model ?? "hermes-agent"
   const contentFocused = focusRegion === "content" && !turn.streaming
 
   const content = () => {
@@ -608,8 +607,7 @@ const AppInner = () => {
               <Composer
                 ref={composer}
                 focused={inputFocused} ready={ready} streaming={turn.streaming}
-                status={status} model={model} title={title} usage={usage} cost={cost} turns={msgCount}
-                contextPct={ctxPct}
+                status={status}
                 queue={queue}
                 attachments={attachments}
                 cmds={cmds}

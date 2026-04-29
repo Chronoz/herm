@@ -8,7 +8,6 @@ import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
 import { useKeys, toBindings } from "../../keys"
 import { useGateway } from "../../app/gateway"
-import type { Usage } from "../../types/message"
 import type { ImageAttachResponse } from "../../utils/gateway-types"
 import type { SlashCommand } from "../../commands/slash"
 import { useSlashPopover } from "../../app/useSlashPopover"
@@ -39,13 +38,6 @@ type Props = {
   ready: boolean
   streaming: boolean
   status?: string
-  model?: string
-  title?: string
-  usage?: Usage
-  cost?: number
-  turns?: number
-  /** 0–100; context window fill from session.usage. */
-  contextPct?: number
   queue?: ReadonlyArray<string>
   attachments?: ReadonlyArray<ImageAttachResponse>
   cmds: ReadonlyArray<SlashCommand>
@@ -197,35 +189,10 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     : "Ready"
   const dot = props.ready ? (props.streaming ? theme.warning : theme.success) : theme.error
 
-  const stats: string[] = []
-  if (props.title) stats.push(`"${props.title}"`)
-  if (props.model) stats.push(props.model)
-  if (props.turns) stats.push(`${props.turns} turns`)
-  if (props.usage) stats.push(`${fmt(props.usage.input)}→${fmt(props.usage.output)}`)
-  if (props.cost != null && props.cost > 0) stats.push(`$${props.cost.toFixed(2)}`)
-
-  // Context fill — shown as its own colored segment so it can tint
-  // independently of the rest of the (muted) stats line. Mirrors the
-  // hermes CLI status bar's yellow→orange→red ramp.
-  const pct = props.contextPct
-  const ctxFg = pct == null ? undefined
-    : pct >= 85 ? theme.error
-    : pct >= 70 ? theme.warning
-    : pct >= 50 ? theme.accent
-    : theme.textMuted
-
   // Logical-line row count (wrap-induced growth ignored; yoga sizes the
   // textarea, this only positions the absolute popover above the border).
   const rows = Math.min(MAX_ROWS, Math.max(1, input.split("\n").length))
   const lift = rows + 3
-
-  const hint = props.streaming
-    ? (input ? "Enter: Queue · " : "") + "Esc×2: Interrupt"
-    : pop.open ? "↑↓: Navigate · Tab: Complete · Enter: Run · Esc: Close"
-    : at.open ? "↑↓: Navigate · Tab/Enter: Insert · Esc: Close"
-    : !props.focused ? "Tab: Focus input · Esc: Focus input"
-    : rows > 1 ? `Enter: Send · ${keys.print("input.newline")}: Newline · ↑↓: Move · Ctrl+G: Editor`
-    : `Enter: Send · ${keys.print("input.newline")}: Newline · ↑↓: History · /: Commands · @: Context · Ctrl+G: Editor`
 
   return (
     <box flexDirection="column" position="relative">
@@ -316,17 +283,10 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       </box>
 
       <box height={1} flexDirection="row" paddingX={1}>
-        <box flexShrink={0}>
-          <text>
-            <span fg={dot}>● </span>
-            <span fg={theme.textMuted}>{label}</span>
-            {stats.length ? <span fg={theme.textMuted}> · {stats.join(" · ")}</span> : null}
-            {pct != null ? <span fg={ctxFg}> · ctx {Math.round(pct)}%</span> : null}
-          </text>
-        </box>
-        <box flexGrow={1} minWidth={0} height={1} overflow="hidden" justifyContent="flex-end">
-          <text fg={theme.textMuted}>{hint}</text>
-        </box>
+        <text>
+          <span fg={dot}>● </span>
+          <span fg={theme.textMuted}>{label}</span>
+        </text>
       </box>
     </box>
   )

@@ -20,7 +20,7 @@ async function setup(gw = new MockGateway()) {
       <Composer
         ref={ref}
         focused ready streaming={false} cmds={LOCAL_COMMANDS}
-        model="test" onSend={m => sent.push(m)} onSlash={c => slashed.push(c)}
+        onSend={m => sent.push(m)} onSlash={c => slashed.push(c)}
       />
     </box>,
     { gw, width: 120, height: 30 },
@@ -30,20 +30,6 @@ async function setup(gw = new MockGateway()) {
 }
 
 describe("composer", () => {
-  test("status bar shows context % segment when provided", async () => {
-    const t: Harness = await mountNode(
-      <box flexDirection="column" flexGrow={1} width="100%" height="100%">
-        <box flexGrow={1} />
-        <Composer focused ready streaming={false} model="m" contextPct={73}
-          cmds={[]} onSend={() => {}} onSlash={() => {}} />
-      </box>,
-      { width: 120, height: 20 },
-    )
-    await until(t, () => t.frame().includes("Ready"))
-    expect(t.frame()).toContain("ctx 73%")
-    t.destroy()
-  })
-
   test("type + Enter sends and clears", async () => {
     const { t, ref, sent } = await setup()
     await act(async () => { await t.keys.typeText("hello there") })
@@ -72,8 +58,6 @@ describe("composer", () => {
     const top = rows.findIndex(l => l.startsWith("┌"))
     const bot = rows.findIndex(l => l.startsWith("└"))
     expect(bot - top).toBe(3)
-    // hint switched to multi-line mode
-    expect(t.frame()).toContain("↑↓: Move")
 
     await act(async () => { await t.keys.typeText("line two") })
     await t.settle()
@@ -104,8 +88,6 @@ describe("composer", () => {
     act(() => t.keys.pressKey("o", { ctrl: true }))
     await t.settle()
     expect(ref.current?.value()).toBe("a\n")
-    // Hint reflects the override
-    expect(t.frame()).toContain("Ctrl+O: Newline")
     // Submit still Enter
     await act(async () => { await t.keys.typeText("b") })
     act(() => t.keys.pressEnter())
@@ -252,7 +234,6 @@ describe("composer", () => {
     // client-side keywords precede gateway results; gateway's @diff is deduped
     expect(t.frame()).toContain("@staged")
     expect(t.frame()).toContain("@file:")
-    expect(t.frame()).toContain("Tab/Enter: Insert")
 
     // Enter on keyword-with-colon → inserts without trailing space
     // (@file: sits after the 7 fixed keywords)
@@ -299,7 +280,7 @@ describe("composer", () => {
         <box flexDirection="column" flexGrow={1} width="100%" height="100%">
           <box flexGrow={1} />
           <Composer
-            ref={ref} focused ready streaming model="test" queue={q} cmds={[]}
+            ref={ref} focused ready streaming queue={q} cmds={[]}
             onSend={m => sent.push(m)} onSlash={() => {}}
             onEnqueue={m => setQ(v => [...v, m])}
             onDequeue={i => { dequeued.push(i); setQ(v => v.filter((_, j) => j !== i)) }}
@@ -313,7 +294,6 @@ describe("composer", () => {
     // Input stays focused while streaming; typing + Enter enqueues.
     await act(async () => { await t.keys.typeText("follow-up one") })
     await t.settle()
-    expect(t.frame()).toContain("Enter: Queue")
     act(() => t.keys.pressEnter())
     await until(t, () => t.frame().includes("⏸ 1. follow-up one"))
     expect(sent).toEqual([])

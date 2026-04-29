@@ -362,17 +362,16 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("/title <arg> sets via session.title RPC and shows in status bar", async () => {
+  test("/title <arg> sets via session.title RPC", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
     await act(async () => { await t.keys.typeText("/title my overnight run") })
     act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes('"my overnight run"'))
+    await until(t, () => t.frame().includes("Title: my overnight run")) // system line
 
     expect(t.gw.last("session.title")?.params.title).toBe("my overnight run")
     expect(t.gw.last("prompt.submit")).toBeUndefined() // intercepted
-    expect(t.frame()).toContain("Title: my overnight run") // system line
     t.destroy()
   })
 
