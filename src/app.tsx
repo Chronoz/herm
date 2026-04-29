@@ -102,6 +102,11 @@ const AppInner = () => {
   const [cloudH, setCloudH] = useState(CLOUD_MIN)
   const [pick, setPick] = useState<Message | undefined>(undefined)
   const inflight = useRef(false)
+  // Client-side interrupt latch: flipped on Esc×2 before the gateway has
+  // confirmed the stop. Stream-mutation events still in the stdio pipe
+  // (already written by the agent thread before it saw the interrupt
+  // flag) are dropped until the terminal `message.complete` arrives.
+  const interrupted = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
 
@@ -319,6 +324,7 @@ const AppInner = () => {
       text = await interpolate(gw, raw)
       setStatus("")
     }
+    interrupted.current = false
     dispatch({ kind: "user", text })
     setAttachments([])
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
@@ -376,7 +382,16 @@ const AppInner = () => {
     if (d.text) { dispatch({ kind: "message.delta", chunk: d.text }); d.text = "" }
   }, [])
 
+  // Events that mutate the in-progress assistant turn. Everything else
+  // (system messages, session.info, toasts, completion, side channels)
+  // is orthogonal to the stream and must pass the interrupt gate.
+  const STREAM_EVENTS = useRef(new Set<GatewayEvent["type"]>([
+    "message.delta", "reasoning.delta", "reasoning.available", "thinking.delta",
+    "tool.start", "tool.progress", "tool.generating",
+  ])).current
+
   const handle = useCallback((ev: GatewayEvent) => {
+    if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
     const action = mapEvent(ev, {
       onReady: () => {
         session.boot().then((r) => {
@@ -402,6 +417,7 @@ const AppInner = () => {
       },
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => {
+        interrupted.current = false
         setMsgCount(c => c + 1); setStatus(""); pollUsage()
         spawnHistory.flush(gw, sid)
       },
@@ -488,7 +504,15 @@ const AppInner = () => {
     streaming: turn.streaming,
     dialogOpen: dialog.stack.length > 0,
     composer,
-    onInterrupt: () => session.interrupt(),
+    onInterrupt: () => {
+      interrupted.current = true
+      // Drop any 16ms-batched deltas that haven't hit the reducer yet —
+      // flushing them would append post-interrupt text.
+      const d = deltas.current
+      if (d.timer) { clearTimeout(d.timer); d.timer = null }
+      d.text = ""; d.think = ""
+      session.interrupt()
+    },
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,

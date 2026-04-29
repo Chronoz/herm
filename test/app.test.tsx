@@ -753,4 +753,44 @@ describe("app", () => {
     expect(t.frame()).not.toContain("{!git")
     t.destroy()
   })
+
+  test("interrupt: post-Esc stream events are dropped; complete passes; next send reopens gate", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({ type: "message.delta", payload: { text: "alpha " } }))
+    await until(t, () => t.frame().includes("Generating"))
+
+    act(() => t.keys.pressEscape()); await t.settle()
+    act(() => t.keys.pressEscape())
+    await until(t, () => t.gw.last("session.interrupt") !== undefined)
+
+    // In-pipe stale deltas + a late tool.start arrive after the latch.
+    act(() => {
+      t.gw.push({ type: "message.delta", payload: { text: "STALE-DELTA " } })
+      t.gw.push({ type: "tool.start", payload: { tool_id: "x", name: "zz_stale_tool", context: "STALE-TOOL" } })
+      t.gw.push({ type: "reasoning.delta", payload: { text: "STALE-THINK" } })
+      t.gw.push({ type: "message.complete", payload: { text: "alpha ", status: "interrupted", usage: { input: 1, output: 1, total: 2 } } })
+    })
+    // Cloud unmounts once streaming stops — transcript now visible.
+    await until(t, () => t.frame().includes("Ready") && t.frame().includes("alpha"))
+
+    const f = t.frame()
+    expect(f).not.toContain("STALE-DELTA")
+    expect(f).not.toContain("STALE-TOOL")
+    expect(f).not.toContain("STALE-THINK")
+    expect(f).not.toContain("zz_stale_tool")   // tool part never created
+    expect(f).toContain("alpha")
+    // `*[interrupted]*` → markdown strips `*` and `[]`; bare word on its
+    // own line under the assistant gutter.
+    expect(f).toMatch(/│ interrupted/)
+
+    // Latch clears on completion: next turn's tool.start is NOT dropped.
+    // Tool parts surface in the cloud with a humanised label.
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({ type: "tool.start", payload: { tool_id: "y", name: "read_file", context: "" } }))
+    await until(t, () => t.frame().includes("Reading file"))
+    t.destroy()
+  })
 })
