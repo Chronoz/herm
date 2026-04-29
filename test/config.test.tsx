@@ -190,4 +190,29 @@ describe("Config tab", () => {
     expect(gw.last("config.set")).toBeUndefined()
     t.destroy()
   })
+
+  // 907.9: left pane needs its own scroll-follow ref. With a short viewport,
+  // categories past the fold must scroll into view when arrow-nav reaches
+  // them — previously the highlight updated but the scrollbox didn't move,
+  // making it look like only the right pane was changing.
+  test("categories pane scrolls to keep highlight visible", async () => {
+    const gw = new MockGateway({ "config.get": () => ({ config: {} }) })
+    const t = await mountNode(<Config focused />, { gw, width: 120, height: 14 })
+    await until(t, () => t.frame().includes("general"))
+
+    // Initial state: first category (`general`) visible, last hidden.
+    const first = GROUPS[0]
+    const last = GROUPS[GROUPS.length - 1]
+    expect(t.frame()).toContain(first)
+    expect(t.frame()).not.toContain(last)
+
+    // Arrow down through every category. After the last press, the
+    // scrollbox must have followed the selection, revealing `last`.
+    for (let i = 0; i < GROUPS.length - 1; i++) {
+      act(() => t.keys.pressArrow("down"))
+    }
+    await t.settle(); await t.settle()
+    expect(t.frame()).toContain(last)
+    t.destroy()
+  })
 })

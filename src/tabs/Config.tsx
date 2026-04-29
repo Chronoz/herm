@@ -184,6 +184,7 @@ export const Config = memo((props: { focused?: boolean }) => {
 
   const count = fields.length;
   const follow = useFollow("cfg");
+  const catFollow = useFollow("cfg-cat");
 
   const changed = (key: string): boolean =>
     JSON.stringify(getNested(raw, key)) !== JSON.stringify(getNested(original, key));
@@ -322,8 +323,16 @@ export const Config = memo((props: { focused?: boolean }) => {
     if (keys.match("list.search", key)) { setSearching(true); setQuery(""); setCursor(0); return; }
 
     if (focus === "categories") {
-      if (key.name === "up") { setCat(c => Math.max(0, c - 1)); setCursor(0); return; }
-      if (key.name === "down") { setCat(c => Math.min(groups.length - 1, c + 1)); setCursor(0); return; }
+      if (key.name === "up") {
+        setCat(c => { const n = Math.max(0, c - 1); catFollow.opts.scrollTo(n); return n });
+        setCursor(0);
+        return;
+      }
+      if (key.name === "down") {
+        setCat(c => { const n = Math.min(groups.length - 1, c + 1); catFollow.opts.scrollTo(n); return n });
+        setCursor(0);
+        return;
+      }
       if (key.name === "return") { setFocus("fields"); return; }
       return;
     }
@@ -388,7 +397,7 @@ export const Config = memo((props: { focused?: boolean }) => {
         {searching ? null : (
           <TabShell title="Config" hint="↑↓ → select" grow={1}
                     focus={focus === "categories"}>
-            <scrollbox scrollY flexGrow={1}>
+            <scrollbox ref={catFollow.ref} scrollY flexGrow={1}>
               {groups.map((c, i) => {
                 const sel = i === cat;
                 const hot = sel && focus === "categories";
@@ -397,6 +406,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                 return (
                   <box
                     key={c}
+                    id={catFollow.id(i)}
                     backgroundColor={hot ? theme.backgroundElement : undefined}
                     onMouseDown={() => { setCat(i); setCursor(0); setFocus("categories"); }}
                   >
