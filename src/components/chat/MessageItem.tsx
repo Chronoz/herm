@@ -113,7 +113,7 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
       onMouseOut={() => setHover(false)}
       {...click}
     >
-      <Gutter color={theme.accent} side="left">
+      <Gutter color={theme.primary} side="left">
         <box minHeight={1}>
           <text fg={theme.text} wrapMode="word">{extract(message)}</text>
         </box>
@@ -175,7 +175,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
          onMouseOver={() => setHover(true)}
          onMouseOut={() => setHover(false)}
          {...click}>
-      <Gutter color={err ? theme.error : theme.primary} side="right">
+      <Gutter color={err ? theme.error : theme.accent} side="right">
         <box height={1} flexDirection="row">
           <box flexGrow={1}><text fg={theme.textMuted}>{header}</text></box>
           {trail.length ? (
