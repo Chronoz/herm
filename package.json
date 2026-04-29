@@ -1,8 +1,30 @@
 {
   "name": "herm",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "A modern TUI for Hermes Agent",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liftaris/herm.git"
+  },
+  "homepage": "https://github.com/liftaris/herm#readme",
+  "bugs": {
+    "url": "https://github.com/liftaris/herm/issues"
+  },
+  "bin": {
+    "herm": "src/index.tsx"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "files": [
+    "src",
+    "scripts/postinstall.ts",
+    "scripts/gen-schema.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
     "dev:perf": "PERF=1 bun run --watch src/index.tsx",
