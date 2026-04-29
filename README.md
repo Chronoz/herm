@@ -1,6 +1,8 @@
 # Herm - Dashboard TUI for Hermes
 
-> **herm** /hɜːm/ _noun_ — a sculptured head of Hermes on a square stone pillar, used in ancient Greece as a boundary marker at crossroads.
+![alt text](image.png)
+
+> **herm** /hɜːm/ _noun_ : a sculptured head of Hermes on a square stone pillar, used in ancient Greece as a boundary marker at crossroads.
 
 Herm is a tabbed, mouse-aware TUI built with [OpenTUI](https://github.com/anomalyco/opentui) (React renderer) and [Bun](https://bun.sh/). It talks to the same gateway `hermes` cli uses.
 
@@ -22,11 +24,12 @@ bun install
 bun run src/index.tsx
 ```
 
-Or run it straight from GitHub:
+<!-- bunx segfaults. commenting until this is fixed
+ Or run it straight from GitHub:
 
 ```bash
 bunx github:liftaris/herm
-```
+``` -->
 
 Herm looks for `~/.hermes`. If yours lives elsewhere, set `HERMES_HOME`. See [`.env.example`](./.env.example) for rarely-needed overrides.
 
