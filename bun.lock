@@ -5,7 +5,7 @@
     "": {
       "name": "herm",
       "dependencies": {
-        "@opentui/core": "^0.1.99",
+        "@opentui/core": "0.1.99",
         "@opentui/react": "0.1.99",
         "gpt-tokenizer": "^3.4.0",
         "open": "^11.0.0",
