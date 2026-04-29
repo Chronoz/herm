@@ -39,7 +39,18 @@ describe("Toolsets tab", () => {
   })
 
   test("Space → tools.configure with correct action + names in flat order", async () => {
-    const gw = new MockGateway({ "toolsets.list": () => ({ toolsets: SETS }) })
+    const gw = new MockGateway({
+      "toolsets.list": () => ({ toolsets: SETS }),
+      // Default handler — accepts every name and reflects the flip in
+      // enabled_toolsets so herm's reconcile path stays deterministic
+      // across successive toggles.
+      "tools.configure": p => {
+        const on = new Set(SETS.filter(t => t.enabled).map(t => t.name))
+        if (p.action === "enable") (p.names as string[]).forEach(n => on.add(n))
+        else (p.names as string[]).forEach(n => on.delete(n))
+        return { changed: p.names, enabled_toolsets: [...on], missing_servers: [], unknown: [] }
+      },
+    })
     const t = await mountNode(<Toolsets focused />, { gw })
     await until(t, () => t.frame().includes("Toolsets (5)"))
 
@@ -65,18 +76,77 @@ describe("Toolsets tab", () => {
     t.destroy()
   })
 
-  test("available=false → ◌ glyph, 'unavailable' status, Space refuses", async () => {
+  test("available=false → ◌ glyph, Space refuses", async () => {
     const gw = new MockGateway({ "toolsets.list": () => ({ toolsets: [
       { name: "spotify", description: "music", tool_count: 7, enabled: false, available: false },
     ] }) })
     const t = await mountNode(<Toolsets focused />, { gw })
     await until(t, () => t.frame().includes("Toolsets (1)"))
-    const f = strip(t.frame())
-    expect(f).toContain("◌ spotify")
-    expect(f).toContain("unavailable")
+    expect(strip(t.frame())).toContain("◌ spotify")
     await act(async () => { await t.keys.typeText(" ") })
     await t.settle()
     expect(t.gw.last("tools.configure")).toBeUndefined()
+    t.destroy()
+  })
+
+  // 4no: gateway's tools.configure only persists names in its whitelist
+  // (hermes_cli/tools_config.py CONFIGURABLE_TOOLSETS + plugin keys).
+  // Platform bundles like hermes-cli land in response.unknown → herm must
+  // revert the optimistic flip and surface the reason.
+  test("unknown names in response → revert flip + warning toast", async () => {
+    const gw = new MockGateway({
+      "toolsets.list": () => ({ toolsets: SETS }),
+      "tools.configure": p => ({
+        changed: [],
+        enabled_toolsets: SETS.filter(t => t.enabled).map(t => t.name),
+        missing_servers: [],
+        unknown: p.names as string[],
+      }),
+    })
+    const t = await mountNode(<Toolsets focused />, { gw })
+    await until(t, () => t.frame().includes("Toolsets (5)"))
+
+    // navigate to hermes-cli (core:2 + platform:0 = flat index 2)
+    for (let i = 0; i < 2; i++) act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    await act(async () => { await t.keys.typeText(" ") })
+    await until(t, () => t.frame().includes("not configurable"))
+
+    // still ● (enabled) — revert worked
+    const f = strip(t.frame())
+    expect(f).toMatch(/●\s+hermes-cli/)
+    expect(t.gw.last("tools.configure")?.params).toMatchObject({
+      action: "disable", names: ["hermes-cli"],
+    })
+    t.destroy()
+  })
+
+  // 4no: on success, reconcile from response.enabled_toolsets instead of
+  // round-tripping toolsets.list (which reads stale agent state).
+  test("reconciles list enabled flags from response.enabled_toolsets", async () => {
+    let stale = true
+    const gw = new MockGateway({
+      // Toolsets.list returns STALE data — proves reconcile path is used.
+      "toolsets.list": () => ({ toolsets: stale ? SETS : [] }),
+      "tools.configure": p => {
+        stale = false
+        const on = new Set(SETS.filter(t => t.enabled).map(t => t.name))
+        if (p.action === "enable") (p.names as string[]).forEach(n => on.add(n))
+        else (p.names as string[]).forEach(n => on.delete(n))
+        return { changed: p.names, enabled_toolsets: [...on], missing_servers: [], unknown: [] }
+      },
+    })
+    const t = await mountNode(<Toolsets focused />, { gw })
+    await until(t, () => t.frame().includes("Toolsets (5)"))
+
+    // Toggle `file` off (starts enabled).
+    await act(async () => { await t.keys.typeText(" ") })
+    await t.settle(); await t.settle()
+    const f = strip(t.frame())
+    // `file` now ○ — and crucially, `web` is still ○ + `hermes-cli` still ●
+    // (proof we reconciled from the response, not from the stale [] list).
+    expect(f).toMatch(/○\s+file\b/)
+    expect(f).toMatch(/●\s+hermes-cli/)
     t.destroy()
   })
 

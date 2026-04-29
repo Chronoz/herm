@@ -148,6 +148,17 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
 
   useEffect(() => { load(); }, [load]);
 
+  // tools.configure response (tui_gateway/server.py @method("tools.configure")).
+  // `enabled_toolsets` is the authoritative post-change list — reconcile
+  // from it instead of a round-trip `toolsets.list`. `unknown` = names
+  // the gateway's whitelist rejected (e.g. platform bundles, composites).
+  type ConfigureResult = {
+    changed: string[]
+    enabled_toolsets: string[]
+    missing_servers: string[]
+    unknown: string[]
+  }
+
   const toggle = useCallback(() => {
     const ts = live.current.flat[live.current.sel];
     if (!ts) return;
@@ -156,13 +167,38 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
       return;
     }
     const action = ts.enabled ? "disable" : "enable";
+    const was = ts.enabled;
     // optimistic flip
     setList(prev => prev.map(t => t.name === ts.name ? { ...t, enabled: !t.enabled } : t));
-    gw.request("tools.configure", { action, names: [ts.name] })
-      .then(() => load())
+    gw.request<ConfigureResult>("tools.configure", { action, names: [ts.name] })
+      .then(r => {
+        if (r.unknown?.includes(ts.name)) {
+          // Gateway rejected the name — revert the optimistic flip and tell
+          // the user why (matches config.yaml whitelist in hermes_cli/tools_config.py).
+          setList(prev => prev.map(t => t.name === ts.name ? { ...t, enabled: was } : t));
+          toast.show({ variant: "warning", message: `${ts.name} is not configurable` });
+          return;
+        }
+        if (r.missing_servers?.length && ts.name.includes(":")) {
+          const server = ts.name.split(":", 1)[0];
+          if (r.missing_servers.includes(server)) {
+            setList(prev => prev.map(t => t.name === ts.name ? { ...t, enabled: was } : t));
+            toast.show({ variant: "warning", message: `MCP server '${server}' not in config` });
+            return;
+          }
+        }
+        // Reconcile from the authoritative list. Tolerant of future shape
+        // changes (missing `enabled_toolsets` falls back to `load()`).
+        if (Array.isArray(r.enabled_toolsets)) {
+          const on = new Set(r.enabled_toolsets);
+          setList(prev => prev.map(t => ({ ...t, enabled: on.has(t.name) })));
+        } else {
+          load();
+        }
+      })
       .catch((e: Error) => {
+        setList(prev => prev.map(t => t.name === ts.name ? { ...t, enabled: was } : t));
         toast.show({ variant: "error", message: e.message });
-        load();
       });
   }, [gw, toast, load]);
 
