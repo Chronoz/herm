@@ -17,10 +17,11 @@ import { join } from "path"
 const HOME = process.env.HOME!
 const HERMES_HOME = process.env.HERMES_HOME || join(HOME, ".hermes")
 
+// Same discovery order as the app (see src/utils/gateway-client.ts):
+// HERMES_AGENT_ROOT overrides; otherwise look under HERMES_HOME.
 const CANDIDATES = [
-  process.env.HERMES_AGENT_SRC,
+  process.env.HERMES_AGENT_ROOT,
   join(HERMES_HOME, "hermes-agent"),
-  join(HOME, "Dev", "clones", "hermes-agent"),
 ].filter(Boolean) as string[]
 
 const agentRoot = CANDIDATES.find(p => existsSync(join(p, "hermes_cli", "config.py")))
