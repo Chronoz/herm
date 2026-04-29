@@ -38,7 +38,7 @@ export const Chat = memo(({
         <box position="absolute" top={0} left={0} right={0} zIndex={1}>
           <ThoughtCloud
             height={cloudH} messages={messages} streaming={streaming} status={status}
-            pick={pick} onResize={onResize} onClose={() => onPick(undefined)}
+            pick={pick} onResize={onResize}
           />
         </box>
       ) : null}

@@ -268,8 +268,8 @@ describe("app", () => {
 
     const call = t.gw.last("prompt.submit")
     expect(call?.params.text).toBe("hello gateway")
-    expect(t.frame()).toContain("▸ you")
-    expect(t.frame()).toContain("hello gateway")
+    // User messages render inside a left-side gutter.
+    expect(t.frame()).toMatch(/│ hello gateway/)
 
     t.destroy()
   })
@@ -523,6 +523,47 @@ describe("app", () => {
     await act(async () => { await t.keys.typeText("b") })
     await t.settle()
     expect(t.frame()).toMatch(/Agent\s+Hermes/)
+    t.destroy()
+  })
+
+  test("agent messages show 'Hermes' as default speaker (not 'assistant')", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => {
+      t.gw.push({ type: "message.start" })
+      t.gw.push({ type: "message.delta", payload: { text: "hi there" } })
+      t.gw.push({ type: "message.complete", payload: { text: "hi there", status: "complete" } })
+    })
+    await t.settle()
+
+    const f = t.frame()
+    expect(f).toContain("Hermes")
+    // The agent row header must not fall back to the literal "assistant".
+    // (substring search is safe: no other UI text contains that word.)
+    expect(f).not.toMatch(/\bassistant\b/)
+
+    t.destroy()
+  })
+
+  test("skin.changed → branding.agent_name replaces 'Hermes' in agent headers", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({
+      type: "skin.changed",
+      payload: { name: "ares", branding: { agent_name: "Ares" } },
+    }))
+    await t.settle()
+
+    act(() => {
+      t.gw.push({ type: "message.start" })
+      t.gw.push({ type: "message.delta", payload: { text: "to arms" } })
+      t.gw.push({ type: "message.complete", payload: { text: "to arms", status: "complete" } })
+    })
+    await t.settle()
+
+    expect(t.frame()).toContain("Ares")
     t.destroy()
   })
 
@@ -836,9 +877,9 @@ describe("app", () => {
     expect(f).not.toContain("STALE-THINK")
     expect(f).not.toContain("zz_stale_tool")   // tool part never created
     expect(f).toContain("alpha")
-    // `*[interrupted]*` → markdown strips `*` and `[]`; bare word on its
-    // own line under the assistant gutter.
-    expect(f).toMatch(/│ interrupted/)
+    // `*[interrupted]*` → markdown strips `*` and `[]`; bare word under
+    // the assistant right-side gutter (content on the left, bar on the right).
+    expect(f).toMatch(/interrupted\s+│/)
 
     // Latch clears on completion: next turn's tool.start is NOT dropped.
     // Tool parts surface in the cloud with a humanised label.

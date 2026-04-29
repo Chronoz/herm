@@ -76,7 +76,9 @@ describe("MessageList", () => {
 
     expect(f).toContain("run the build")
     expect(f).toContain("│")
-    expect(f).toContain("test-model · 12→34 tok · 250ms")
+    // Agent header: "Hermes · <tokens> · <duration>" (model is shown
+    // in the sidebar/status bar, not in message headers).
+    expect(f).toContain("Hermes · 12→34 tok · 250ms")
     // trail badge (right-aligned), not inline tool bodies
     expect(f).toContain("terminal · read_file")
     expect(f).not.toContain("$ bun run build")

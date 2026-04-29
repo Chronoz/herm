@@ -50,6 +50,7 @@ import * as preferences from "./utils/preferences"
 import { turnReducer, initialTurn, transcriptToMessages } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
+import { SkinProvider, deriveSkin, type SkinState } from "./app/skin"
 import { useAppKeys } from "./app/useAppKeys"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
@@ -103,6 +104,7 @@ const AppInner = () => {
   const [cloud, setCloud] = useState(false)
   const [cloudH, setCloudH] = useState(CLOUD_MIN)
   const [pick, setPick] = useState<Message | undefined>(undefined)
+  const [skin, setSkin] = useState<SkinState>(() => deriveSkin(undefined))
   const inflight = useRef(false)
   // Client-side interrupt latch: flipped on Esc×2 before the gateway has
   // confirmed the stop. Stream-mutation events still in the stdio pipe
@@ -131,7 +133,12 @@ const AppInner = () => {
     setCloud(turn.streaming)
   }, [turn.streaming])
   const onPick = useCallback((m?: Message) => { setPick(m); setCloud(!!m) }, [])
-  const onAvatar = useCallback(() => setCloud(o => !o), [])
+  // Avatar click toggles the cloud. Closing it also clears any pinned
+  // message so the next open shows live state, not stale pin.
+  const onAvatar = useCallback(() => setCloud(o => {
+    if (o) setPick(undefined)
+    return !o
+  }), [])
   const onEnqueue = useCallback((t: string) => setQueue(q => [...q, t]), [])
 
   // ── Session reset / lifecycle ─────────────────────────────────────
@@ -462,6 +469,7 @@ const AppInner = () => {
         })
       },
       onStatus: (text) => setStatus(text),
+      onSkin: (s) => setSkin(deriveSkin(s)),
     })
     if (!action) return
     const d = deltas.current
@@ -599,6 +607,7 @@ const AppInner = () => {
 
   return (
     <Profiler id="shell" onRender={perf.onRender}>
+     <SkinProvider value={skin}>
       <box width="100%" height="100%" flexDirection="column"
            backgroundColor={theme.background} onMouseUp={onMouseUp}>
         <TabBar tabs={TABS} activeTab={tab} onTabChange={goToTab} />
@@ -629,6 +638,7 @@ const AppInner = () => {
           ) : null}
         </box>
       </box>
+     </SkinProvider>
     </Profiler>
   )
 }

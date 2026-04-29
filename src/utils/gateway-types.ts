@@ -129,6 +129,7 @@ export type SpawnSubagent = {
 }
 
 export type GatewaySkin = {
+  name?: string
   colors?: Record<string, string>
   branding?: Record<string, string>
   banner_hero?: string

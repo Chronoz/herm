@@ -80,13 +80,11 @@ export const ThoughtCloud = memo((props: {
   status: string
   pick?: Message
   onResize: (h: number) => void
-  onClose: () => void
 }) => {
   const theme = useTheme().theme
   const detail = usePref("toolDetails") ?? "expanded"
   const src = props.pick ?? latest(props.messages)
   const body = parts(src)
-  const pinned = !!props.pick
 
   // Auto-grow: track content until the user drags; then their size
   // sticks. `want` is the dep so growth follows streamed thinking text,
@@ -122,16 +120,12 @@ export const ThoughtCloud = memo((props: {
       <box height={1} flexShrink={0} flexDirection="row">
         <box flexGrow={1}>
           <text fg={theme.textMuted}>
-            {pinned && !props.streaming ? `pinned · ${src!.model ?? "assistant"}`
-              : props.status || "· · ·"}
+            {props.streaming ? (props.status || "· · ·") : ""}
           </text>
         </box>
         {detail !== "expanded" ? (
           <box marginRight={1}><text fg={theme.textMuted}>⟨{detail}⟩</text></box>
         ) : null}
-        <box height={1} onMouseDown={props.onClose}>
-          <text fg={theme.textMuted}>✕</text>
-        </box>
       </box>
       <scrollbox scrollY stickyScroll stickyStart="bottom" flexGrow={1}>
         <box flexDirection="column" width="100%">

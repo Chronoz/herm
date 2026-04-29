@@ -2,7 +2,7 @@
 
 import * as perf from "../utils/perf"
 import * as spawnHistory from "./spawnHistory"
-import type { GatewayEvent, SessionInfo } from "../utils/gateway-types"
+import type { GatewayEvent, GatewaySkin, SessionInfo } from "../utils/gateway-types"
 import type { Action } from "./turnReducer"
 import type { Usage } from "../types/message"
 
@@ -18,6 +18,7 @@ export type Side = {
   onBackground?: (task_id: string, text: string) => void
   onBtw?: (text: string) => void
   onStatus?: (text: string) => void
+  onSkin?: (skin: GatewaySkin | null | undefined) => void
 }
 
 function count(o: Record<string, string[]> | undefined): number {
@@ -28,6 +29,7 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
   switch (ev.type) {
     case "gateway.ready":
       side.onReady?.()
+      if (ev.payload?.skin) side.onSkin?.(ev.payload.skin)
       return null
 
     case "session.info": {
@@ -154,6 +156,7 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
     }
 
     case "skin.changed":
+      side.onSkin?.(ev.payload)
       return null
 
     case "gateway.start_timeout":

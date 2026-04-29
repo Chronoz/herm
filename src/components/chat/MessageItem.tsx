@@ -5,6 +5,7 @@ import { ErrorBlock } from "./ErrorBlock"
 import { MediaChip, splitContent } from "./MediaChip"
 import { CodeBlock } from "./CodeBlock"
 import { useTheme } from "../../theme"
+import { useSkin } from "../../app/skin"
 
 export type { Message }
 
@@ -44,29 +45,36 @@ function useClick(fn?: () => void) {
   }
 }
 
-/** Two-column gutter: a themed vertical bar runs the full height of the body. */
-const Gutter = memo(({ color, glyph = "│", children }: {
+/** Themed vertical bar next to the body. `side` picks left or right. */
+const Gutter = memo(({ color, glyph = "│", side = "left", children }: {
   color: RGBA
   glyph?: string
+  side?: "left" | "right"
   children: React.ReactNode
-}) => (
-  <box flexDirection="row">
+}) => {
+  const bar = (
     <box
       width={2}
       flexShrink={0}
-      border={["left"]}
+      border={[side]}
       borderColor={color}
       customBorderChars={{
         topLeft: glyph, bottomLeft: glyph, vertical: glyph,
-        topRight: "", bottomRight: "", horizontal: "",
+        topRight: glyph, bottomRight: glyph, horizontal: "",
         topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
       }}
     />
-    <box flexDirection="column" flexGrow={1} flexShrink={1}>
-      {children}
+  )
+  return (
+    <box flexDirection="row">
+      {side === "left" ? bar : null}
+      <box flexDirection="column" flexGrow={1} flexShrink={1}>
+        {children}
+      </box>
+      {side === "right" ? bar : null}
     </box>
-  </box>
-))
+  )
+})
 
 export const MessageItem = memo(({ message, streaming, onRewind, onPick }: {
   message: Message
@@ -105,17 +113,11 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
       onMouseOut={() => setHover(false)}
       {...click}
     >
-      <box height={1} flexDirection="row">
-        <box flexGrow={1}>
-          <text><span fg={theme.accent}>▸ you</span></text>
+      <Gutter color={theme.accent} side="left">
+        <box minHeight={1}>
+          <text fg={theme.text} wrapMode="word">{extract(message)}</text>
         </box>
-        {hover && onRewind ? (
-          <box><text fg={theme.textMuted}>actions ⋯</text></box>
-        ) : null}
-      </box>
-      <box paddingLeft={2}>
-        <text fg={theme.text}>{extract(message)}</text>
-      </box>
+      </Gutter>
     </box>
   )
 })
@@ -125,6 +127,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
 }) => {
   const ctx = useTheme()
   const theme = ctx.theme
+  const { agentName } = useSkin()
   const [hover, setHover] = useState(false)
   const click = useClick(onPick && (() => onPick(message)))
   const err = !!message.error
@@ -139,7 +142,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
   )
 
   const header = [
-    message.model ?? "assistant",
+    agentName,
     message.usage ? `${tokens(message.usage.input)}→${tokens(message.usage.output)} tok` : null,
     message.duration ? duration(message.duration) : null,
   ].filter(Boolean).join(" · ")
@@ -172,7 +175,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
          onMouseOver={() => setHover(true)}
          onMouseOut={() => setHover(false)}
          {...click}>
-      <Gutter color={err ? theme.error : theme.primary}>
+      <Gutter color={err ? theme.error : theme.primary} side="right">
         <box height={1} flexDirection="row">
           <box flexGrow={1}><text fg={theme.textMuted}>{header}</text></box>
           {trail.length ? (
