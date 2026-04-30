@@ -172,6 +172,27 @@ const AppInner = () => {
     }
   }, [reset, session])
 
+  // Compress wrapper — toasts on start, dispatches a transcript system
+  // message carrying the headline + token line from the gateway's
+  // summary payload on completion. Upstream emits intermediate
+  // status.update{kind:"compressing"} events that already feed the
+  // status bar via gatewayEvents.ts.
+  const runCompress = useCallback(async () => {
+    toast.show({ variant: "info", message: "Compressing session…" })
+    const r = await session.compress()
+    if (!r || !r.summary) return
+    const s = r.summary
+    if (s.noop) {
+      toast.show({ variant: "info",
+        message: s.headline ?? `No changes · ~${r.before_tokens ?? 0} tokens` })
+      return
+    }
+    const lines = [s.headline, s.token_line, s.note].filter(Boolean).join("\n")
+    if (lines) dispatch({ kind: "system", text: lines })
+    toast.show({ variant: "success",
+      message: s.headline ?? `Compressed ${r.before_messages ?? 0}→${r.after_messages ?? 0} messages` })
+  }, [session, toast, dispatch])
+
   const pollUsage = useCallback(() => {
     gw.request<SessionUsageResponse>("session.usage")
       .then(r => {
@@ -545,12 +566,12 @@ const AppInner = () => {
     { title: "New Session", value: "new-session", action: "session.new", category: "Session",
       onSelect: () => newSession() },
     { title: "Compress Session", value: "compress", action: "session.compress", category: "Session",
-      onSelect: () => session.compress() },
+      onSelect: () => runCompress() },
     { title: "Undo Last Turn", value: "undo", action: "session.undo", category: "Session",
       onSelect: () => session.undo() },
     { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
       onSelect: () => session.branch() },
-  ]), [cmd, dialog, themeCtx, session, gw, toast, newSession, pickEikon, info, sid])
+  ]), [cmd, dialog, themeCtx, session, gw, toast, newSession, pickEikon, info, sid, runCompress])
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({

@@ -7,6 +7,22 @@ import { transcriptToMessages } from "./turnReducer"
 import type { SessionResumeResponse, SessionCreateResponse } from "../utils/gateway-types"
 import type { Message } from "../types/message"
 
+/** session.compress response shape — see upstream fc7f55f49. */
+export type CompressResult = {
+  status?: "compressed" | "skipped"
+  removed?: number
+  before_messages?: number
+  after_messages?: number
+  before_tokens?: number
+  after_tokens?: number
+  summary?: {
+    noop?: boolean
+    headline?: string
+    token_line?: string
+    note?: string | null
+  }
+}
+
 type SessionOps = {
   /** Resume last session from prefs, or create a new one. */
   boot: () => Promise<{ id: string; messages: Message[] }>
@@ -14,7 +30,7 @@ type SessionOps = {
   resume: (sid: string) => Promise<{ id: string; messages: Message[] }>
   interrupt: () => Promise<void>
   branch: (name?: string) => Promise<string | null>
-  compress: () => Promise<void>
+  compress: () => Promise<CompressResult | null>
   undo: () => Promise<void>
 }
 
@@ -56,8 +72,9 @@ export function useSession(): SessionOps {
     } catch { return null }
   }, [gw])
 
-  const compress = useCallback(async () => {
-    try { await gw.request("session.compress") } catch {}
+  const compress = useCallback(async (): Promise<CompressResult | null> => {
+    try { return await gw.request<CompressResult>("session.compress") }
+    catch { return null }
   }, [gw])
 
   const undo = useCallback(async () => {
