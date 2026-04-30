@@ -7,7 +7,6 @@ import type { Message } from "../types/message"
 export const Chat = memo(({
   messages,
   streaming,
-  status,
   cloud,
   cloudH,
   pick,
@@ -18,7 +17,6 @@ export const Chat = memo(({
 }: {
   messages: Message[]
   streaming: boolean
-  status: string
   cloud: boolean
   cloudH: number
   pick?: Message
@@ -39,7 +37,7 @@ export const Chat = memo(({
       {cloud ? (
         <box position="absolute" top={0} left={0} right={0} zIndex={1}>
           <ThoughtCloud
-            height={cloudH} messages={messages} streaming={streaming} status={status}
+            height={cloudH} messages={messages}
             pick={pick} onResize={onResize} onClose={onClose}
           />
         </box>

@@ -60,6 +60,8 @@ function parts(m: Message | undefined): Part[] {
   return m?.parts.filter(p => p.type !== "text") ?? []
 }
 
+type Pane = "all" | "reasoning" | "tools"
+
 function latest(messages: Message[]): Message | undefined {
   for (let i = messages.length - 1; i >= 0; i--)
     if (messages[i].role === "assistant") return messages[i]
@@ -77,8 +79,6 @@ function rows(list: Part[]): number {
 export const ThoughtCloud = memo((props: {
   height: number
   messages: Message[]
-  streaming: boolean
-  status: string
   pick?: Message
   onResize: (h: number) => void
   onClose?: () => void
@@ -86,7 +86,11 @@ export const ThoughtCloud = memo((props: {
   const theme = useTheme().theme
   const detail = usePref("toolDetails") ?? "expanded"
   const src = props.pick ?? latest(props.messages)
-  const body = parts(src)
+  const all = parts(src)
+  const think = all.filter((p): p is ThinkingPart => p.type === "thinking")
+  const tools = all.filter((p): p is ToolPart => p.type === "tool")
+  const [pane, setPane] = useState<Pane>("all")
+  const body = pane === "reasoning" ? think : pane === "tools" ? tools : all
 
   // Auto-grow: track content until the user drags; then their size
   // sticks. `want` is the dep so growth follows streamed thinking text,
@@ -113,15 +117,19 @@ export const ThoughtCloud = memo((props: {
   }
   const drop = () => { drag.current = null }
 
-  // Click-to-close on the header strip only (not the body — scrolling
-  // through reasoning text shouldn't dismiss the cloud). Same down→up
-  // guard as MessageItem so selection drags don't trigger it.
-  const at = useRef<{ x: number; y: number } | null>(null)
-  const down = (e: MouseEvent) => { at.current = { x: e.x, y: e.y } }
-  const up = (e: MouseEvent) => {
-    const a = at.current
-    at.current = null
-    if (props.onClose && a && a.x === e.x && a.y === e.y) props.onClose()
+  const pill = (id: Pane, label: string, n: number) => {
+    const on = pane === id
+    return (
+      <box height={1} marginRight={2}
+           onMouseDown={(e: MouseEvent) => { e.stopPropagation(); setPane(id) }}>
+        <text>
+          <span fg={on ? theme.accent : theme.textMuted}>
+            {on ? <strong>{label}</strong> : label}
+          </span>
+          {n > 0 ? <span fg={theme.textMuted}>{` ${n}`}</span> : null}
+        </text>
+      </box>
+    )
   }
 
   return (
@@ -130,28 +138,30 @@ export const ThoughtCloud = memo((props: {
       border borderColor={theme.hermAvatar} customBorderChars={CLOUD}
       backgroundColor={theme.backgroundPanel} paddingX={1}
     >
-      <box height={1} flexShrink={0} flexDirection="row"
-           onMouseDown={down} onMouseUp={up}>
-        <box flexGrow={1}>
-          <text fg={theme.textMuted}>
-            {props.streaming ? (props.status || "· · ·") : ""}
-          </text>
-        </box>
+      <box height={1} flexShrink={0} flexDirection="row">
+        {pill("all", "all", all.length)}
+        {pill("reasoning", "reasoning", think.length)}
+        {pill("tools", "tools", tools.length)}
+        <box flexGrow={1} />
         {detail !== "expanded" ? (
           <box marginRight={1}><text fg={theme.textMuted}>⟨{detail}⟩</text></box>
         ) : null}
         {props.onClose ? (
-          <box width={1}><text fg={theme.textMuted}>×</text></box>
+          <box width={1} onMouseDown={props.onClose}>
+            <text fg={theme.textMuted}>×</text>
+          </box>
         ) : null}
       </box>
       <scrollbox scrollY stickyScroll stickyStart="bottom" flexGrow={1}>
         <box flexDirection="column" width="100%">
           {body.map((p, i) =>
             p.type === "thinking"
-              ? <box key={(p as ThinkingPart).key ?? `th-${i}`} minHeight={1}>
+              ? <box key={(p as ThinkingPart).key ?? `th-${i}`} minHeight={1} width="100%" flexShrink={0}>
                   <text fg={theme.textMuted} wrapMode="word">{(p as ThinkingPart).content}</text>
                 </box>
-              : <Tool key={(p as ToolPart).id || `t-${i}`} tool={p as ToolPart} detail={detail} />,
+              : <box key={(p as ToolPart).id || `t-${i}`} width="100%" flexShrink={0}>
+                  <Tool tool={p as ToolPart} detail={detail} />
+                </box>,
           )}
         </box>
       </scrollbox>

@@ -644,7 +644,7 @@ const AppInner = () => {
   const content = () => {
     const inner = (() => {
       switch (tab) {
-        case 0: return <Chat messages={turn.messages} streaming={turn.streaming} status={status}
+        case 0: return <Chat messages={turn.messages} streaming={turn.streaming}
                              cloud={cloud} cloudH={cloudH} pick={pick}
                              onResize={setCloudH} onPick={onPick} onClose={closeCloud} onRewind={msgMenu} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
