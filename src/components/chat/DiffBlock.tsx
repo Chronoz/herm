@@ -1,6 +1,12 @@
 import { memo } from "react"
 import { useTheme } from "../../theme"
 
+// Strip ANSI escape sequences — the gateway's inline_diff may arrive
+// pre-colored for a pty and OpenTUI rendering it as literal text
+// produces garble plus our own theme-coloring applied on top.
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
+
 /** Heuristic: unified-diff output from patch/edit tools. */
 export function isDiff(s: string | undefined): boolean {
   if (!s) return false
@@ -71,7 +77,7 @@ export function intraline(rows: string[]): (Seg[] | null)[] {
  */
 export const DiffBlock = memo(({ text }: { text: string }) => {
   const theme = useTheme().theme
-  const all = text.replace(/\n$/, "").split("\n")
+  const all = text.replace(ANSI, "").replace(/\n$/, "").split("\n")
   const rows = all.slice(0, CAP)
   const more = all.length - rows.length
   const marks = intraline(rows)
@@ -89,7 +95,7 @@ export const DiffBlock = memo(({ text }: { text: string }) => {
         const segs = marks[i]
         const bg = l.startsWith("+") ? theme.diffAddedBg : theme.diffRemovedBg
         return (
-          <box key={i} height={1}>
+          <box key={i} height={1} overflow="hidden" minWidth={0}>
             <text fg={fg(l)}>
               {segs
                 ? <>{l[0]}{segs.map((s, j) => s.hi

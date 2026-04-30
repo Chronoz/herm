@@ -160,7 +160,7 @@ export const ThoughtCloud = memo((props: {
                   <text fg={theme.textMuted} wrapMode="word">{(p as ThinkingPart).content}</text>
                 </box>
               : <box key={(p as ToolPart).id || `t-${i}`} width="100%" flexShrink={0}>
-                  <Tool tool={p as ToolPart} detail={detail} />
+                  <Tool tool={p as ToolPart} detail={detail === "hidden" ? "hidden" : "collapsed"} />
                 </box>,
           )}
         </box>

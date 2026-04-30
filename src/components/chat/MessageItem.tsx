@@ -1,9 +1,10 @@
 import { memo, useMemo, useRef, useState } from "react"
 import type { RGBA, MouseEvent } from "@opentui/core"
-import type { Message, Part, TextPart } from "../../types/message"
+import type { Message, Part, TextPart, ToolPart } from "../../types/message"
 import { ErrorBlock } from "./ErrorBlock"
 import { MediaChip, splitContent } from "./MediaChip"
 import { CodeBlock } from "./CodeBlock"
+import { DiffBlock, isDiff } from "./DiffBlock"
 import { useTheme } from "../../theme"
 import { useSkin } from "../../app/skin"
 
@@ -30,6 +31,36 @@ function extract(msg: Message): string {
 }
 
 const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + "…"
+
+// Collapsible diff chip: shows filename/preview + +N/-M, expands to full
+// DiffBlock on click. Lives in the message body so edits land in the
+// transcript (not buried in the ThoughtCloud). stopPropagation keeps the
+// click from triggering onPick on the parent message.
+const InlineDiff = memo(({ tool }: { tool: ToolPart }) => {
+  const theme = useTheme().theme
+  const [open, setOpen] = useState(false)
+  const diff = tool.diff ?? (isDiff(tool.result) ? tool.result : undefined)
+  if (!diff) return null
+  const lines = diff.split("\n")
+  const add = lines.filter(l => /^\+(?!\+\+)/.test(l)).length
+  const del = lines.filter(l => /^-(?!--)/.test(l)).length
+  return (
+    <box flexDirection="column" marginTop={1}
+         onMouseDown={(e: MouseEvent) => { e.stopPropagation(); setOpen(o => !o) }}>
+      <box height={1}>
+        <text>
+          <span fg={theme.textMuted}>{open ? "▾ " : "▸ "}</span>
+          <span fg={theme.text}>{trunc(tool.preview ?? tool.name, 50)}</span>
+          <span fg={theme.textMuted}>  </span>
+          <span fg={theme.success}>+{add}</span>
+          <span fg={theme.textMuted}> / </span>
+          <span fg={theme.error}>-{del}</span>
+        </text>
+      </box>
+      {open ? <box marginTop={1}><DiffBlock text={diff} /></box> : null}
+    </box>
+  )
+})
 
 // OpenTUI has no onClick; synthesize one from down→up at the same cell
 // so text-selection drags don't fire it.
@@ -132,6 +163,8 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
   const click = useClick(onPick && (() => onPick(message)))
   const err = !!message.error
   const trail = message.parts.filter(p => p.type !== "text")
+  const diffs = trail.filter((p): p is ToolPart =>
+    p.type === "tool" && (!!p.diff || isDiff(p.result)))
 
   // Split once per parts identity so hover (which re-renders this
   // component) doesn't re-scan text. parts identity changes per
@@ -185,6 +218,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
           ) : null}
         </box>
         {message.parts.map(part)}
+        {diffs.map(t => <InlineDiff key={t.id || t.name} tool={t} />)}
         {err ? <ErrorBlock text={message.error!} /> : null}
       </Gutter>
     </box>
