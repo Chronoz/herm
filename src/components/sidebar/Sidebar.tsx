@@ -1,4 +1,4 @@
-import { useState, useCallback, memo, type ReactNode } from "react"
+import { useState, memo, type ReactNode } from "react"
 import { AnimatedAvatar } from "../avatar/AnimatedAvatar"
 import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
@@ -14,8 +14,6 @@ import { ContextGauge } from "./ContextGauge"
 // Identity wrapper and the Plugins section were removed — they duplicated
 // dedicated tabs and cluttered the most-visible surface.
 
-type SectionId = "mcp"
-
 const WIDTH = 48
 const PAD_L = 12
 
@@ -24,8 +22,8 @@ const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max -
 // ─── Primitives (pillar-colored) ─────────────────────────────────────
 
 const Section = memo((props: {
-  id: SectionId; title: string; hint?: string
-  open: boolean; onToggle: (id: SectionId) => void
+  title: string; hint?: string
+  open: boolean; onToggle: () => void
   children: ReactNode
 }) => {
   const theme = useTheme().theme
@@ -33,7 +31,7 @@ const Section = memo((props: {
   return (
     <box flexDirection="column" marginBottom={props.open ? 1 : 0}>
       <box height={1}
-           onMouseDown={() => props.onToggle(props.id)}
+           onMouseDown={props.onToggle}
            onMouseOver={() => setHover(true)}
            onMouseOut={() => setHover(false)}>
         <text>
@@ -80,18 +78,10 @@ export const Sidebar = memo((props: {
   const state = props.agentState ?? "idle"
   const info = props.info
 
-  const [open, setOpen] = useState<Set<SectionId>>(() => new Set())
+  const [mcpOpen, setMcpOpen] = useState(false)
 
   const cwd = info?.cwd ?? process.cwd()
   const branch = useGitBranch(cwd)
-
-  const toggle = useCallback((id: SectionId) => {
-    setOpen(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }, [])
 
   return (
     <box width={WIDTH} flexDirection="column">
@@ -123,9 +113,9 @@ export const Sidebar = memo((props: {
           const srv = info!.mcp_servers!
           const ok = srv.filter(s => s.connected).length
           return (
-            <Section id="mcp" title="MCP"
+            <Section title="MCP"
                      hint={`${ok}/${srv.length} up`}
-                     open={open.has("mcp")} onToggle={toggle}>
+                     open={mcpOpen} onToggle={() => setMcpOpen(o => !o)}>
               {srv.map(s => (
                 <box key={s.name} height={1}>
                   <text>
