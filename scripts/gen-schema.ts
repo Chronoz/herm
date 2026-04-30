@@ -55,7 +55,24 @@ for i in range(start, len(lines)):
         end = i
         break
 block = "\\n".join(lines[start:end + 1]).split("=", 1)[1].strip()
-tree = ast.literal_eval(block)
+# ast.literal_eval rejects arithmetic (e.g. 24 * 7), which upstream uses
+# in defaults. Safe-eval literals + constant arithmetic ourselves.
+import operator
+_BIN = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+        ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod, ast.Pow: operator.pow}
+_UNA = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+def ev(n):
+    if isinstance(n, ast.Constant): return n.value
+    if isinstance(n, ast.Dict): return {ev(k): ev(v) for k, v in zip(n.keys, n.values)}
+    if isinstance(n, (ast.List, ast.Tuple)): return [ev(e) for e in n.elts]
+    if isinstance(n, ast.Set): return {ev(e) for e in n.elts}
+    if isinstance(n, ast.BinOp) and type(n.op) in _BIN: return _BIN[type(n.op)](ev(n.left), ev(n.right))
+    if isinstance(n, ast.UnaryOp) and type(n.op) in _UNA: return _UNA[type(n.op)](ev(n.operand))
+    if isinstance(n, ast.Name) and n.id in ("True", "False", "None"):
+        return {"True": True, "False": False, "None": None}[n.id]
+    raise ValueError(f"unsupported node: {ast.dump(n)[:80]}")
+tree = ev(ast.parse(block, mode="eval").body)
 
 # doc map: dotted-path -> text. Walk lines tracking key stack via indent+braces.
 KEY = re.compile(r'^(\\s*)"([^"]+)"\\s*:\\s*(.*)$')
