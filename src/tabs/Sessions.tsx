@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
 import {
-  queryRecentSessions, searchSessions, deleteSession, renameSession, querySubagents,
+  queryRecentSessions, searchSessions, deleteSession, renameSession, querySubagents, queryLineage,
   type SessionRow, type SessionHit,
 } from "../utils/hermes-home"
 import type {
@@ -59,11 +59,25 @@ const stamp = (ts: number): string => {
 // accurate, and only show the ended_at/end_reason pair when it's
 // actually populated.
 
-const Detail = memo((props: { row: Row }) => {
+const Detail = memo((props: {
+  row: Row
+  onSwitch?: (sid: string) => void
+  lineage?: (sid: string) => import("../utils/hermes-home").LineageInfo
+}) => {
   const theme = useTheme().theme
   const r = props.row
   const d = r.detail
   const lastActive = d?.last_active ?? d?.ended_at ?? null
+  const subCount = d?.subagent_count ?? 0
+  // Lineage is pulled fresh on row change — query is in-process and
+  // sub-ms. Cached by row.id so the lookup doesn't fire on every render.
+  const [info, setInfo] = useState<import("../utils/hermes-home").LineageInfo>({})
+  useEffect(() => {
+    const fn = props.lineage ?? queryLineage
+    setInfo(fn(r.id))
+  }, [r.id, props.lineage])
+  const hasLineage = info.continuesFrom || info.compressedTo || subCount > 0
+  const go = (sid: string) => () => props.onSwitch?.(sid)
 
   return (
     <TabShell title="Session Detail" hint="" grow={2}>
@@ -91,8 +105,36 @@ const Detail = memo((props: { row: Row }) => {
             ["Cache", d ? `${fmt(d.cache_read_tokens)} r / ${fmt(d.cache_write_tokens)} w` : undefined],
             ["Reasoning", d ? `${fmt(d.reasoning_tokens)} tok` : undefined],
             ["Cost", d ? cost(d.estimated_cost_usd) : undefined, theme.success],
-            ["Parent", d?.parent_session_id || undefined],
           ]} />
+          {hasLineage ? <>
+            <box height={1} />
+            <box minHeight={1}><text fg={theme.textMuted}>Lineage</text></box>
+            {info.continuesFrom ? (
+              <box height={1} onMouseDown={go(info.continuesFrom.id)}>
+                <text>
+                  <span fg={theme.textMuted}>{"  ← continues from  "}</span>
+                  <span fg={theme.accent}>{info.continuesFrom.title || info.continuesFrom.id}</span>
+                </text>
+              </box>
+            ) : null}
+            {info.compressedTo ? (
+              <box height={1} onMouseDown={go(info.compressedTo.id)}>
+                <text>
+                  <span fg={theme.textMuted}>{"  → compressed to  "}</span>
+                  <span fg={theme.accent}>{info.compressedTo.title || info.compressedTo.id}</span>
+                </text>
+              </box>
+            ) : null}
+            {subCount > 0 ? (
+              <box height={1}>
+                <text>
+                  <span fg={theme.textMuted}>{"  ⎇ spawned "}</span>
+                  <span fg={theme.text}>{String(subCount)}</span>
+                  <span fg={theme.textMuted}>{` subagent${subCount === 1 ? "" : "s"}`}</span>
+                </text>
+              </box>
+            ) : null}
+          </> : null}
           <box height={1} />
           <KV label="First msg" value={r.preview || "—"} fg={theme.textMuted} wrap />
           <KV label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} wrap />
@@ -267,6 +309,7 @@ type IO = {
   remove: typeof deleteSession
   rename: typeof renameSession
   subagents: typeof querySubagents
+  lineage: typeof queryLineage
 }
 
 type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
@@ -284,6 +327,7 @@ export const Sessions = memo((props: Props) => {
     remove: props.io?.remove ?? deleteSession,
     rename: props.io?.rename ?? renameSession,
     subagents: props.io?.subagents ?? querySubagents,
+    lineage: props.io?.lineage ?? queryLineage,
   }
 
   const [rows, setRows] = useState<Row[]>([])
@@ -606,7 +650,20 @@ export const Sessions = memo((props: Props) => {
       {showDetailPanel && searching && results[sel]
         ? <SearchDetail result={results[sel]} />
         : showDetailPanel && !searching && visible[sel]?.row
-          ? <Detail row={visible[sel].row} />
+          ? <Detail row={visible[sel].row}
+                    lineage={io.lineage}
+                    onSwitch={(sid) => {
+                      // Lineage-click switches target a SPECIFIC session
+                      // (the predecessor or successor), not the projected
+                      // tip. Onion-confirm to match the list click flow.
+                      if (!props.onSwitch) return
+                      if (sid === props.currentId) return props.onSwitch(sid)
+                      void openConfirm(dialog, {
+                        title: "Load session?",
+                        body: `Switch to ${trunc(sid, 24)}?\n\nCurrent chat will be replaced.`,
+                        yes: "load",
+                      }).then(ok => { if (ok) props.onSwitch?.(sid) })
+                    }} />
           : null}
     </box>
   )

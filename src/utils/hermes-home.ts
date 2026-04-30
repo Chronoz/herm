@@ -689,6 +689,68 @@ export function querySubagents(parentId: string): SessionRow[] {
   }
 }
 
+/** Compact lineage info for a session id — the data the Detail panel
+ *  uses to render its Lineage block. Every field is optional; if none
+ *  resolve, the caller should render no Lineage block at all.
+ */
+export interface LineageInfo {
+  /** The session this one continues from (compression-chain predecessor)
+   *  — populated when this row is a compression continuation. */
+  continuesFrom?: { id: string; title: string | null }
+  /** The session this one was compressed into (its chain successor) —
+   *  populated when this row itself has a compression child. */
+  compressedTo?: { id: string; title: string | null }
+}
+
+/** Walk the lineage graph around a session to find its compression
+ *  predecessors and successors. No subagent info here — the UI already
+ *  has subagent_count on the Row itself.
+ *
+ *  Semantics match hermes_state.py: a compression-chain link exists
+ *  iff the parent's end_reason = 'compression' AND the child started
+ *  at or after parent.ended_at.
+ */
+export function queryLineage(sid: string): LineageInfo {
+  const end = perf.mark("io:queryLineage")
+  const info: LineageInfo = {}
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true })
+    // Predecessor: this row's parent, IF the parent ended with
+    // compression AND this row started at/after the parent's ended_at.
+    const pred = db.query(
+      `SELECT p.id AS pid, p.title AS ptitle
+       FROM sessions s
+       JOIN sessions p ON p.id = s.parent_session_id
+       WHERE s.id = ?
+         AND p.end_reason = 'compression'
+         AND s.started_at >= p.ended_at`,
+    ).get(sid) as { pid: string; ptitle: string | null } | null
+    if (pred) info.continuesFrom = { id: pred.pid, title: pred.ptitle }
+
+    // Successor: a child whose parent_session_id = sid AND started
+    // after this session ended AND this session's end_reason is
+    // compression. Multiple candidates possible — take the latest.
+    const succ = db.query(
+      `SELECT c.id AS cid, c.title AS ctitle
+       FROM sessions c
+       JOIN sessions p ON p.id = c.parent_session_id
+       WHERE c.parent_session_id = ?
+         AND p.end_reason = 'compression'
+         AND c.started_at >= p.ended_at
+       ORDER BY c.started_at DESC
+       LIMIT 1`,
+    ).get(sid) as { cid: string; ctitle: string | null } | null
+    if (succ) info.compressedTo = { id: succ.cid, title: succ.ctitle }
+
+    db.close()
+    end()
+    return info
+  } catch {
+    end()
+    return info
+  }
+}
+
 // ─── Session search / delete ─────────────────────────────────────────
 //
 // Stock tui_gateway has no session.search / session.delete RPCs (see

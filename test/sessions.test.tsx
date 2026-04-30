@@ -534,3 +534,94 @@ describe("Sessions tab — tree expansion", () => {
     t.destroy()
   })
 })
+
+// ─── Lineage block in detail panel (herm-gsk.16) ─────────────────────
+
+describe("Sessions tab — lineage block", () => {
+  const PARENT_COMP = { id: "rid", title: "Root",      preview: "", message_count: 5, started_at: 1700000000, source: "tui" }
+  const PARENT_CONT = { id: "tid", title: "Live tip",  preview: "", message_count: 2, started_at: 1700001100, source: "tui" }
+  const PARENT_WITH_SUBS = { id: "pid", title: "Parent with subs", preview: "", message_count: 3, started_at: 1700002000, source: "tui" }
+
+  test("row projected from a compression chain shows ← continues from", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT_CONT] }) })
+    const list = (): SessionRow[] => [
+      detail({ id: "tid", sessionSource: "tui", title: "Live tip",
+               started_at: 1700000000, message_count: 2, lineage_root_id: "rid" }),
+    ]
+    const lineage = () => ({ continuesFrom: { id: "rid", title: "Original root title" } })
+    const io = { ...NOIO, list, lineage }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 200, height: 40 })
+    await until(t, () => t.frame().includes("Live tip"))
+    const f = t.frame()
+    expect(f).toContain("Lineage")
+    expect(f).toContain("← continues from")
+    expect(f).toContain("Original root title")
+    t.destroy()
+  })
+
+  test("row with compression successor shows → compressed to", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT_COMP] }) })
+    const list = (): SessionRow[] => [
+      detail({ id: "rid", sessionSource: "tui", title: "Root", message_count: 5, end_reason: "compression" }),
+    ]
+    const lineage = () => ({ compressedTo: { id: "tid", title: "Live tip" } })
+    const io = { ...NOIO, list, lineage }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 200, height: 40 })
+    await until(t, () => t.frame().includes("Root"))
+    const f = t.frame()
+    expect(f).toContain("→ compressed to")
+    expect(f).toContain("Live tip")
+    t.destroy()
+  })
+
+  test("parent with subagents shows ⎇ spawned N subagents", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT_WITH_SUBS] }) })
+    const list = (): SessionRow[] => [
+      detail({ id: "pid", sessionSource: "tui", title: "Parent with subs", message_count: 3, subagent_count: 2 }),
+    ]
+    const io = { ...NOIO, list, lineage: () => ({}) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 200, height: 40 })
+    await until(t, () => t.frame().includes("Parent with subs"))
+    expect(t.frame()).toContain("⎇ spawned 2 subagents")
+    t.destroy()
+  })
+
+  test("plain row with no lineage has no Lineage block", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT_WITH_SUBS] }) })
+    const list = (): SessionRow[] => [
+      detail({ id: "pid", sessionSource: "tui", title: "Parent with subs", message_count: 3 }),
+    ]
+    const io = { ...NOIO, list, lineage: () => ({}) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 200, height: 40 })
+    await until(t, () => t.frame().includes("Parent with subs"))
+    expect(t.frame()).not.toContain("Lineage")
+    expect(t.frame()).not.toContain("continues from")
+    expect(t.frame()).not.toContain("compressed to")
+    t.destroy()
+  })
+
+  test("clicking ← continues from switches to predecessor session", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT_CONT] }) })
+    const list = (): SessionRow[] => [
+      detail({ id: "tid", sessionSource: "tui", title: "Live tip", message_count: 2 }),
+    ]
+    const lineage = () => ({ continuesFrom: { id: "rid", title: "Original root title" } })
+    const io = { ...NOIO, list, lineage }
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={io} onSwitch={sid => { switched = sid }} />,
+      { gw, width: 200, height: 40 },
+    )
+    await until(t, () => t.frame().includes("Original root title"))
+
+    const lines = t.frame().split("\n")
+    const y = lines.findIndex(l => l.includes("Original root title"))
+    const x = lines[y].indexOf("Original root title")
+    await act(async () => { await t.mouse.pressDown(x, y) })
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
+    await t.settle()
+    expect(switched).toBe("rid")
+    t.destroy()
+  })
+})

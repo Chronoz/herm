@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterAll } from "bun:test"
 import { openStateDb } from "./fixtures/state-db"
-import { searchSessions, queryRecentSessions, querySubagents } from "../src/utils/hermes-home"
+import { searchSessions, queryRecentSessions, querySubagents, queryLineage } from "../src/utils/hermes-home"
 
 // Seeds a clean state.db and exercises the real SQL paths in
 // hermes-home.ts — queryRecentSessions and searchSessions.
@@ -255,5 +255,75 @@ describe("querySubagents (gsk.14: fetch children for expansion)", () => {
     const subs = querySubagents("root")
     expect(subs[0].subagent_count).toBe(0)
     expect(subs[0].lineage_root_id).toBe(null)
+  })
+})
+
+describe("queryLineage (gsk.16: compression chain predecessor/successor)", () => {
+  afterAll(wipe)
+
+  test("empty info when session has no compression lineage", () => {
+    const db = seed()
+    sess(db, "plain", "tui", 1700000000)
+    db.close()
+    expect(queryLineage("plain")).toEqual({})
+  })
+
+  test("compressedTo populated when this session has a compression child", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000,
+      { ended_at: 1700001000, end_reason: "compression", title: "Root title" })
+    sess(db, "cont", "tui", 1700001100,
+      { parent_session_id: "root", title: "Cont title" })
+    db.close()
+
+    const info = queryLineage("root")
+    expect(info.continuesFrom).toBeUndefined()
+    expect(info.compressedTo).toEqual({ id: "cont", title: "Cont title" })
+  })
+
+  test("continuesFrom populated when this session IS a compression child", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000,
+      { ended_at: 1700001000, end_reason: "compression", title: "Root title" })
+    sess(db, "cont", "tui", 1700001100,
+      { parent_session_id: "root", title: "Cont title" })
+    db.close()
+
+    const info = queryLineage("cont")
+    expect(info.continuesFrom).toEqual({ id: "root", title: "Root title" })
+    expect(info.compressedTo).toBeUndefined()
+  })
+
+  test("mid-chain row surfaces both ends", () => {
+    const db = seed()
+    sess(db, "a", "tui", 1700000000,
+      { ended_at: 1700001000, end_reason: "compression", title: "A" })
+    sess(db, "b", "tui", 1700001100,
+      { parent_session_id: "a", ended_at: 1700002000, end_reason: "compression", title: "B" })
+    sess(db, "c", "tui", 1700002100,
+      { parent_session_id: "b", title: "C" })
+    db.close()
+
+    const info = queryLineage("b")
+    expect(info.continuesFrom).toEqual({ id: "a", title: "A" })
+    expect(info.compressedTo).toEqual({ id: "c", title: "C" })
+  })
+
+  test("subagent parent link is NOT a compression lineage", () => {
+    const db = seed()
+    sess(db, "live", "tui", 1700000000)
+    sess(db, "sub", "tui", 1700000500, { parent_session_id: "live" })
+    db.close()
+    expect(queryLineage("sub")).toEqual({})
+    expect(queryLineage("live")).toEqual({})
+  })
+
+  test("branched parent link is NOT a compression lineage", () => {
+    const db = seed()
+    sess(db, "src", "tui", 1700000000, { ended_at: 1700001000, end_reason: "branched" })
+    sess(db, "br", "tui", 1700001100, { parent_session_id: "src" })
+    db.close()
+    expect(queryLineage("br").continuesFrom).toBeUndefined()
+    expect(queryLineage("src").compressedTo).toBeUndefined()
   })
 })
