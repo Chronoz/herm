@@ -30,8 +30,12 @@ const sess = (
   ts: number,
   extra: Record<string, string | number | null> = {},
 ) => {
-  const cols = ["id", "source", "started_at", "message_count", ...Object.keys(extra)]
-  const vals = [id, source, ts, 1, ...Object.values(extra)]
+  // Extras win over defaults — merge then emit distinct columns.
+  const fields: Record<string, string | number | null> = {
+    id, source, started_at: ts, message_count: 1, ...extra,
+  }
+  const cols = Object.keys(fields)
+  const vals = Object.values(fields)
   const q = `INSERT INTO sessions (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
   db.prepare(q).run(...vals)
 }
@@ -95,5 +99,96 @@ describe("queryRecentSessions (baseline — all sources surface)", () => {
     const rows = queryRecentSessions(10)
     const sources = rows.map(r => r.sessionSource).sort()
     expect(sources).toEqual(["discord", "telegram", "tui"])
+  })
+})
+
+describe("queryRecentSessions (gsk.13: root-only + subagent_count + tip projection)", () => {
+  afterAll(wipe)
+
+  test("hides subagents (child started before parent ended)", () => {
+    const db = seed()
+    // Parent still live — ended_at NULL. Child spawned while live.
+    sess(db, "root", "tui", 1700000000)
+    sess(db, "sub", "tui", 1700000010, { parent_session_id: "root" })
+    db.close()
+
+    const rows = queryRecentSessions(10)
+    expect(rows.map(r => r.id)).toEqual(["root"])
+    expect(rows[0].subagent_count).toBe(1)
+  })
+
+  test("hides subagents spawned BEFORE parent ended_at", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000, { ended_at: 1700001000 })
+    sess(db, "sub1", "tui", 1700000500, { parent_session_id: "root" })
+    sess(db, "sub2", "tui", 1700000800, { parent_session_id: "root" })
+    db.close()
+
+    const rows = queryRecentSessions(10)
+    expect(rows.map(r => r.id)).toEqual(["root"])
+    expect(rows[0].subagent_count).toBe(2)
+  })
+
+  test("shows branch children as top-level siblings", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000, { ended_at: 1700001000, end_reason: "branched" })
+    sess(db, "branch", "tui", 1700002000, { parent_session_id: "root" })
+    db.close()
+
+    const rows = queryRecentSessions(10)
+    const ids = rows.map(r => r.id).sort()
+    expect(ids).toEqual(["branch", "root"])
+  })
+
+  test("projects compression root forward to tip (one row, tip identity, root started_at)", () => {
+    const db = seed()
+    // Root (compressed) → continuation A (compressed) → continuation B (live tip).
+    sess(db, "root", "tui", 1700000000,
+      { ended_at: 1700001000, end_reason: "compression", message_count: 100, title: "Root title" })
+    sess(db, "contA", "tui", 1700001100,
+      { parent_session_id: "root", ended_at: 1700002000, end_reason: "compression",
+        message_count: 50, title: "Cont A" })
+    sess(db, "contB", "tui", 1700002100,
+      { parent_session_id: "contA", message_count: 20, title: "Live tip" })
+    db.close()
+
+    const rows = queryRecentSessions(10)
+    // Only ONE row surfaces (the root, projected forward).
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe("contB")               // tip's identity
+    expect(rows[0].message_count).toBe(20)         // tip's stats
+    expect(rows[0].title).toBe("Live tip")         // tip's title
+    expect(rows[0].started_at).toBe(1700000000)    // root's started_at (chronological stability)
+    expect(rows[0].lineage_root_id).toBe("root")   // lineage pointer to original root
+    expect(rows[0].end_reason).toBe(null)          // tip isn't ended
+  })
+
+  test("non-chain roots get lineage_root_id = null", () => {
+    const db = seed()
+    sess(db, "plain", "tui", 1700000000)
+    db.close()
+
+    const rows = queryRecentSessions(10)
+    expect(rows[0].lineage_root_id).toBe(null)
+    expect(rows[0].subagent_count).toBe(0)
+  })
+
+  test("subagent_count excludes branches and compression continuations", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000, { ended_at: 1700001000, end_reason: "compression" })
+    // Subagent during life
+    sess(db, "sub", "tui", 1700000500, { parent_session_id: "root" })
+    // Two compression continuations after end — the later one becomes the tip.
+    sess(db, "contA", "tui", 1700001100, { parent_session_id: "root" })
+    sess(db, "contB", "tui", 1700001200, { parent_session_id: "root" })
+    db.close()
+
+    const rows = queryRecentSessions(10)
+    // Root is projected to contB (latest continuation). Its subagent_count
+    // is 0 because the SUBAGENT hangs off root, not contB.
+    expect(rows).toHaveLength(1)
+    expect(rows[0].lineage_root_id).toBe("root")
+    expect(rows[0].id).toBe("contB")
+    expect(rows[0].subagent_count).toBe(0)
   })
 })

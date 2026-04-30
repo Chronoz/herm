@@ -136,6 +136,15 @@ export interface SessionRow {
   lastMessage: string | null;
   last_active: number | null;
   parent_session_id: string | null;
+  /** Count of subagent children — spawned while this session was still
+   *  live (child.started_at < parent.ended_at or parent.ended_at NULL).
+   *  Branches and compression continuations are excluded. Populated by
+   *  queryRecentSessions; 0 when the DB query can't compute it. */
+  subagent_count: number;
+  /** When this row was projected forward from a compression-chain
+   *  root, the original root's id lives here so the detail panel can
+   *  render the full lineage. NULL when the row is not a projection. */
+  lineage_root_id: string | null;
 }
 
 /** Live session entry from sessions/sessions.json */
@@ -422,12 +431,25 @@ export async function readLiveSessions(): Promise<
   }
 }
 
-/** Query state.db for recent sessions — falls back to first user message as title */
+/** Query state.db for recent sessions.
+ *
+ * Mirrors hermes_state.py list_sessions_rich(): only roots and branch
+ * children are listed; subagents and compression continuations are
+ * hidden. Each row carries a subagent_count for tree expansion, and
+ * compression-chain roots are projected forward to their live tip (the
+ * row's id/title/stats come from the tip; started_at stays the root's
+ * so chronological order is preserved). lineage_root_id records the
+ * original root when projection happened.
+ */
 export function queryRecentSessions(limit: number = 30): SessionRow[] {
   const end = perf.mark("io:queryRecentSessions")
   const dbSource = makeSource("state.db");
   try {
     const db = new Database(hermesPath("state.db"), { readonly: true });
+    // Root/branch filter + first-user-msg preview + last-active max +
+    // subagent count. Subagents = children that started BEFORE parent
+    // ended (or parent still live). Continuations (end_reason=
+    // compression) and branches (end_reason=branched) don't count.
     const rows = db
       .query(
         `SELECT s.id, s.source, s.model, s.started_at, s.ended_at, s.end_reason,
@@ -437,12 +459,22 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
                 s.estimated_cost_usd, s.parent_session_id,
                 COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title,
                 SUBSTR(ml.content, 1, 120) AS lastMessage,
-                (SELECT MAX(mx.timestamp) FROM messages mx WHERE mx.session_id = s.id) AS last_active
+                (SELECT MAX(mx.timestamp) FROM messages mx WHERE mx.session_id = s.id) AS last_active,
+                (SELECT COUNT(*) FROM sessions c
+                 WHERE c.parent_session_id = s.id
+                   AND (s.ended_at IS NULL OR c.started_at < s.ended_at)) AS subagent_count
          FROM sessions s
          LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
            AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
          LEFT JOIN messages ml ON ml.session_id = s.id AND ml.role = 'user'
            AND ml.id = (SELECT MAX(m3.id) FROM messages m3 WHERE m3.session_id = s.id AND m3.role = 'user')
+         WHERE s.parent_session_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM sessions p
+              WHERE p.id = s.parent_session_id
+                AND p.end_reason = 'branched'
+                AND s.started_at >= p.ended_at
+            )
          ORDER BY s.started_at DESC
          LIMIT ?`,
       )
@@ -465,9 +497,61 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       lastMessage: string | null;
       last_active: number | null;
       parent_session_id: string | null;
+      subagent_count: number;
     }>;
+
+    // Compression-tip projection. For each row whose end_reason is
+    // 'compression', walk the child chain forward to the tip and
+    // replace the surfaced id/title/stats with the tip's — keeping
+    // started_at so ordering stays stable. Bounded to 100 links to
+    // match upstream's defensive cap against pathological chains.
+    const projected = rows.map((r) => {
+      if (r.end_reason !== "compression") return { row: r, lineage: null as string | null }
+      const tipId = compressionTip(db, r.id)
+      if (tipId === r.id) return { row: r, lineage: null }
+      const tip = db.query(
+        `SELECT s.id, s.model, s.ended_at, s.end_reason,
+                s.message_count, s.tool_call_count,
+                COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title,
+                SUBSTR(ml.content, 1, 120) AS lastMessage,
+                (SELECT MAX(mx.timestamp) FROM messages mx WHERE mx.session_id = s.id) AS last_active,
+                (SELECT COUNT(*) FROM sessions c
+                 WHERE c.parent_session_id = s.id
+                   AND (s.ended_at IS NULL OR c.started_at < s.ended_at)) AS subagent_count
+         FROM sessions s
+         LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
+           AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
+         LEFT JOIN messages ml ON ml.session_id = s.id AND ml.role = 'user'
+           AND ml.id = (SELECT MAX(m3.id) FROM messages m3 WHERE m3.session_id = s.id AND m3.role = 'user')
+         WHERE s.id = ?`,
+      ).get(tipId) as {
+        id: string; model: string | null;
+        ended_at: number | null; end_reason: string | null;
+        message_count: number; tool_call_count: number;
+        title: string | null; lastMessage: string | null;
+        last_active: number | null; subagent_count: number;
+      } | null
+      if (!tip) return { row: r, lineage: null }
+      return {
+        row: {
+          ...r,
+          id: tip.id,
+          model: tip.model,
+          ended_at: tip.ended_at,
+          end_reason: tip.end_reason,
+          message_count: tip.message_count,
+          tool_call_count: tip.tool_call_count,
+          title: tip.title,
+          lastMessage: tip.lastMessage,
+          last_active: tip.last_active,
+          subagent_count: tip.subagent_count,
+          // started_at stays r.started_at — the root's timestamp.
+        },
+        lineage: r.id,
+      }
+    })
     db.close();
-    const mapped = rows.map((row) => ({
+    const mapped = projected.map(({ row, lineage }) => ({
       source: dbSource,
       id: row.id,
       sessionSource: row.source,
@@ -487,6 +571,8 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
       lastMessage: row.lastMessage,
       last_active: row.last_active,
       parent_session_id: row.parent_session_id,
+      subagent_count: row.subagent_count,
+      lineage_root_id: lineage,
     }));
     end()
     return mapped
@@ -494,6 +580,36 @@ export function queryRecentSessions(limit: number = 30): SessionRow[] {
     end()
     return [];
   }
+}
+
+/** Walk the compression-continuation chain forward and return the tip.
+ *
+ *  A compression continuation is a child session where:
+ *    1. The parent's end_reason = 'compression'
+ *    2. The child was created AFTER the parent was ended (started_at
+ *       >= ended_at) — distinguishes continuations from subagents or
+ *       branches that share parent_session_id.
+ *
+ *  Returns the tip's id, or the input id if it isn't part of a
+ *  compression chain. Bounded at 100 links defensively.
+ */
+function compressionTip(db: Database, sid: string): string {
+  let current = sid
+  for (let i = 0; i < 100; i++) {
+    const next = db.query(
+      `SELECT id FROM sessions
+       WHERE parent_session_id = ?
+         AND started_at >= (
+           SELECT ended_at FROM sessions
+           WHERE id = ? AND end_reason = 'compression'
+         )
+       ORDER BY started_at DESC
+       LIMIT 1`,
+    ).get(current, current) as { id: string } | null
+    if (!next) return current
+    current = next.id
+  }
+  return current
 }
 
 // ─── Session search / delete ─────────────────────────────────────────
