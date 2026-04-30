@@ -533,6 +533,58 @@ describe("Sessions tab — tree expansion", () => {
     expect(calls).toEqual([])
     t.destroy()
   })
+
+  test("arrow down past last child lands on the NEXT parent, not the one after (3+ parents)", async () => {
+    // Regression: with the old effect cascade (auto-expand → re-render →
+    // clamp), the collapse shrinks visible[] by N children and the clamp
+    // then snaps sel to length-1, overshooting the intended next parent.
+    const THIRD = { id: "cid", title: "Third parent", preview: "", message_count: 1, started_at: 1699998000, source: "tui" }
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER, THIRD] }) })
+    const list = (): SessionRow[] => [
+      detail({ id: "pid", sessionSource: "tui", title: "Parent with subs", message_count: 3, started_at: 1700000000, subagent_count: 2 }),
+      detail({ id: "oid", sessionSource: "cli", title: "Other parent",     message_count: 2, started_at: 1699999000 }),
+      detail({ id: "cid", sessionSource: "tui", title: "Third parent",     message_count: 1, started_at: 1699998000 }),
+    ]
+    const io = { ...NOIO, list, subagents: subsFor([]) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 180, height: 30 })
+    await until(t, () => t.frame().includes("First subagent"))
+
+    // sel=0 (PARENT) → ↓×3 = sub1, sub2, OTHER. Must NOT skip to THIRD.
+    for (let i = 0; i < 3; i++) { act(() => t.keys.pressArrow("down")); await t.settle() }
+    await t.settle()
+    expect(t.frame()).toContain("▸ Other parent")
+    expect(t.frame()).not.toContain("▸ Third parent")
+    t.destroy()
+  })
+
+  test("arrow up from the next parent lands on the EXPANDED parent, not inside its children", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER] }) })
+    const io = { ...NOIO, list: listWithSubs, subagents: subsFor([]) }
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={io} onSwitch={sid => { switched = sid }} />,
+      { gw, width: 180, height: 30 },
+    )
+    await until(t, () => t.frame().includes("First subagent"))
+
+    // Walk down through the children to OTHER, then back up one step.
+    for (let i = 0; i < 3; i++) { act(() => t.keys.pressArrow("down")); await t.settle() }
+    expect(t.frame()).toContain("▸ Other parent")
+    expect(t.frame()).not.toContain("First subagent")
+
+    act(() => t.keys.pressArrow("up")); await t.settle()
+    // Anchor moved to PARENT in the collapsed layout; expansion is
+    // derived from anchor, so PARENT re-expands with sel on itself —
+    // not its last child. Simpler than entering children from below.
+    expect(t.frame()).toContain("▸ Parent with subs")
+    expect(t.frame()).toContain("└─First subagent")
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
+    await t.settle()
+    expect(switched).toBe("pid")
+    t.destroy()
+  })
 })
 
 // ─── Lineage block in detail panel (herm-gsk.16) ─────────────────────

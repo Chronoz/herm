@@ -4,7 +4,7 @@ import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
 import {
   queryRecentSessions, searchSessions, deleteSession, renameSession, querySubagents, queryLineage,
-  type SessionRow, type SessionHit,
+  type SessionRow, type SessionHit, type LineageInfo,
 } from "../utils/hermes-home"
 import type {
   SessionListItem, SessionListResponse,
@@ -62,21 +62,20 @@ const stamp = (ts: number): string => {
 const Detail = memo((props: {
   row: Row
   onSwitch?: (sid: string) => void
-  lineage?: (sid: string) => import("../utils/hermes-home").LineageInfo
+  lineage?: (sid: string) => LineageInfo
 }) => {
   const theme = useTheme().theme
   const r = props.row
   const d = r.detail
   const lastActive = d?.last_active ?? d?.ended_at ?? null
-  const subCount = d?.subagent_count ?? 0
+  const subs = d?.subagent_count ?? 0
   // Lineage is pulled fresh on row change — query is in-process and
   // sub-ms. Cached by row.id so the lookup doesn't fire on every render.
-  const [info, setInfo] = useState<import("../utils/hermes-home").LineageInfo>({})
+  const [info, setInfo] = useState<LineageInfo>({})
   useEffect(() => {
-    const fn = props.lineage ?? queryLineage
-    setInfo(fn(r.id))
+    setInfo((props.lineage ?? queryLineage)(r.id))
   }, [r.id, props.lineage])
-  const hasLineage = info.continuesFrom || info.compressedTo || subCount > 0
+  const hasLineage = info.continuesFrom || info.compressedTo || subs > 0
   const go = (sid: string) => () => props.onSwitch?.(sid)
 
   return (
@@ -125,12 +124,12 @@ const Detail = memo((props: {
                 </text>
               </box>
             ) : null}
-            {subCount > 0 ? (
+            {subs > 0 ? (
               <box height={1}>
                 <text>
                   <span fg={theme.textMuted}>{"  ⎇ spawned "}</span>
-                  <span fg={theme.text}>{String(subCount)}</span>
-                  <span fg={theme.textMuted}>{` subagent${subCount === 1 ? "" : "s"}`}</span>
+                  <span fg={theme.text}>{String(subs)}</span>
+                  <span fg={theme.textMuted}>{` subagent${subs === 1 ? "" : "s"}`}</span>
                 </text>
               </box>
             ) : null}
@@ -232,34 +231,32 @@ const Item = memo((props: {
   const [x, setX] = useState(false)
   const active = r.detail?.last_active ?? r.detail?.ended_at ?? null
   // Parent rows get "▸ "/"  " leaders; child rows get "└─" as the tree
-  // marker instead. Selected children still show the accent highlight via
-  // backgroundColor + text color below — no arrow needed, indent is the
-  // only visual signal for hierarchy.
-  const leader = props.indent
-    ? (props.selected ? "└─" : "└─")
-    : (props.selected ? "▸ " : "  ")
+  // marker. Selected children still highlight via backgroundColor +
+  // text color — indent is the only hierarchy signal.
+  const leader = props.indent ? "└─" : (props.selected ? "▸ " : "  ")
+  const muted = props.indent && !props.selected ? theme.textMuted : undefined
 
   return (
     <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
          onMouseDown={() => props.onActivate(i)} onMouseMove={() => props.onHover(i)}>
-      <Col w={2} fg={props.selected
-        ? theme.primary
-        : (props.indent ? theme.textMuted : theme.text)}>{leader}</Col>
+      <Col w={2} fg={props.selected ? theme.primary : (muted ?? theme.text)}>{leader}</Col>
       <Marquee grow active={props.selected}
-               fg={props.selected ? theme.accent : (props.indent ? theme.textMuted : theme.text)}
+               fg={props.selected ? theme.accent : (muted ?? theme.text)}
                bold={props.selected}>
         {r.title || "Untitled"}
       </Marquee>
-      <Col w={9} fg={theme.info}>{badge(r.source ?? "")}</Col>
+      <Col w={9} fg={muted ?? theme.info}>{badge(r.source ?? "")}</Col>
       <Col w={8} fg={theme.textMuted}>{stamp(r.started_at)}</Col>
       <Col w={10} fg={theme.textMuted} right>{active ? ago(active) : "—"}</Col>
       <Col w={7} fg={theme.textMuted} right>{String(r.message_count)}</Col>
-      <box width={3}
-           onMouseDown={(e) => { e.stopPropagation(); props.onDelete(i) }}
-           onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
-        <text><span fg={x ? theme.error : theme.textMuted}>{props.indent ? "" : " ✕"}</span></text>
-      </box>
+      {props.indent ? <box width={3} /> : (
+        <box width={3}
+             onMouseDown={(e) => { e.stopPropagation(); props.onDelete(i) }}
+             onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
+          <text><span fg={x ? theme.error : theme.textMuted}>{" ✕"}</span></text>
+        </box>
+      )}
     </box>
   )
 })
@@ -332,47 +329,80 @@ export const Sessions = memo((props: Props) => {
 
   const [rows, setRows] = useState<Row[]>([])
   const [warn, setWarn] = useState("")
-  // Selection is tracked as (index in the CURRENT visible sequence) so
-  // all the existing keyboard/hover/activate callbacks still work off a
-  // simple number. Expansion below computes visible rows from rows +
-  // expandedId, and we invariant-clamp sel into range whenever visible
-  // changes (new data loaded, expansion toggled, etc.).
-  const [sel, setSel] = useState(0)
-  // Which parent row's children are currently expanded. null = none.
-  // Explicit state instead of deriving from sel means arrow-past-the-
-  // last-child reliably collapses and lands on the next parent row.
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Selection is tracked by row identity so that collapsing children
+  // (which changes the flat index of every row below) never lands sel
+  // on the wrong row. The numeric index consumers use (handleListKey,
+  // rowActivate, etc.) is derived from visible[] each render.
+  const [anchor, setAnchor] = useState<{ id: string; indent: boolean } | null>(null)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SessionHit[]>([])
-  // Cache of parent_id → children. Loaded lazily when a parent row
-  // with subagent_count > 0 becomes focused. Cleared on reload.
-  const [kids, setKids] = useState<Map<string, Row[]>>(new Map())
+  const [searchSel, setSearchSel] = useState(0)
+  // Cache of parent_id → children. Populated on demand when a parent
+  // with subagent_count > 0 becomes the anchor. Cleared on every load.
+  const kids = useRef(new Map<string, Row[]>())
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const vscroll = useRef<ScrollBoxRenderable | null>(null)
 
-  // Flat visible sequence = parent rows with the expanded parent's
-  // children inlined immediately after it. parentIdx points back into
-  // rows[] so callbacks can find the owning parent.
-  const visible: Array<{ row: Row; indent: boolean; parentIdx: number }> = []
-  for (let i = 0; i < rows.length; i++) {
-    const parent = rows[i]
-    visible.push({ row: parent, indent: false, parentIdx: i })
-    if (parent.id === expandedId) {
-      const cs = kids.get(parent.id)
-      if (cs) for (const c of cs) visible.push({ row: c, indent: true, parentIdx: i })
-    }
+  // Expansion is derived from the anchor: if the anchor is a parent
+  // row with subagents, that parent is expanded; if the anchor is a
+  // child, the child's owning parent is expanded. Anything else = no
+  // expansion. This makes collapse/expand atomic with sel changes —
+  // no lagging effect, no clamp pass.
+  const anchored = anchor && rows.find(r => r.id === anchor.id)
+  const owner =
+    anchor?.indent
+      ? rows.find(r => kids.current.get(r.id)?.some(c => c.id === anchor.id))
+      : (anchored?.detail?.subagent_count ?? 0) > 0 ? anchored : undefined
+
+  // Fetch children for `owner` if not cached. This is a synchronous
+  // state.db query, so doing it inline during render is safe and keeps
+  // visible[] consistent with the anchor in the same pass.
+  if (owner && !kids.current.has(owner.id)) {
+    kids.current.set(owner.id, io.subagents(owner.id).map(d => ({
+      id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
+      message_count: d.message_count, started_at: d.started_at,
+      source: d.sessionSource, detail: d,
+    })))
   }
+
+  // Flat visible sequence = parents with `owner`'s children inlined.
+  const visible = rows.flatMap((r, i) =>
+    r.id === owner?.id
+      ? [{ row: r, indent: false, parentIdx: i },
+         ...(kids.current.get(r.id) ?? []).map(c =>
+           ({ row: c, indent: true, parentIdx: i }))]
+      : [{ row: r, indent: false, parentIdx: i }])
+
+  // Resolve anchor → numeric index into visible. Fallback to 0 when
+  // the anchor row is gone (reload dropped it) or never set.
+  const sel = anchor
+    ? Math.max(0, visible.findIndex(v => v.row.id === anchor.id && v.indent === anchor.indent))
+    : 0
 
   // Latest-value refs so the stable row callbacks below don't close
   // over stale arrays (and therefore don't need to be in their deps,
   // which would defeat the memo).
-  const live = useRef({ rows, visible, results, searching, onSwitch: props.onSwitch, currentId: props.currentId })
-  live.current = { rows, visible, results, searching, onSwitch: props.onSwitch, currentId: props.currentId }
+  const live = useRef({ rows, visible, anchor, results, searching, onSwitch: props.onSwitch, currentId: props.currentId })
+  live.current = { rows, visible, anchor, results, searching, onSwitch: props.onSwitch, currentId: props.currentId }
+
+  // Adapter for handleListKey, which speaks numeric sel. Translating
+  // through the anchor means the target row is resolved against the
+  // CURRENT visible layout at call time — collapse/expand re-renders
+  // later and sel follows the row, not the stale index.
+  const setSel: typeof setSearchSel = useCallback((arg) => {
+    const cur = live.current
+    const prev = cur.visible.findIndex(v =>
+      v.row.id === cur.anchor?.id && v.indent === cur.anchor.indent)
+    const n = typeof arg === "function" ? arg(Math.max(0, prev)) : arg
+    const v = cur.visible[Math.max(0, Math.min(cur.visible.length - 1, n))]
+    if (v) setAnchor({ id: v.row.id, indent: v.indent })
+  }, [])
 
   const LIMIT = 2000
 
   const load = useCallback(async () => {
+    kids.current = new Map()
     const [rpc, fs] = await Promise.allSettled([
       gw.request<SessionListResponse>("session.list", { limit: LIMIT }),
       Promise.resolve().then(() => io.list(LIMIT)),
@@ -405,59 +435,15 @@ export const Sessions = memo((props: Props) => {
       return
     }
     setRows([])
-    setKids(new Map())
-    setExpandedId(null)
     setWarn(rpc.status === "rejected" ? (rpc.reason as Error).message : "")
   }, [gw])
 
   useEffect(() => { load() }, [load])
 
-  // Auto-expand/collapse based on selection. When sel targets a parent
-  // row with subagent_count > 0, expand it. When sel targets a parent
-  // row with 0 subagents or a different parent's child, collapse any
-  // prior expansion. When sel is on a child row (indent=true), the
-  // current expandedId stays — we're inside that parent's subtree.
+  // Seed anchor once rows arrive (first row, unexpanded).
   useEffect(() => {
-    if (searching) return
-    const v = visible[sel]
-    if (!v) return
-    if (v.indent) return // sel is on a child → keep current expansion
-    const count = v.row.detail?.subagent_count ?? 0
-    const shouldExpand = count > 0 ? v.row.id : null
-    if (shouldExpand !== expandedId) setExpandedId(shouldExpand)
-  }, [sel, searching, visible, expandedId])
-
-  // Clamp sel whenever visible's length changes (load, expansion toggle,
-  // delete). Prevents sel from pointing past the end after rows shrink.
-  useEffect(() => {
-    if (sel > 0 && sel >= visible.length && visible.length > 0) {
-      setSel(visible.length - 1)
-    }
-  }, [visible.length, sel])
-
-  // Lazy-load children for the currently selected parent (or for the
-  // parent whose child we're currently on). Cached in kids — re-focus
-  // doesn't re-hit the DB.
-  useEffect(() => {
-    if (searching) return
-    const v = visible[sel]
-    if (!v) return
-    const parent = rows[v.parentIdx]
-    if (!parent) return
-    const count = parent.detail?.subagent_count ?? 0
-    if (count <= 0 || kids.has(parent.id)) return
-    const pid = parent.id
-    const children = io.subagents(pid).map(d => ({
-      id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
-      message_count: d.message_count, started_at: d.started_at,
-      source: d.sessionSource, detail: d,
-    }))
-    setKids(prev => {
-      const next = new Map(prev)
-      next.set(pid, children)
-      return next
-    })
-  }, [sel, rows, searching, kids, visible])
+    if (!anchor && rows.length) setAnchor({ id: rows[0].id, indent: false })
+  }, [rows, anchor])
 
   // Search is a synchronous FTS5 query on state.db, so debounce —
   // running it on every keystroke blocks the render thread. The
@@ -467,7 +453,7 @@ export const Sessions = memo((props: Props) => {
     if (!searching || !query.trim()) { setResults([]); return }
     debounce.current = setTimeout(() => {
       setResults(io.search(query, 30))
-      setSel(0)
+      setSearchSel(0)
     }, 150)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
   }, [query, searching])
@@ -477,12 +463,14 @@ export const Sessions = memo((props: Props) => {
   // when scrollChildIntoView moves rows under a stationary cursor and
   // would snap sel back during ↓-repeat (the "stutter"). Mouse motion
   // events only arrive on real pointer movement.
-  const rowHover = useCallback((i: number) => setSel(i), [])
+  const rowHover = useCallback((i: number) => {
+    live.current.searching ? setSearchSel(i) : setSel(i)
+  }, [setSel])
   // Switching sessions reset()s the current chat; confirm unless it's
   // a no-op (same id) or there's nothing to switch to.
   const rowActivate = useCallback((i: number) => {
-    setSel(i)
     const l = live.current
+    l.searching ? setSearchSel(i) : setSel(i)
     const hit = l.searching ? l.results[i] : l.visible[i]?.row
     const id = l.searching ? (hit as SessionHit | undefined)?.session_id : (hit as Row | undefined)?.id
     if (!id || !l.onSwitch) return
@@ -503,7 +491,18 @@ export const Sessions = memo((props: Props) => {
     if (v && !v.indent) confirmDeleteRef.current(v.row)
   }, [])
 
-  const activate = useCallback(() => rowActivate(sel), [rowActivate, sel])
+  // Lineage-click switches target a SPECIFIC session (the predecessor
+  // or successor), not the projected tip. Confirm to match list click.
+  const lineageSwitch = useCallback((sid: string) => {
+    const l = live.current
+    if (!l.onSwitch) return
+    if (sid === l.currentId) return l.onSwitch(sid)
+    void openConfirm(dialog, {
+      title: "Load session?",
+      body: `Switch to ${trunc(sid, 24)}?\n\nCurrent chat will be replaced.`,
+      yes: "load",
+    }).then(ok => { if (ok) l.onSwitch?.(sid) })
+  }, [dialog])
 
   const confirmDeleteRef = useRef<(r: Row) => void>(() => {})
   const confirmDelete = useCallback((r: Row) => {
@@ -518,13 +517,12 @@ export const Sessions = memo((props: Props) => {
         if (!io.remove(r.id)) throw new Error("not found")
         home.invalidate("recentSessions")
         toast.show({ variant: "success", message: "Session deleted" })
-        setSel(prev => Math.max(0, Math.min(prev, rows.length - 2)))
         void load()
       } catch (e) {
         toast.show({ variant: "error", message: `Delete failed: ${(e as Error).message}` })
       }
     })
-  }, [dialog, toast, load, rows.length])
+  }, [dialog, toast, load])
   confirmDeleteRef.current = confirmDelete
 
   const rename = useCallback(async () => {
@@ -567,11 +565,11 @@ export const Sessions = memo((props: Props) => {
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
     if (searching) {
-      if (key.name === "escape") { setSearching(false); setQuery(""); setResults([]); setSel(0); return }
+      if (key.name === "escape") { setSearching(false); setQuery(""); setResults([]); setSearchSel(0); return }
       if (key.name === "backspace") return setQuery(p => p.slice(0, -1))
-      if (key.name === "return") return activate()
-      if (key.name === "up") return setSel(p => Math.max(0, p - 1))
-      if (key.name === "down") return setSel(p => Math.min(count - 1, p + 1))
+      if (key.name === "return") return rowActivate(searchSel)
+      if (key.name === "up") return setSearchSel(p => Math.max(0, p - 1))
+      if (key.name === "down") return setSearchSel(p => Math.min(count - 1, p + 1))
       if (key.raw && key.raw.length === 1 && key.raw >= " ") return setQuery(p => p + key.raw)
       return
     }
@@ -579,13 +577,13 @@ export const Sessions = memo((props: Props) => {
       count, setSel,
       page: Math.max(1, (vscroll.current?.viewport.height ?? 10) - 1),
       scrollTo: n => vscroll.current?.scrollChildIntoView(rowId(n)),
-      onActivate: activate,
+      onActivate: () => rowActivate(sel),
       onRefresh: () => { void load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
       onDelete: () => {
         const v = visible[sel]
         if (v && !v.indent) confirmDelete(v.row)
       },
-      onSearch: () => { setSearching(true); setQuery(""); setResults([]); setSel(0) },
+      onSearch: () => { setSearching(true); setQuery(""); setResults([]); setSearchSel(0) },
     })
     if (matched) return
     if (keys.match("sessions.rename", key)) return void rename()
@@ -634,7 +632,7 @@ export const Sessions = memo((props: Props) => {
               {searching
                 ? results.map((r, i) => (
                     <SearchItem key={r.session_id} id={rowId(i)} idx={i}
-                      result={r} selected={i === sel}
+                      result={r} selected={i === searchSel}
                       onActivate={rowActivate} onHover={rowHover} />
                   ))
                 : visible.map((v, i) => (
@@ -647,23 +645,10 @@ export const Sessions = memo((props: Props) => {
         )}
       </TabShell>
 
-      {showDetailPanel && searching && results[sel]
-        ? <SearchDetail result={results[sel]} />
+      {showDetailPanel && searching && results[searchSel]
+        ? <SearchDetail result={results[searchSel]} />
         : showDetailPanel && !searching && visible[sel]?.row
-          ? <Detail row={visible[sel].row}
-                    lineage={io.lineage}
-                    onSwitch={(sid) => {
-                      // Lineage-click switches target a SPECIFIC session
-                      // (the predecessor or successor), not the projected
-                      // tip. Onion-confirm to match the list click flow.
-                      if (!props.onSwitch) return
-                      if (sid === props.currentId) return props.onSwitch(sid)
-                      void openConfirm(dialog, {
-                        title: "Load session?",
-                        body: `Switch to ${trunc(sid, 24)}?\n\nCurrent chat will be replaced.`,
-                        yes: "load",
-                      }).then(ok => { if (ok) props.onSwitch?.(sid) })
-                    }} />
+          ? <Detail row={visible[sel].row} lineage={io.lineage} onSwitch={lineageSwitch} />
           : null}
     </box>
   )
