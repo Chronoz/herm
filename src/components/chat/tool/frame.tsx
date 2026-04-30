@@ -115,20 +115,3 @@ export const BlockTool = memo((p: BlockProps) => {
     </box>
   )
 })
-
-/** Click-to-expand text body capped at `cap` lines. */
-export const Overflow = memo(({ text, cap = 10 }: { text: string; cap?: number }) => {
-  const theme = useTheme().theme
-  const [open, setOpen] = useState(false)
-  const lines = text.split("\n")
-  const over = lines.length > cap
-  const body = open || !over ? text : [...lines.slice(0, cap), "…"].join("\n")
-  return (
-    <box flexDirection="column" gap={1} onMouseDown={over ? () => setOpen(o => !o) : undefined}>
-      <text fg={theme.text}>{body}</text>
-      {over ? (
-        <text fg={theme.textMuted}>{open ? "Click to collapse" : "Click to expand"}</text>
-      ) : null}
-    </box>
-  )
-})

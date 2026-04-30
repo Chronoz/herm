@@ -96,7 +96,7 @@ export function load(): TuiPreferences {
  * Persist current preferences to disk.
  * Merges provided partial into existing prefs before writing.
  */
-export function save(partial?: Partial<TuiPreferences>): void {
+function save(partial?: Partial<TuiPreferences>): void {
   const current = load()
   if (partial) Object.assign(current, partial)
   cached = current

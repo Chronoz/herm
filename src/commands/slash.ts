@@ -63,7 +63,7 @@ export function filter(list: ReadonlyArray<SlashCommand>, prefix: string): Slash
   )
 }
 
-export type Resolved =
+type Resolved =
   | { hit: SlashCommand }
   | { miss: true }
   | { ambiguous: string[] }
@@ -112,7 +112,7 @@ export function matchSub(list: ReadonlyArray<SlashCommand>, input: string): Slas
 }
 
 /** Category ordering for display. Unknown categories fall to the end. */
-export const CATEGORY_ORDER = [
+const CATEGORY_ORDER = [
   "Client",
   "Session",
   "Configuration",

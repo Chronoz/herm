@@ -33,7 +33,7 @@ type Props = {
   sel?: number
 }
 
-export const RollbackDialog = (props: Props) => {
+const RollbackDialog = (props: Props) => {
   const theme = useTheme().theme
   const [data, setData] = useState<ListRes | null>(props.initial ?? null)
   const [sel, setSel] = useState(props.sel ?? 0)

@@ -9,7 +9,7 @@ import { useDialog } from "../ui/dialog"
 
 const ERRLIKE = /error|fail|traceback|exception|\b[45]\d\d\b|refused|denied|unauthori/i
 
-export const LogsDialog = () => {
+const LogsDialog = () => {
   const theme = useTheme().theme
   const gw = useGateway()
   const lines = gw.tail(200).split("\n").filter(Boolean)

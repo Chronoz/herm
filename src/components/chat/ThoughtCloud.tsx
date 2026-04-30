@@ -11,11 +11,11 @@ import { usePref } from "../../utils/preferences"
 import { useTheme } from "../../theme"
 
 export const CLOUD_MIN = 12
-export const CLOUD_MAX = 24
+const CLOUD_MAX = 24
 
 // Heavy triple-dash — reads as thick + noncontinuous. Corners stay
 // heavy-solid so the box parses as a bubble, not a grid.
-export const CLOUD: BorderCharacters = {
+const CLOUD: BorderCharacters = {
   topLeft: "┏", topRight: "┓", bottomLeft: "┗", bottomRight: "┛",
   horizontal: "┅", vertical: "┇",
   topT: "┅", bottomT: "┅", leftT: "┇", rightT: "┇", cross: "╋",
@@ -55,7 +55,7 @@ export const Tail = memo((props: { run: boolean }) => {
   )
 })
 
-export function parts(m: Message | undefined): Part[] {
+function parts(m: Message | undefined): Part[] {
   return m?.parts.filter(p => p.type !== "text") ?? []
 }
 

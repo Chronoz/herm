@@ -28,5 +28,3 @@ export const STATE_FRAMES: Record<AvatarState, string[][]> = {
 };
 
 export const FPS = 12;
-export const FRAME_WIDTH = 48;
-export const FRAME_HEIGHT = 24;

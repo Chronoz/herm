@@ -13,7 +13,7 @@ type Props = {
   onCancel: () => void
 }
 
-export const TextPrompt = (props: Props) => {
+const TextPrompt = (props: Props) => {
   const theme = useTheme().theme
   const [value, setValue] = useState(props.initial ?? "")
 

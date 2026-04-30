@@ -1153,7 +1153,3 @@ export const FRAMES: string[] = [
        .-=--%@@@@@%%%==::.=*=        .=*%=:     
           =%@%%*+##+.  +-:#.           -:       `,
 ];
-export const FRAME_COUNT = FRAMES.length;
-export const FPS = 12;
-export const FRAME_WIDTH = 48;
-export const FRAME_HEIGHT = 24;

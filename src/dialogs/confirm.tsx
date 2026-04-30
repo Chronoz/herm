@@ -16,7 +16,7 @@ type Props = {
   onCancel: () => void
 }
 
-export const Confirm = (props: Props) => {
+const Confirm = (props: Props) => {
   const theme = useTheme().theme
   const keys = useKeys()
   useKeyboard((key) => {

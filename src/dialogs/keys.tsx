@@ -11,8 +11,9 @@ import { useTheme } from "../theme"
 import * as prefs from "../utils/preferences"
 import {
   useKeys, DEFAULTS, conflictsWith, parse,
-  print as chordPrint, type ActionId, type Scope, type Chord,
+  type ActionId, type Scope, type Chord,
 } from "../keys"
+import { print as chordPrint } from "../keys/chord"
 import type { DialogContext } from "../ui/dialog"
 import { openTextPrompt } from "./text-prompt"
 

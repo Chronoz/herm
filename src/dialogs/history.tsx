@@ -25,7 +25,7 @@ const tag = (m: TranscriptMessage, theme: Theme) =>
 const body = (m: TranscriptMessage) =>
   (m.role === "tool" ? m.context : m.text) ?? ""
 
-export const HistoryDialog = (props: { gw: Gateway }) => {
+const HistoryDialog = (props: { gw: Gateway }) => {
   const theme = useTheme().theme
   const [rows, setRows] = useState<TranscriptMessage[] | null>(null)
   const [err, setErr] = useState("")

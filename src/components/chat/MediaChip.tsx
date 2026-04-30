@@ -79,9 +79,6 @@ export function splitContent(text: string): Seg[] {
   return out
 }
 
-/** @deprecated — use splitContent */
-export const splitMedia = splitContent
-
 export const MediaChip = memo((props: { path: string }) => {
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)

@@ -18,7 +18,7 @@ import { useKeys, type ActionId } from "../keys"
 import { useDialog } from "./dialog"
 import { DialogSelect, type SelectOption } from "./dialog-select"
 
-export type Command = {
+type Command = {
   readonly title: string
   readonly value: string
   readonly action?: ActionId

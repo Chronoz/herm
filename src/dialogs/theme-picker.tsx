@@ -8,7 +8,7 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import type { SelectOption } from "../ui/dialog-select"
 
-export const ThemePickerDialog = ({ onConfirm }: { onConfirm: () => void }) => {
+const ThemePickerDialog = ({ onConfirm }: { onConfirm: () => void }) => {
   const ctx = useTheme()
   const dialog = useDialog()
 

@@ -7,7 +7,7 @@
 import { Database } from "bun:sqlite"
 import { hermesPath } from "./hermes-home"
 
-export type MemoryOp = "write" | "read"
+type MemoryOp = "write" | "read"
 
 export type MemoryActivity = {
   ts: number

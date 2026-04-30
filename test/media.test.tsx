@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test"
 import { act } from "react"
 import { mountNode, until } from "./harness"
-import { splitMedia, splitContent, classify, MEDIA_LINE_RE } from "../src/components/chat/MediaChip"
+import { splitContent, classify, MEDIA_LINE_RE } from "../src/components/chat/MediaChip"
 import { MessageItem } from "../src/components/chat/MessageItem"
 import type { Message } from "../src/types/message"
 
-describe("MediaChip > splitMedia", () => {
+describe("MediaChip > splitContent", () => {
   test("no-media fast path returns input verbatim", () => {
-    const s = splitMedia("plain text\nno directives")
+    const s = splitContent("plain text\nno directives")
     expect(s).toEqual([{ md: "plain text\nno directives" }])
   })
 
   test("splits on MEDIA lines, preserving order and adjacency", () => {
-    const s = splitMedia("before\nMEDIA:/tmp/a.png\nafter")
+    const s = splitContent("before\nMEDIA:/tmp/a.png\nafter")
     expect(s).toEqual([
       { md: "before" },
       { media: "/tmp/a.png" },
@@ -21,7 +21,7 @@ describe("MediaChip > splitMedia", () => {
   })
 
   test("adjacent MEDIA lines and quoted/backticked paths", () => {
-    const s = splitMedia("`MEDIA: /tmp/a.png`\n\"MEDIA:/tmp/b.mp3\"")
+    const s = splitContent("`MEDIA: /tmp/a.png`\n\"MEDIA:/tmp/b.mp3\"")
     expect(s).toEqual([
       { media: "/tmp/a.png" },
       { media: "/tmp/b.mp3" },
@@ -30,7 +30,7 @@ describe("MediaChip > splitMedia", () => {
 
   test("MEDIA inside fenced code is literal, not a directive", () => {
     const text = "```sh\nMEDIA:/tmp/x.png\n```\nMEDIA:/tmp/y.png"
-    const s = splitMedia(text)
+    const s = splitContent(text)
     expect(s).toEqual([
       { code: "MEDIA:/tmp/x.png", lang: "sh" },
       { media: "/tmp/y.png" },
@@ -39,7 +39,7 @@ describe("MediaChip > splitMedia", () => {
 
   test("MEDIA mid-line is not a directive", () => {
     expect("see MEDIA:/tmp/x.png here".match(MEDIA_LINE_RE)).toBeNull()
-    expect(splitMedia("see MEDIA:/tmp/x.png here")).toEqual([
+    expect(splitContent("see MEDIA:/tmp/x.png here")).toEqual([
       { md: "see MEDIA:/tmp/x.png here" },
     ])
   })

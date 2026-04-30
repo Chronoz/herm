@@ -87,12 +87,8 @@ export const DEFAULTS = {
   //     counterpart; sessions.rename diverges from oc's session-
   //     dialog ctrl+r.
   "sessions.rename":   def("ctrl+r",               "Retitle session",                    "sessions"), // match oc session_rename
-  // "cron.run":          def("x",                    "Run job now",                        "cron"),	// k: I don't think it's needed. remove  → .6 binds list.activate=Enter to run-now instead
-  // "env.reveal":        def("v",                    "Reveal value",                       "env"),	// → absorbed by list.toggle (space) in .6
-  // "agents.pause":      def("p",                    "Pause / resume delegation",          "agents"),	// → header pill, herm-5lc
   "agents.kill":       def("k",                    "Kill subagent",                      "agents"),	// k: I like this
   "agents.history":    def("h",                    "Spawn history",                      "agents"),	// k: keep
-  // "skills.inspect":    def("i",                    "Inspect skill",                      "skills"),	// → DetailPanel + FileLink, herm-bs8
   "config.save":       def("ctrl+s",               "Write config",                       "config"),
 } satisfies Record<string, Def>
 

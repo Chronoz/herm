@@ -67,11 +67,6 @@ export function text(msg: Message): string {
     .join("")
 }
 
-// Helper to extract tool parts
-export function tools(msg: Message): ToolPart[] {
-  return msg.parts.filter((p): p is ToolPart => p.type === "tool")
-}
-
 // Create a unique message ID
 export function mid(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`

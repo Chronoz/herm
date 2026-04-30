@@ -15,12 +15,11 @@
  *   monitor(ms)      — start periodic memory reporter, returns cleanup
  *   report()         — dump all collected stats to stderr
  *   onRender(...)    — React <Profiler> onRender callback
- *   wrap(label, fn)  — time an async function call
  */
 
 const level = process.env.PERF ?? ""
-export const enabled = level === "1" || level === "verbose"
-export const verbose = level === "verbose"
+const enabled = level === "1" || level === "verbose"
+const verbose = level === "verbose"
 
 // ── Timing ────────────────────────────────────────────────────────────
 
@@ -51,16 +50,6 @@ export const mark = enabled
     }
   }
   : (_: string) => noop
-
-/** Time an async function. Returns its result. */
-export const wrap = enabled
-  ? async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
-    const end = mark(label)
-    const result = await fn()
-    end()
-    return result
-  }
-  : async <T>(_: string, fn: () => Promise<T>): Promise<T> => fn()
 
 // ── Counters ──────────────────────────────────────────────────────────
 
@@ -135,7 +124,7 @@ export const onRender = enabled
 // ── Report ────────────────────────────────────────────────────────────
 
 /** Dump all collected profiling data to stderr. */
-export const report = () => {
+const report = () => {
   if (!enabled) return
 
   const lines: string[] = ["\n\x1b[1m═══ PERF REPORT ═══\x1b[0m\n"]

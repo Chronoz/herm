@@ -516,7 +516,7 @@ const MEMORY_CFG_FILES: Record<string, string[]> = {
     installed providers in $HERMES_HOME/plugins/ aren't distinguished
     from non-memory plugins without importing them — wait for the
     memory.providers RPC for those. */
-export function discoverMemoryProviders(): string[] {
+function discoverMemoryProviders(): string[] {
   const names = new Set<string>(["builtin"]);
   try {
     for (const e of readdirSync(`${HERMES_HOME}/hermes-agent/plugins/memory`, { withFileTypes: true }))

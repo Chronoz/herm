@@ -26,7 +26,7 @@ export type Agg = {
   hot: number
 }
 
-export type Node = { rec: DelegationRecord; agg: Agg; kids: Node[] }
+type Node = { rec: DelegationRecord; agg: Agg; kids: Node[] }
 
 const running = (s: string | undefined) => !s || s === "running" || s === "queued"
 

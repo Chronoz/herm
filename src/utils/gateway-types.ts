@@ -86,12 +86,6 @@ export type DelegationStatus = {
   max_concurrent_children: number
 }
 
-export type PluginInfo = {
-  name: string
-  version?: string
-  enabled: boolean
-}
-
 // spawn_tree.list index entries + spawn_tree.load payload
 export type SpawnTreeEntry = {
   path: string
@@ -233,19 +227,6 @@ export type CommandsCatalogResponse = {
   warning?: string
 }
 
-export type CompletionResponse = {
-  items?: { text: string; display: string; meta?: string }[]
-  replace_from?: number
-}
-
-export type PromptSubmitResponse = {
-  ok?: boolean
-}
-
-export type SessionInterruptResponse = {
-  ok?: boolean
-}
-
 export type ConfigSetResponse = {
   value?: string
   info?: SessionInfo
@@ -275,10 +256,4 @@ export type ImageAttachResponse = {
   height?: number
   token_estimate?: number
   message?: string
-}
-
-export type ShellExecResponse = {
-  stdout?: string
-  stderr?: string
-  code: number
 }

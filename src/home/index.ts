@@ -1,8 +1,8 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { home, type HomeState, type SliceKey } from "./store"
 
-export { home, HomeStore } from "./store"
-export type { HomeState, SliceKey, Slice } from "./store"
+export { home } from "./store"
+export type { HomeState, SliceKey } from "./store"
 
 /**
  * Subscribe to a single slice of ~/.hermes/ state.
