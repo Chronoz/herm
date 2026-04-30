@@ -612,6 +612,83 @@ function compressionTip(db: Database, sid: string): string {
   return current
 }
 
+/** Fetch subagent children of a parent session.
+ *
+ * Subagents = children whose started_at is strictly before the parent's
+ * ended_at (or parent still live). Branches and compression
+ * continuations — both of which require started_at >= parent.ended_at
+ * — are excluded. Returned rows use the same column projection as
+ * queryRecentSessions so the Sessions tab can render them with shared
+ * row components. Sorted by started_at ASC to preserve spawn order.
+ */
+export function querySubagents(parentId: string): SessionRow[] {
+  const end = perf.mark("io:querySubagents")
+  const dbSource = makeSource("state.db")
+  try {
+    const db = new Database(hermesPath("state.db"), { readonly: true })
+    const rows = db.query(
+      `SELECT s.id, s.source, s.model, s.started_at, s.ended_at, s.end_reason,
+              s.message_count, s.tool_call_count,
+              s.input_tokens, s.output_tokens,
+              s.cache_read_tokens, s.cache_write_tokens, s.reasoning_tokens,
+              s.estimated_cost_usd, s.parent_session_id,
+              COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title,
+              SUBSTR(ml.content, 1, 120) AS lastMessage,
+              (SELECT MAX(mx.timestamp) FROM messages mx WHERE mx.session_id = s.id) AS last_active
+       FROM sessions s
+       LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
+         AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
+       LEFT JOIN messages ml ON ml.session_id = s.id AND ml.role = 'user'
+         AND ml.id = (SELECT MAX(m3.id) FROM messages m3 WHERE m3.session_id = s.id AND m3.role = 'user')
+       WHERE s.parent_session_id = ?
+         AND s.started_at < COALESCE(
+           (SELECT ended_at FROM sessions WHERE id = ?),
+           9999999999
+         )
+       ORDER BY s.started_at ASC`,
+    ).all(parentId, parentId) as Array<{
+      id: string; source: string; model: string | null;
+      started_at: number; ended_at: number | null; end_reason: string | null;
+      message_count: number; tool_call_count: number;
+      input_tokens: number; output_tokens: number;
+      cache_read_tokens: number; cache_write_tokens: number; reasoning_tokens: number;
+      estimated_cost_usd: number | null; parent_session_id: string | null;
+      title: string | null; lastMessage: string | null; last_active: number | null;
+    }>
+    db.close()
+    const mapped = rows.map((r) => ({
+      source: dbSource,
+      id: r.id,
+      sessionSource: r.source,
+      model: r.model,
+      started_at: r.started_at,
+      ended_at: r.ended_at,
+      end_reason: r.end_reason,
+      message_count: r.message_count,
+      tool_call_count: r.tool_call_count,
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+      cache_read_tokens: r.cache_read_tokens,
+      cache_write_tokens: r.cache_write_tokens,
+      reasoning_tokens: r.reasoning_tokens,
+      estimated_cost_usd: r.estimated_cost_usd,
+      title: r.title,
+      lastMessage: r.lastMessage,
+      last_active: r.last_active,
+      parent_session_id: r.parent_session_id,
+      // Subagents are leaves in the list view — we don't recurse. 0
+      // keeps the type happy and tells the UI "no further expansion".
+      subagent_count: 0,
+      lineage_root_id: null,
+    }))
+    end()
+    return mapped
+  } catch {
+    end()
+    return []
+  }
+}
+
 // ─── Session search / delete ─────────────────────────────────────────
 //
 // Stock tui_gateway has no session.search / session.delete RPCs (see

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterAll } from "bun:test"
 import { openStateDb } from "./fixtures/state-db"
-import { searchSessions, queryRecentSessions } from "../src/utils/hermes-home"
+import { searchSessions, queryRecentSessions, querySubagents } from "../src/utils/hermes-home"
 
 // Seeds a clean state.db and exercises the real SQL paths in
 // hermes-home.ts — queryRecentSessions and searchSessions.
@@ -190,5 +190,70 @@ describe("queryRecentSessions (gsk.13: root-only + subagent_count + tip projecti
     expect(rows[0].lineage_root_id).toBe("root")
     expect(rows[0].id).toBe("contB")
     expect(rows[0].subagent_count).toBe(0)
+  })
+})
+
+describe("querySubagents (gsk.14: fetch children for expansion)", () => {
+  afterAll(wipe)
+
+  test("returns children that spawned while parent was live", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000, { ended_at: 1700001000 })
+    sess(db, "sub1", "tui", 1700000500, { parent_session_id: "root", title: "First sub" })
+    sess(db, "sub2", "tui", 1700000800, { parent_session_id: "root", title: "Second sub" })
+    db.close()
+
+    const subs = querySubagents("root")
+    expect(subs.map(s => s.id)).toEqual(["sub1", "sub2"])
+    expect(subs.map(s => s.title)).toEqual(["First sub", "Second sub"])
+  })
+
+  test("returns empty array for parent with no subagents", () => {
+    const db = seed()
+    sess(db, "alone", "tui", 1700000000)
+    db.close()
+
+    expect(querySubagents("alone")).toEqual([])
+  })
+
+  test("returns empty array for unknown parent id", () => {
+    wipe()
+    expect(querySubagents("does-not-exist")).toEqual([])
+  })
+
+  test("excludes branches and compression continuations (started_at >= parent.ended_at)", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000, { ended_at: 1700001000, end_reason: "branched" })
+    // Subagent: started BEFORE end
+    sess(db, "sub", "tui", 1700000500, { parent_session_id: "root" })
+    // Branch: started at exactly ended_at
+    sess(db, "branch", "tui", 1700001000, { parent_session_id: "root" })
+    // Continuation-like: well after end
+    sess(db, "cont", "tui", 1700002000, { parent_session_id: "root" })
+    db.close()
+
+    const subs = querySubagents("root")
+    expect(subs.map(s => s.id)).toEqual(["sub"])
+  })
+
+  test("treats live parent (ended_at NULL) as 'currently running' — all children are subs", () => {
+    const db = seed()
+    sess(db, "live", "tui", 1700000000)
+    sess(db, "sub1", "tui", 1700000500, { parent_session_id: "live" })
+    sess(db, "sub2", "tui", 1700000800, { parent_session_id: "live" })
+    db.close()
+
+    expect(querySubagents("live").map(s => s.id)).toEqual(["sub1", "sub2"])
+  })
+
+  test("subagent rows carry subagent_count=0 and lineage_root_id=null", () => {
+    const db = seed()
+    sess(db, "root", "tui", 1700000000)
+    sess(db, "sub", "tui", 1700000500, { parent_session_id: "root" })
+    db.close()
+
+    const subs = querySubagents("root")
+    expect(subs[0].subagent_count).toBe(0)
+    expect(subs[0].lineage_root_id).toBe(null)
   })
 })
