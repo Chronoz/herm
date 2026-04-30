@@ -36,6 +36,7 @@ import { openThemePicker } from "./dialogs/theme-picker"
 import { openModelPicker } from "./dialogs/model-picker"
 import { openEikonPicker } from "./dialogs/eikon-picker"
 import { openTextPrompt } from "./dialogs/text-prompt"
+import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
 import { openHistory } from "./dialogs/history"
 import { openStatus, openUsage, openProfile } from "./dialogs/info"
@@ -319,27 +320,27 @@ const AppInner = () => {
             })
           return
         case "reload-mcp": {
-          // Gateway gates this behind `approvals.mcp_reload_confirm` (default on)
-          // to warn about prompt-cache invalidation. When the arg is `now`/`once`/
-          // `approve`/`yes` we skip the gate; `always` additionally persists the
-          // approvals key to false so future calls never prompt again.
+          // Reloading MCP invalidates prompt cache (tool schemas are baked into
+          // the system prompt), so the next turn re-sends full input tokens.
+          // `now`/`always` args skip our dialog for muscle-memory users.
+          // Gateway-side `status:confirm_required` is still handled for
+          // defense-in-depth — in practice we pre-empt it by passing confirm.
           const a = arg.trim().toLowerCase()
-          const params: { confirm?: true; always?: true } = {}
-          if (a === "now" || a === "once" || a === "approve" || a === "yes") params.confirm = true
-          else if (a === "always") { params.confirm = true; params.always = true }
-          toast.show({ variant: "info", message: "Reloading MCP servers…" })
-          gw.request<{ status?: string; message?: string }>("reload.mcp", params)
-            .then(r => {
-              if (r.status === "confirm_required") {
-                toast.show({ variant: "warning",
-                  message: r.message || "/reload-mcp invalidates prompt cache. Re-run as `/reload-mcp now` or `/reload-mcp always`." })
-                return
-              }
-              toast.show({ variant: "success", message: params.always
-                ? "MCP servers reloaded · future /reload-mcp runs silently"
-                : "MCP servers reloaded" })
-            })
-            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          const skip = a === "now" || a === "once" || a === "approve" || a === "yes" || a === "always"
+          const fire = (always: boolean) =>
+            gw.request<{ status?: string; message?: string }>("reload.mcp", { confirm: true, always })
+              .then(r => r.status === "confirm_required"
+                ? toast.show({ variant: "warning", message: r.message ?? "reload requires confirmation" })
+                : toast.show({ variant: "success", message: always
+                    ? "MCP servers reloaded · future /reload-mcp runs silently"
+                    : "MCP servers reloaded" }))
+              .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          if (skip) { void fire(a === "always"); return }
+          void openConfirm(dialog, {
+            title: "Reload MCP servers?",
+            body: "Rebuilds the MCP tool set. Invalidates the prompt cache, so the next message re-sends full input tokens.",
+            yes: "reload", danger: true,
+          }).then(ok => { if (ok) void fire(false) })
           return
         }
         case "reload":
