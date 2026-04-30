@@ -20,7 +20,7 @@ export type Field = {
 // Kept minimal — most enums are validated by rules.ts on commit; these
 // are the ones worth cycling with [h/l] instead of free-typing.
 const SELECTS: Record<string, string[]> = {
-  "terminal.backend": ["local", "docker", "ssh", "modal", "daytona", "singularity"],
+  "terminal.backend": ["local", "docker", "ssh", "modal", "daytona", "singularity", "vercel_sandbox"],
   "tts.provider": ["edge", "elevenlabs", "openai", "neutts", "xai", "mistral"],
   "display.skin": ["default", "ares", "mono", "slate"],
   "logging.level": ["DEBUG", "INFO", "WARNING", "ERROR"],
