@@ -1,38 +1,59 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
+import type { RGBA } from "@opentui/core";
 import { useKeys, handleListKey, useFollow } from "../keys";
-import { makeSource, readSkillFrontmatter, type SkillInfo } from "../utils/hermes-home";
+import { makeSource, readSkillFrontmatter, type SkillInfo, type SkillUsage } from "../utils/hermes-home";
 import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
 import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
 import { useTheme } from "../theme";
+import { useHome } from "../home";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { KVLink } from "../components/ui/FileLink";
 import { Col, Hdr, Marquee } from "../ui/table";
+import { ago } from "../ui/fmt";
 import { openConfirm } from "../dialogs/confirm";
 
 type Hit = { name: string; description?: string }
+type Sort = "name" | "used"
+
+// ISO timestamp → epoch seconds (or null if unparseable/empty).
+const iso = (s: string | null | undefined): number | null => {
+  if (!s) return null;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? Math.floor(t / 1000) : null;
+}
 
 // ─── Skill Row ───────────────────────────────────────────────────────
 
 const SkillRow = memo((props: {
   id: string;
   skill: SkillInfo;
+  usage?: SkillUsage;
   selected: boolean;
   onSelect: () => void;
   onHover: () => void;
 }) => {
   const theme = useTheme().theme;
   const s = props.skill;
+  const u = props.usage;
   const bg = props.selected ? theme.backgroundElement : undefined;
+  const used = iso(u?.last_used_at) ?? iso(u?.last_viewed_at);
+  const stale = u?.state === "stale";
+  const archived = u?.state === "archived";
 
   return (
     <box id={props.id} flexDirection="row" height={1} backgroundColor={bg}
          onMouseDown={props.onSelect} onMouseMove={props.onHover}>
       <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
-      <Marquee grow min={8} active={props.selected} fg={props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
+      <Col w={2} fg={theme.warning}>{u?.pinned ? "📌" : "  "}</Col>
+      <Marquee grow min={8} active={props.selected}
+               fg={archived ? theme.textMuted : props.selected ? theme.accent : theme.text}>{s.name}</Marquee>
+      {archived ? <Col w={10} fg={theme.textMuted}>archived</Col>
+       : stale ? <Col w={10} fg={theme.warning}>stale</Col>
+       : <Col w={10} fg={theme.textMuted}>{used ? ago(used) : ""}</Col>}
     </box>
   );
 });
@@ -54,9 +75,13 @@ const HitRow = memo((props: { hit: Hit; selected: boolean; onHover: () => void }
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 
-const DetailPanel = memo((props: { skill: SkillInfo }) => {
+const DetailPanel = memo((props: { skill: SkillInfo; usage?: SkillUsage }) => {
   const theme = useTheme().theme;
   const s = props.skill;
+  const u = props.usage;
+  const used = iso(u?.last_used_at);
+  const viewed = iso(u?.last_viewed_at);
+  const patched = iso(u?.last_patched_at);
 
   return (
     <box
@@ -67,14 +92,24 @@ const DetailPanel = memo((props: { skill: SkillInfo }) => {
       backgroundColor={theme.backgroundPanel}
       width="50%"
     >
-      <box height={1}><text fg={theme.primary}><strong>Skill Detail</strong></text></box>
+      <box height={1}>
+        <text>
+          <span fg={theme.primary}><strong>Skill Detail</strong></span>
+          {u?.pinned ? <span fg={theme.warning}>  📌 pinned</span> : null}
+          {u?.state === "stale" ? <span fg={theme.warning}>  · stale</span> : null}
+          {u?.state === "archived" ? <span fg={theme.textMuted}>  · archived</span> : null}
+        </text>
+      </box>
       <box height={1} />
       <box height={1}><text fg={theme.accent}><strong>{s.name}</strong></text></box>
       <box height={1} />
-      <KVBlock rows={[
+      <KVBlock rows={([
         ["Category", s.category || "uncategorized", theme.info],
         ["Tags", s.tags.length > 0 ? s.tags.join(", ") : undefined],
-      ]} />
+        u ? ["Used", u.use_count > 0 ? `${u.use_count}× · last ${used ? ago(used) : "never"}` : "never"] : null,
+        u && viewed ? ["Viewed", `${u.view_count}× · last ${ago(viewed)}`] : null,
+        u && patched ? ["Patched", `${u.patch_count}× · last ${ago(patched)}`] : null,
+      ]).filter(Boolean) as Array<[string, string | undefined, (RGBA | undefined)?]>} />
       <KVLink label="File" source={s.source} text={s.source.relative} />
       <box height={1} />
       {s.description ? (
@@ -110,11 +145,13 @@ export const Skills = memo((props: { focused?: boolean }) => {
   const gw = useGateway();
   const dialog = useDialog();
   const toast = useToast();
+  const usage = useHome("skillUsage") ?? {};
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
+  const [sort, setSort] = useState<Sort>("name");
   const seq = useRef(0);
 
   const load = useCallback(() => {
@@ -160,8 +197,17 @@ export const Skills = memo((props: { focused?: boolean }) => {
     return () => clearTimeout(t);
   }, [gw, query, searching]);
 
-  // Group installed skills by category for display
-  const groups = Map.groupBy(skills, s => s.category || "uncategorized");
+  // Group installed skills by category. When sorted by "used", flatten
+  // into a single "by-recency" group so the cross-category order is visible.
+  const groups = sort === "used"
+    ? new Map<string, SkillInfo[]>([
+        ["by recency", [...skills].sort((a, b) => {
+          const ta = iso(usage[a.name]?.last_used_at) ?? iso(usage[a.name]?.last_viewed_at) ?? 0;
+          const tb = iso(usage[b.name]?.last_used_at) ?? iso(usage[b.name]?.last_viewed_at) ?? 0;
+          return tb - ta;
+        })],
+      ])
+    : Map.groupBy(skills, s => s.category || "uncategorized");
 
   // Flat list for keyboard navigation
   const flat = [...groups].flatMap(([cat, items]) => [
@@ -216,6 +262,14 @@ export const Skills = memo((props: { focused?: boolean }) => {
       return;
     }
 
+    // `s` toggles sort between category/name (default) and recency.
+    // Intercept before handleListKey so the stock list vocabulary stays intact.
+    if (!key.ctrl && !key.meta && key.raw === "s") {
+      setSort(p => p === "name" ? "used" : "name");
+      setSelected(0);
+      return;
+    }
+
     handleListKey(keys, key, {
       count, setSel: setSelected, ...follow.opts,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
@@ -229,10 +283,10 @@ export const Skills = memo((props: { focused?: boolean }) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell
-        title={searching ? `Hub Search (${hits.length})` : `Skills (${skills.length})`}
+        title={searching ? `Hub Search (${hits.length})` : `Skills (${skills.length}${sort === "used" ? " · by use" : ""})`}
         hint={searching
           ? "↑↓ navigate  Enter install  Esc cancel"
-          : `↑↓ navigate  ${keys.print("list.search")} search hub  ${keys.print("list.refresh")} refresh`}
+          : `↑↓ navigate  ${keys.print("list.search")} search hub  s sort  ${keys.print("list.refresh")} refresh`}
       >
         {/* Search bar */}
         {searching ? (
@@ -282,6 +336,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
                   key={row.skill.name}
                   id={follow.id(idx)}
                   skill={row.skill}
+                  usage={usage[row.skill.name]}
                   selected={idx === selected}
                   onSelect={() => setSelected(idx)}
                   onHover={() => setSelected(idx)}
@@ -293,7 +348,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
       </TabShell>
 
       {/* Detail panel */}
-      {current ? <DetailPanel skill={current} /> : null}
+      {current ? <DetailPanel skill={current} usage={usage[current.name]} /> : null}
     </box>
   );
 });

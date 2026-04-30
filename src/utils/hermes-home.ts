@@ -209,6 +209,50 @@ export function readSkillFrontmatter(source: Source): { description: string; tag
   }
 }
 
+/** Per-skill telemetry sidecar record (~/.hermes/skills/.usage.json). */
+export interface SkillUsage {
+  use_count: number;
+  view_count: number;
+  patch_count: number;
+  last_used_at: string | null;
+  last_viewed_at: string | null;
+  last_patched_at: string | null;
+  created_at: string | null;
+  archived_at: string | null;
+  state: "active" | "stale" | "archived";
+  pinned: boolean;
+}
+
+/**
+ * Read ~/.hermes/skills/.usage.json. Keyed by skill name.
+ * Returns empty record on any failure — absent sidecar is the default.
+ */
+export async function readSkillUsage(): Promise<Record<string, SkillUsage>> {
+  try {
+    const f = Bun.file(hermesPath("skills/.usage.json"));
+    if (!(await f.exists())) return {};
+    const raw = await f.json() as Record<string, Partial<SkillUsage>>;
+    const out: Record<string, SkillUsage> = {};
+    for (const [k, v] of Object.entries(raw ?? {})) {
+      out[k] = {
+        use_count: Number(v.use_count ?? 0),
+        view_count: Number(v.view_count ?? 0),
+        patch_count: Number(v.patch_count ?? 0),
+        last_used_at: v.last_used_at ?? null,
+        last_viewed_at: v.last_viewed_at ?? null,
+        last_patched_at: v.last_patched_at ?? null,
+        created_at: v.created_at ?? null,
+        archived_at: v.archived_at ?? null,
+        state: (v.state as SkillUsage["state"]) ?? "active",
+        pinned: Boolean(v.pinned),
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** SOUL.md info */
 export interface SoulInfo {
   source: Source;

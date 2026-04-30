@@ -23,6 +23,7 @@ import {
   readSystemPromptInfo,
   readToolsFromLatestSession,
   queryRecentSessions,
+  readSkillUsage,
   type HermesConfig,
   type MemoryFileInfo,
   type MemoryProviderInfo,
@@ -31,6 +32,7 @@ import {
   type SystemPromptInfo,
   type ToolsInfo,
   type SessionRow,
+  type SkillUsage,
 } from "../utils/hermes-home"
 import { readMemoryActivity, type MemoryActivity } from "../utils/memory-activity"
 
@@ -48,6 +50,7 @@ export interface HomeState {
   recentSessions: SessionRow[]
   systemPrompt: SystemPromptInfo | null
   toolsInfo: ToolsInfo | null
+  skillUsage: Record<string, SkillUsage>
 }
 
 export type SliceKey = keyof HomeState
@@ -113,6 +116,10 @@ const SLICES: Slices = {
     // up new files without tracking a specific one.
     read: () => readToolsFromLatestSession(),
     watch: [hermesPath("sessions")],
+  },
+  skillUsage: {
+    read: () => readSkillUsage(),
+    watch: [hermesPath("skills/.usage.json")],
   },
 }
 
