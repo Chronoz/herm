@@ -253,9 +253,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
         flexDirection="row"
         position="relative"
       >
-        <box width={2}>
-          <text fg={theme.primary}>{">"} </text>
-        </box>
+        <box width={1}><text fg={theme.primary}>{">"}</text></box>
+        <box width={1} />
         <textarea
           ref={ta}
           onContentChange={() => setInput(ta.current?.plainText ?? "")}
