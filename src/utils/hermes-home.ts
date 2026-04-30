@@ -536,7 +536,7 @@ export function searchSessions(query: string, limit = 30): SessionHit[] {
        FROM messages_fts
        JOIN messages m ON m.id = messages_fts.rowid
        JOIN sessions s ON s.id = m.session_id
-       WHERE messages_fts MATCH ? AND s.source IN ('tui', 'cli')
+       WHERE messages_fts MATCH ?
        ORDER BY rank
        LIMIT ?`,
     ).all(q, limit * 4) as Array<{
