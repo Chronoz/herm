@@ -15,6 +15,7 @@ import { KVLink } from "../components/ui/FileLink";
 import { Col, Hdr, Marquee } from "../ui/table";
 import { ago } from "../ui/fmt";
 import { openConfirm } from "../dialogs/confirm";
+import { openCurator } from "../dialogs/curator";
 
 type Hit = { name: string; description?: string }
 type Sort = "name" | "used"
@@ -146,6 +147,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
   const dialog = useDialog();
   const toast = useToast();
   const usage = useHome("skillUsage") ?? {};
+  const curator = useHome("curatorState");
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
@@ -270,6 +272,12 @@ export const Skills = memo((props: { focused?: boolean }) => {
       return;
     }
 
+    // `c` opens the Curator report dialog.
+    if (!key.ctrl && !key.meta && key.raw === "c") {
+      openCurator(dialog);
+      return;
+    }
+
     handleListKey(keys, key, {
       count, setSel: setSelected, ...follow.opts,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
@@ -286,7 +294,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
         title={searching ? `Hub Search (${hits.length})` : `Skills (${skills.length}${sort === "used" ? " · by use" : ""})`}
         hint={searching
           ? "↑↓ navigate  Enter install  Esc cancel"
-          : `↑↓ navigate  ${keys.print("list.search")} search hub  s sort  ${keys.print("list.refresh")} refresh`}
+          : `↑↓ navigate  ${keys.print("list.search")} search hub  s sort  c curator  ${keys.print("list.refresh")} refresh`}
       >
         {/* Search bar */}
         {searching ? (
@@ -345,6 +353,25 @@ export const Skills = memo((props: { focused?: boolean }) => {
             })}
           </scrollbox>
         )}
+
+        {/* Curator footer — summary of last run / paused state. Driven by
+            fs.watch on ~/.hermes/skills/.curator_state; silent when absent. */}
+        {!searching && curator ? (
+          <box height={1} flexShrink={0}>
+            <text>
+              <span fg={theme.textMuted}>{"curator · "}</span>
+              {curator.paused ? (
+                <span fg={theme.warning}>paused</span>
+              ) : curator.last_run_at ? (
+                <span fg={theme.textMuted}>
+                  {`${curator.run_count} run${curator.run_count === 1 ? "" : "s"} · last ${ago(iso(curator.last_run_at) ?? 0)}`}
+                </span>
+              ) : (
+                <span fg={theme.textMuted}>never run</span>
+              )}
+            </text>
+          </box>
+        ) : null}
       </TabShell>
 
       {/* Detail panel */}

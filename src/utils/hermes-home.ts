@@ -253,6 +253,63 @@ export async function readSkillUsage(): Promise<Record<string, SkillUsage>> {
   }
 }
 
+/** Curator scheduler state (~/.hermes/skills/.curator_state). */
+export interface CuratorState {
+  last_run_at: string | null;
+  last_run_duration_seconds: number | null;
+  last_run_summary: string | null;
+  paused: boolean;
+  run_count: number;
+}
+
+export async function readCuratorState(): Promise<CuratorState | null> {
+  try {
+    const f = Bun.file(hermesPath("skills/.curator_state"));
+    if (!(await f.exists())) return null;
+    const raw = await f.json() as Partial<CuratorState>;
+    return {
+      last_run_at: raw.last_run_at ?? null,
+      last_run_duration_seconds: raw.last_run_duration_seconds ?? null,
+      last_run_summary: raw.last_run_summary ?? null,
+      paused: Boolean(raw.paused),
+      run_count: Number(raw.run_count ?? 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Locate the newest curator run report — returns {dir, mtime} of the
+ * directory under ~/.hermes/logs/curator/ with the latest mtime.
+ * Returns null if none exist.
+ */
+export interface CuratorReportInfo {
+  /** Source to the REPORT.md inside the newest run dir. */
+  source: Source;
+  /** Raw REPORT.md body, trimmed. */
+  content: string;
+  /** Run dir name, e.g. "20260430-120030". */
+  runId: string;
+}
+
+export async function readLatestCuratorReport(): Promise<CuratorReportInfo | null> {
+  try {
+    const base = `${HERMES_HOME}/logs/curator`;
+    const entries = readdirSync(base, { withFileTypes: true }).filter(e => e.isDirectory());
+    if (entries.length === 0) return null;
+    // Run dirs are named YYYYMMDD-HHMMSS — lexicographic sort = chronological.
+    entries.sort((a, b) => b.name.localeCompare(a.name));
+    const runId = entries[0]!.name;
+    const rel = `logs/curator/${runId}/REPORT.md`;
+    const source = makeSource(rel);
+    const body = await Bun.file(source.file).text();
+    return { source, content: body.trim(), runId };
+  } catch {
+    return null;
+  }
+}
+
 /** SOUL.md info */
 export interface SoulInfo {
   source: Source;

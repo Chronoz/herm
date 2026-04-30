@@ -24,6 +24,7 @@ import {
   readToolsFromLatestSession,
   queryRecentSessions,
   readSkillUsage,
+  readCuratorState,
   type HermesConfig,
   type MemoryFileInfo,
   type MemoryProviderInfo,
@@ -33,6 +34,7 @@ import {
   type ToolsInfo,
   type SessionRow,
   type SkillUsage,
+  type CuratorState,
 } from "../utils/hermes-home"
 import { readMemoryActivity, type MemoryActivity } from "../utils/memory-activity"
 
@@ -51,6 +53,7 @@ export interface HomeState {
   systemPrompt: SystemPromptInfo | null
   toolsInfo: ToolsInfo | null
   skillUsage: Record<string, SkillUsage>
+  curatorState: CuratorState | null
 }
 
 export type SliceKey = keyof HomeState
@@ -120,6 +123,10 @@ const SLICES: Slices = {
   skillUsage: {
     read: () => readSkillUsage(),
     watch: [hermesPath("skills/.usage.json")],
+  },
+  curatorState: {
+    read: () => readCuratorState(),
+    watch: [hermesPath("skills/.curator_state")],
   },
 }
 
