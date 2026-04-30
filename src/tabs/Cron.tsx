@@ -214,14 +214,6 @@ export const Cron = memo((props: { focused?: boolean }) => {
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
   }, [gw, dialog, toast, load]);
 
-  const run = useCallback(() => {
-    const j = live.current.jobs[live.current.sel];
-    if (!j) return;
-    gw.request("cron.manage", { action: "run", name: j.id })
-      .then(() => { toast.show({ variant: "success", message: `Queued ${j.name || j.id}` }); load(); })
-      .catch((e: Error) => toast.show({ variant: "error", message: e.message }));
-  }, [gw, toast, load]);
-
   const toggle = useCallback(() => {
     const j = live.current.jobs[live.current.sel];
     if (!j) return;
@@ -253,7 +245,6 @@ export const Cron = memo((props: { focused?: boolean }) => {
   const keys = useListKeys({
     active: !!props.focused && dialog.stack.length === 0,
     count: jobs.length, setSel, ...follow.opts,
-    onActivate: run,
     onToggle: toggle,
     onDelete: remove,
     onNew: create,
@@ -266,7 +257,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell title={`Cron Jobs (${jobs.length})`} error={err} grow={3}
-                hint={`↑↓ nav  ${keys.print("list.new")} new  ${keys.print("list.activate")} run  ${keys.print("list.toggle")} pause/resume  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}>
+                hint={`↑↓ nav  ${keys.print("list.new")} new  ${keys.print("list.toggle")} pause/resume  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}>
         {jobs.length === 0 ? (
           <box key="empty" flexGrow={1}>
             <text fg={theme.textMuted}>No cron jobs. Press n to create one.</text>

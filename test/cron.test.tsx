@@ -61,25 +61,6 @@ describe("Cron tab", () => {
     t.destroy()
   })
 
-  test("Enter fires cron.manage/run with selected job_id, then reloads", async () => {
-    const gw = mk()
-    const t = await mountNode(<Cron focused />, { gw })
-    await until(t, () => t.frame().includes("Cron Jobs (3)"))
-
-    act(() => t.keys.pressArrow("down"))
-    await t.settle()
-    act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes("Queued broken-job"))
-
-    const runs = gw.calls.filter(c => c.params.action === "run")
-    expect(runs).toHaveLength(1)
-    expect(runs[0]!.params.name).toBe("d4e5f6")
-    // load() fires again after run
-    const lists = gw.calls.filter(c => c.params.action === "list")
-    expect(lists.length).toBeGreaterThanOrEqual(2)
-    t.destroy()
-  })
-
   test("down to disabled job shows paused_reason; next_run reads 'paused'", async () => {
     const gw = mk()
     const t = await mountNode(<Cron focused />, { gw })
