@@ -8,4 +8,4 @@ disable = false
 save = true
 
 [test]
-preload = "./test/preload.ts"
+preload = ["./test/preload.ts"]
