@@ -9,7 +9,7 @@ const ROWS = [
   { id: "sid-b", title: "Second session", preview: "", message_count: 12, started_at: 1699999000, source: "cli" },
 ]
 
-const NOIO = { list: () => [], search: () => [], remove: () => true, rename: () => true }
+const NOIO = { list: () => [], search: () => [], remove: () => true, rename: () => true, subagents: () => [] }
 
 describe("Sessions tab", () => {
   test("lists from session.list RPC and switches on Enter", async () => {
@@ -377,6 +377,160 @@ describe("Sessions tab", () => {
     // Bottom border intact (no content bleeding through it).
     const last = f.split("\n").filter(l => l.trim()).at(-1)!
     expect(last).toMatch(/└─+┘└─+┘$/)
+    t.destroy()
+  })
+})
+
+// ─── Tree expansion (herm-gsk.15) ────────────────────────────────────
+//
+// When a parent row has detail.subagent_count > 0, focusing it should
+// trigger io.subagents(parentId), render each child indented with "└─",
+// and let arrow keys traverse in/out of the child block. Only one
+// parent expands at a time; moving to another collapses the first.
+
+import type { SessionRow } from "../src/utils/hermes-home"
+
+// Stub SessionRow fields we actually consume; zero the rest.
+const detail = (over: Partial<SessionRow> & { id: string; sessionSource: string }): SessionRow => ({
+  source: { file: "/tmp/state.db", relative: "state.db", label: "state.db" },
+  model: null, started_at: 1699999000, ended_at: null, end_reason: null,
+  message_count: 0, tool_call_count: 0,
+  input_tokens: 0, output_tokens: 0,
+  cache_read_tokens: 0, cache_write_tokens: 0, reasoning_tokens: 0,
+  estimated_cost_usd: null, title: null, lastMessage: null, last_active: null,
+  parent_session_id: null, subagent_count: 0, lineage_root_id: null,
+  ...over,
+})
+
+describe("Sessions tab — tree expansion", () => {
+  const PARENT = { id: "pid", title: "Parent with subs", preview: "", message_count: 3, started_at: 1700000000, source: "tui" }
+  const OTHER  = { id: "oid", title: "Other parent",     preview: "", message_count: 2, started_at: 1699999000, source: "cli" }
+  const SUB1   = detail({ id: "sub-1", sessionSource: "tui", title: "First subagent",  message_count: 5, started_at: 1700000100 })
+  const SUB2   = detail({ id: "sub-2", sessionSource: "tui", title: "Second subagent", message_count: 7, started_at: 1700000200 })
+
+  const listWithSubs = (): SessionRow[] => [
+    detail({ id: "pid", sessionSource: "tui", title: "Parent with subs",
+             message_count: 3, started_at: 1700000000, subagent_count: 2 }),
+    detail({ id: "oid", sessionSource: "cli", title: "Other parent",
+             message_count: 2, started_at: 1699999000 }),
+  ]
+
+  const subsFor = (calls: string[]) => (pid: string) => {
+    calls.push(pid)
+    if (pid === "pid") return [SUB1, SUB2]
+    return []
+  }
+
+  test("focusing a parent with subagents loads and renders children indented", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER] }) })
+    const calls: string[] = []
+    const io = { ...NOIO, list: listWithSubs, subagents: subsFor(calls) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 180, height: 30 })
+    await until(t, () => t.frame().includes("Sessions (2)"))
+
+    // Selection starts on the first parent (pid) → children should load.
+    await until(t, () => calls.includes("pid"))
+    await until(t, () => t.frame().includes("First subagent"))
+    const f = t.frame()
+    // Parent row unchanged, indented children below with "└─".
+    expect(f).toContain("▸ Parent with subs")
+    expect(f).toContain("└─First subagent")
+    expect(f).toContain("└─Second subagent")
+    // Header count still reflects PARENT rows only, not flat visible count.
+    expect(f).toContain("Sessions (2)")
+    t.destroy()
+  })
+
+  test("arrow down enters children, arrow up exits", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER] }) })
+    const io = { ...NOIO, list: listWithSubs, subagents: subsFor([]) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 180, height: 30 })
+    await until(t, () => t.frame().includes("First subagent"))
+
+    // ↓ once: selection moves onto the first child.
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    expect(t.frame()).toMatch(/└─First subagent/)
+    // Selected row carries the accent marker — children use "└─" so
+    // check the selected background by looking at the sel-highlight
+    // with the active row's title.
+    // (OpenTUI rendering obscures exact ANSI here; proxy: the next ↓
+    //  moves onto the 2nd child.)
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    // ↓ again: selection leaves children and lands on OTHER parent;
+    // the first parent's children collapse since expansion follows sel.
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    const f = t.frame()
+    expect(f).toContain("▸ Other parent")
+    expect(f).not.toContain("First subagent")  // collapsed
+    t.destroy()
+  })
+
+  test("clicking a child row switches to that child session", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER] }) })
+    const io = { ...NOIO, list: listWithSubs, subagents: subsFor([]) }
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={io} onSwitch={sid => { switched = sid }} />,
+      { gw, width: 180, height: 30 },
+    )
+    await until(t, () => t.frame().includes("First subagent"))
+
+    const lines = t.frame().split("\n")
+    const y = lines.findIndex(l => l.includes("Second subagent"))
+    const x = lines[y].indexOf("Second subagent")
+    await act(async () => { await t.mouse.pressDown(x, y) })
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
+    await t.settle()
+    expect(switched).toBe("sub-2")
+    t.destroy()
+  })
+
+  test("detail panel reflects the selected row (parent or child)", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER] }) })
+    const io = { ...NOIO, list: listWithSubs, subagents: subsFor([]) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 200, height: 40 })
+    await until(t, () => t.frame().includes("First subagent"))
+
+    // Parent selected → detail shows parent title.
+    expect(t.frame()).toContain("Parent with subs")
+    // Move selection to first child.
+    act(() => t.keys.pressArrow("down"))
+    await t.settle()
+    // Detail panel should now render the child's title.
+    await until(t, () => t.frame().includes("First subagent"))
+    expect(t.frame()).toContain("First subagent")
+    t.destroy()
+  })
+
+  test("moving to a parent with no children shows no expansion", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [PARENT, OTHER] }) })
+    const io = { ...NOIO, list: listWithSubs, subagents: subsFor([]) }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 180, height: 30 })
+    await until(t, () => t.frame().includes("First subagent"))
+
+    // Move all the way down to OTHER (3 steps: sub1, sub2, OTHER).
+    for (let i = 0; i < 3; i++) { act(() => t.keys.pressArrow("down")); await t.settle() }
+    const f = t.frame()
+    expect(f).toContain("▸ Other parent")
+    expect(f).not.toContain("First subagent")
+    t.destroy()
+  })
+
+  test("parent with subagent_count=0 does not call io.subagents", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: [OTHER] }) })
+    const calls: string[] = []
+    const list = (): SessionRow[] => [
+      detail({ id: "oid", sessionSource: "cli", title: "Other parent", message_count: 2, subagent_count: 0 }),
+    ]
+    const io = { ...NOIO, list, subagents: (pid: string) => { calls.push(pid); return [] } }
+    const t = await mountNode(<Sessions focused io={io} />, { gw, width: 180, height: 30 })
+    await until(t, () => t.frame().includes("Sessions (1)"))
+    await t.settle()
+    expect(calls).toEqual([])
     t.destroy()
   })
 })

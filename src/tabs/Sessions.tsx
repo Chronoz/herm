@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
 import {
-  queryRecentSessions, searchSessions, deleteSession, renameSession,
+  queryRecentSessions, searchSessions, deleteSession, renameSession, querySubagents,
   type SessionRow, type SessionHit,
 } from "../utils/hermes-home"
 import type {
@@ -183,20 +183,30 @@ type RowCbs = {
 }
 
 const Item = memo((props: {
-  id: string; row: Row; idx: number; selected: boolean
+  id: string; row: Row; idx: number; selected: boolean; indent?: boolean
 } & RowCbs) => {
   const theme = useTheme().theme
   const { row: r, idx: i } = props
   const [x, setX] = useState(false)
   const active = r.detail?.last_active ?? r.detail?.ended_at ?? null
+  // Parent rows get "▸ "/"  " leaders; child rows get "└─" as the tree
+  // marker instead. Selected children still show the accent highlight via
+  // backgroundColor + text color below — no arrow needed, indent is the
+  // only visual signal for hierarchy.
+  const leader = props.indent
+    ? (props.selected ? "└─" : "└─")
+    : (props.selected ? "▸ " : "  ")
 
   return (
     <box id={props.id} flexDirection="row" height={1}
          backgroundColor={props.selected ? theme.backgroundElement : undefined}
          onMouseDown={() => props.onActivate(i)} onMouseMove={() => props.onHover(i)}>
-      <Col w={2} fg={props.selected ? theme.primary : theme.text}>{props.selected ? "▸ " : "  "}</Col>
+      <Col w={2} fg={props.selected
+        ? theme.primary
+        : (props.indent ? theme.textMuted : theme.text)}>{leader}</Col>
       <Marquee grow active={props.selected}
-               fg={props.selected ? theme.accent : theme.text} bold={props.selected}>
+               fg={props.selected ? theme.accent : (props.indent ? theme.textMuted : theme.text)}
+               bold={props.selected}>
         {r.title || "Untitled"}
       </Marquee>
       <Col w={9} fg={theme.info}>{badge(r.source ?? "")}</Col>
@@ -206,7 +216,7 @@ const Item = memo((props: {
       <box width={3}
            onMouseDown={(e) => { e.stopPropagation(); props.onDelete(i) }}
            onMouseOver={() => setX(true)} onMouseOut={() => setX(false)}>
-        <text><span fg={x ? theme.error : theme.textMuted}>{" ✕"}</span></text>
+        <text><span fg={x ? theme.error : theme.textMuted}>{props.indent ? "" : " ✕"}</span></text>
       </box>
     </box>
   )
@@ -256,6 +266,7 @@ type IO = {
   search: typeof searchSessions
   remove: typeof deleteSession
   rename: typeof renameSession
+  subagents: typeof querySubagents
 }
 
 type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
@@ -272,22 +283,48 @@ export const Sessions = memo((props: Props) => {
     search: props.io?.search ?? searchSessions,
     remove: props.io?.remove ?? deleteSession,
     rename: props.io?.rename ?? renameSession,
+    subagents: props.io?.subagents ?? querySubagents,
   }
 
   const [rows, setRows] = useState<Row[]>([])
   const [warn, setWarn] = useState("")
+  // Selection is tracked as (index in the CURRENT visible sequence) so
+  // all the existing keyboard/hover/activate callbacks still work off a
+  // simple number. Expansion below computes visible rows from rows +
+  // expandedId, and we invariant-clamp sel into range whenever visible
+  // changes (new data loaded, expansion toggled, etc.).
   const [sel, setSel] = useState(0)
+  // Which parent row's children are currently expanded. null = none.
+  // Explicit state instead of deriving from sel means arrow-past-the-
+  // last-child reliably collapses and lands on the next parent row.
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SessionHit[]>([])
+  // Cache of parent_id → children. Loaded lazily when a parent row
+  // with subagent_count > 0 becomes focused. Cleared on reload.
+  const [kids, setKids] = useState<Map<string, Row[]>>(new Map())
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const vscroll = useRef<ScrollBoxRenderable | null>(null)
+
+  // Flat visible sequence = parent rows with the expanded parent's
+  // children inlined immediately after it. parentIdx points back into
+  // rows[] so callbacks can find the owning parent.
+  const visible: Array<{ row: Row; indent: boolean; parentIdx: number }> = []
+  for (let i = 0; i < rows.length; i++) {
+    const parent = rows[i]
+    visible.push({ row: parent, indent: false, parentIdx: i })
+    if (parent.id === expandedId) {
+      const cs = kids.get(parent.id)
+      if (cs) for (const c of cs) visible.push({ row: c, indent: true, parentIdx: i })
+    }
+  }
 
   // Latest-value refs so the stable row callbacks below don't close
   // over stale arrays (and therefore don't need to be in their deps,
   // which would defeat the memo).
-  const live = useRef({ rows, results, searching, onSwitch: props.onSwitch, currentId: props.currentId })
-  live.current = { rows, results, searching, onSwitch: props.onSwitch, currentId: props.currentId }
+  const live = useRef({ rows, visible, results, searching, onSwitch: props.onSwitch, currentId: props.currentId })
+  live.current = { rows, visible, results, searching, onSwitch: props.onSwitch, currentId: props.currentId }
 
   const LIMIT = 2000
 
@@ -324,10 +361,59 @@ export const Sessions = memo((props: Props) => {
       return
     }
     setRows([])
+    setKids(new Map())
+    setExpandedId(null)
     setWarn(rpc.status === "rejected" ? (rpc.reason as Error).message : "")
   }, [gw])
 
   useEffect(() => { load() }, [load])
+
+  // Auto-expand/collapse based on selection. When sel targets a parent
+  // row with subagent_count > 0, expand it. When sel targets a parent
+  // row with 0 subagents or a different parent's child, collapse any
+  // prior expansion. When sel is on a child row (indent=true), the
+  // current expandedId stays — we're inside that parent's subtree.
+  useEffect(() => {
+    if (searching) return
+    const v = visible[sel]
+    if (!v) return
+    if (v.indent) return // sel is on a child → keep current expansion
+    const count = v.row.detail?.subagent_count ?? 0
+    const shouldExpand = count > 0 ? v.row.id : null
+    if (shouldExpand !== expandedId) setExpandedId(shouldExpand)
+  }, [sel, searching, visible, expandedId])
+
+  // Clamp sel whenever visible's length changes (load, expansion toggle,
+  // delete). Prevents sel from pointing past the end after rows shrink.
+  useEffect(() => {
+    if (sel > 0 && sel >= visible.length && visible.length > 0) {
+      setSel(visible.length - 1)
+    }
+  }, [visible.length, sel])
+
+  // Lazy-load children for the currently selected parent (or for the
+  // parent whose child we're currently on). Cached in kids — re-focus
+  // doesn't re-hit the DB.
+  useEffect(() => {
+    if (searching) return
+    const v = visible[sel]
+    if (!v) return
+    const parent = rows[v.parentIdx]
+    if (!parent) return
+    const count = parent.detail?.subagent_count ?? 0
+    if (count <= 0 || kids.has(parent.id)) return
+    const pid = parent.id
+    const children = io.subagents(pid).map(d => ({
+      id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
+      message_count: d.message_count, started_at: d.started_at,
+      source: d.sessionSource, detail: d,
+    }))
+    setKids(prev => {
+      const next = new Map(prev)
+      next.set(pid, children)
+      return next
+    })
+  }, [sel, rows, searching, kids, visible])
 
   // Search is a synchronous FTS5 query on state.db, so debounce —
   // running it on every keystroke blocks the render thread. The
@@ -353,11 +439,11 @@ export const Sessions = memo((props: Props) => {
   const rowActivate = useCallback((i: number) => {
     setSel(i)
     const l = live.current
-    const hit = l.searching ? l.results[i] : l.rows[i]
+    const hit = l.searching ? l.results[i] : l.visible[i]?.row
     const id = l.searching ? (hit as SessionHit | undefined)?.session_id : (hit as Row | undefined)?.id
     if (!id || !l.onSwitch) return
     if (id === l.currentId) return l.onSwitch(id)
-    const title = hit?.title || "Untitled"
+    const title = (hit as { title?: string } | undefined)?.title || "Untitled"
     const n = l.searching ? undefined : (hit as Row).message_count
     void openConfirm(dialog, {
       title: "Load session?",
@@ -365,9 +451,12 @@ export const Sessions = memo((props: Props) => {
       yes: "load",
     }).then(ok => { if (ok) l.onSwitch?.(id) })
   }, [dialog])
+  // Delete on a child row is a no-op (only parents can be deleted from
+  // the list). The ✕ glyph is hidden for indented rows anyway; this
+  // guard covers the keyboard shortcut path.
   const rowDelete = useCallback((i: number) => {
-    const r = live.current.rows[i]
-    if (r) confirmDeleteRef.current(r)
+    const v = live.current.visible[i]
+    if (v && !v.indent) confirmDeleteRef.current(v.row)
   }, [])
 
   const activate = useCallback(() => rowActivate(sel), [rowActivate, sel])
@@ -395,8 +484,12 @@ export const Sessions = memo((props: Props) => {
   confirmDeleteRef.current = confirmDelete
 
   const rename = useCallback(async () => {
-    const r = live.current.rows[sel]
-    if (!r) return
+    const v = live.current.visible[sel]
+    // Rename only operates on parent rows — subagent children don't
+    // have stable titles (usually a single-line delegate prompt) and
+    // the ✕ affordance is already hidden for them.
+    if (!v || v.indent) return
+    const r = v.row
     const title = await openTextPrompt(dialog, {
       title: `Rename: ${trunc(r.title || "Untitled", 42)}`, label: "Title", initial: r.title || "",
     })
@@ -414,8 +507,17 @@ export const Sessions = memo((props: Props) => {
         toast.show({ variant: "error", message: `Rename failed: ${e.message}` }))
   }, [dialog, toast, sel])
 
-  const count = searching ? results.length : rows.length
-  const rowId = (i: number) => `sess-row-${i}`
+  const count = searching ? results.length : visible.length
+  // Stable ids — include row.id + indent flag so a row moving between
+  // indices (because a sibling expanded above it) doesn't collide with
+  // the previous occupant. OpenTUI's reconciler keys on this; reused
+  // ids after a layout shift log "Anchor is the same as the node X
+  // being inserted, skipping insertBefore" and drop rows.
+  const rowId = (i: number) => {
+    if (searching) return `sess-s-${results[i]?.session_id ?? i}`
+    const v = visible[i]
+    return v ? `sess-${v.indent ? "c" : "p"}-${v.row.id}` : `sess-empty-${i}`
+  }
 
   const keys = useKeys()
   useKeyboard((key) => {
@@ -435,7 +537,10 @@ export const Sessions = memo((props: Props) => {
       scrollTo: n => vscroll.current?.scrollChildIntoView(rowId(n)),
       onActivate: activate,
       onRefresh: () => { void load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
-      onDelete: () => { const r = rows[sel]; if (r) confirmDelete(r) },
+      onDelete: () => {
+        const v = visible[sel]
+        if (v && !v.indent) confirmDelete(v.row)
+      },
       onSearch: () => { setSearching(true); setQuery(""); setResults([]); setSel(0) },
     })
     if (matched) return
@@ -488,9 +593,9 @@ export const Sessions = memo((props: Props) => {
                       result={r} selected={i === sel}
                       onActivate={rowActivate} onHover={rowHover} />
                   ))
-                : rows.map((r, i) => (
-                    <Item key={r.id} id={rowId(i)} idx={i}
-                      row={r} selected={i === sel}
+                : visible.map((v, i) => (
+                    <Item key={`${v.row.id}-${v.indent ? "c" : "p"}`} id={rowId(i)} idx={i}
+                      row={v.row} selected={i === sel} indent={v.indent}
                       onActivate={rowActivate} onHover={rowHover} onDelete={rowDelete} />
                   ))}
             </scrollbox>
@@ -500,8 +605,8 @@ export const Sessions = memo((props: Props) => {
 
       {showDetailPanel && searching && results[sel]
         ? <SearchDetail result={results[sel]} />
-        : showDetailPanel && !searching && rows[sel]
-          ? <Detail row={rows[sel]} />
+        : showDetailPanel && !searching && visible[sel]?.row
+          ? <Detail row={visible[sel].row} />
           : null}
     </box>
   )
