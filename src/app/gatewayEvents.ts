@@ -165,6 +165,16 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
     case "gateway.protocol_error":
       return { kind: "system", text: `protocol error: ${ev.payload?.preview ?? "?"}` }
 
+    case "browser.progress": {
+      // Streamed during /browser connect (upstream e75082901). Surface as
+      // transcript rows so long CDP attach work isn't a 60s black box.
+      const text = ev.payload?.message ?? ""
+      if (!text) return null
+      return ev.payload?.level === "error"
+        ? { kind: "error", text }
+        : { kind: "system", text: `· ${text}` }
+    }
+
     case "status.update": {
       const kind = ev.payload?.kind
       const text = ev.payload?.text ?? ""

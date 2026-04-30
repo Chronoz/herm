@@ -28,6 +28,7 @@ export type GatewayEvent =
   | { type: "secret.request"; payload: { request_id: string; prompt: string; env_var: string } }
   | { type: "background.complete"; payload: { task_id: string; text: string } }
   | { type: "btw.complete"; payload: { text: string } }
+  | { type: "browser.progress"; payload?: { message?: string; level?: "info" | "error" } }
   | { type: "subagent.start"; payload: SubagentPayload }
   | { type: "subagent.thinking"; payload: SubagentPayload }
   | { type: "subagent.tool"; payload: SubagentPayload }
