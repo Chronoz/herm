@@ -1,7 +1,8 @@
 // Eikon thought cloud — shows the non-output parts of a turn
 // (reasoning, tool trail, status). Sits in flow above the chat scroll.
-// Visible while streaming or when a past message is pinned; the tail
-// bubbles live on the Sidebar avatar and share the CLOUD glyph set.
+// Auto-opens while the assistant is reasoning or running tools, closes
+// once text is streaming; pinning a past message holds it open. The
+// tail bubbles live on the Sidebar avatar.
 
 import { memo, useEffect, useRef, useState } from "react"
 import type { BorderCharacters, MouseEvent } from "@opentui/core"
@@ -80,6 +81,7 @@ export const ThoughtCloud = memo((props: {
   status: string
   pick?: Message
   onResize: (h: number) => void
+  onClose?: () => void
 }) => {
   const theme = useTheme().theme
   const detail = usePref("toolDetails") ?? "expanded"
@@ -111,13 +113,25 @@ export const ThoughtCloud = memo((props: {
   }
   const drop = () => { drag.current = null }
 
+  // Click-to-close on the header strip only (not the body — scrolling
+  // through reasoning text shouldn't dismiss the cloud). Same down→up
+  // guard as MessageItem so selection drags don't trigger it.
+  const at = useRef<{ x: number; y: number } | null>(null)
+  const down = (e: MouseEvent) => { at.current = { x: e.x, y: e.y } }
+  const up = (e: MouseEvent) => {
+    const a = at.current
+    at.current = null
+    if (props.onClose && a && a.x === e.x && a.y === e.y) props.onClose()
+  }
+
   return (
     <box
       height={props.height} flexDirection="column" position="relative"
       border borderColor={theme.hermAvatar} customBorderChars={CLOUD}
-      backgroundColor={theme.background} paddingX={1}
+      backgroundColor={theme.backgroundPanel} paddingX={1}
     >
-      <box height={1} flexShrink={0} flexDirection="row">
+      <box height={1} flexShrink={0} flexDirection="row"
+           onMouseDown={down} onMouseUp={up}>
         <box flexGrow={1}>
           <text fg={theme.textMuted}>
             {props.streaming ? (props.status || "· · ·") : ""}
@@ -125,6 +139,9 @@ export const ThoughtCloud = memo((props: {
         </box>
         {detail !== "expanded" ? (
           <box marginRight={1}><text fg={theme.textMuted}>⟨{detail}⟩</text></box>
+        ) : null}
+        {props.onClose ? (
+          <box width={1}><text fg={theme.textMuted}>×</text></box>
         ) : null}
       </box>
       <scrollbox scrollY stickyScroll stickyStart="bottom" flexGrow={1}>

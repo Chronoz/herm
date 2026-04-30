@@ -13,6 +13,7 @@ export const Chat = memo(({
   pick,
   onResize,
   onPick,
+  onClose,
   onRewind,
 }: {
   messages: Message[]
@@ -23,6 +24,7 @@ export const Chat = memo(({
   pick?: Message
   onResize: (h: number) => void
   onPick: (m?: Message) => void
+  onClose: () => void
   onRewind?: (m: Message) => void
 }) => {
   const theme = useTheme().theme
@@ -38,7 +40,7 @@ export const Chat = memo(({
         <box position="absolute" top={0} left={0} right={0} zIndex={1}>
           <ThoughtCloud
             height={cloudH} messages={messages} streaming={streaming} status={status}
-            pick={pick} onResize={onResize}
+            pick={pick} onResize={onResize} onClose={onClose}
           />
         </box>
       ) : null}

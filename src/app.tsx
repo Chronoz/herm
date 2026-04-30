@@ -102,7 +102,6 @@ const AppInner = () => {
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
   const [queue, setQueue] = useState<string[]>([])
   const [attachments, setAttachments] = useState<ImageAttachResponse[]>([])
-  const [cloud, setCloud] = useState(false)
   const [cloudH, setCloudH] = useState(CLOUD_MIN)
   const [pick, setPick] = useState<Message | undefined>(undefined)
   const [skin, setSkin] = useState<SkinState>(() => deriveSkin(undefined))
@@ -126,20 +125,37 @@ const AppInner = () => {
     : turn.streaming ? "thinking"
     : "idle"
 
-  // Thought cloud: single `cloud` bit, driven by events. Streaming
-  // opens it and clears any pin; streaming end closes it; avatar click
-  // and message-pin override freely from either side.
+  // ── Thought cloud ─────────────────────────────────────────────────
+  // Auto-follows the "non-text" phase of a turn: open while the model is
+  // reasoning or running tools (`streaming && !hasContent`), close once
+  // text is flowing (`hasContent`) or the turn ends. A manual force
+  // (avatar click, cloud click, message pin) overrides auto for the rest
+  // of THAT turn; the override clears on the next turn's rising edge.
+  const cloudAuto = turn.streaming && !turn.hasContent
+  const [force, setForce] = useState<boolean | undefined>(undefined)
+  const cloud = force ?? cloudAuto
+  const prevStream = useRef(turn.streaming)
   useEffect(() => {
-    if (turn.streaming) setPick(undefined)
-    setCloud(turn.streaming)
+    if (!prevStream.current && turn.streaming) { setForce(undefined); setPick(undefined) }
+    prevStream.current = turn.streaming
   }, [turn.streaming])
-  const onPick = useCallback((m?: Message) => { setPick(m); setCloud(!!m) }, [])
-  // Avatar click toggles the cloud. Closing it also clears any pinned
-  // message so the next open shows live state, not stale pin.
-  const onAvatar = useCallback(() => setCloud(o => {
-    if (o) setPick(undefined)
-    return !o
-  }), [])
+
+  const onPick = useCallback((m?: Message) => {
+    // Clicking the currently-pinned message toggles the cloud closed.
+    setPick(p => {
+      if (m && p && m.id === p.id) { setForce(false); return undefined }
+      setForce(!!m)
+      return m
+    })
+  }, [])
+  // Avatar click and cloud body click: toggle. Closing clears any pin so
+  // next open shows live state.
+  const onAvatar = useCallback(() => {
+    const next = !cloud
+    if (!next) setPick(undefined)
+    setForce(next)
+  }, [cloud])
+  const closeCloud = useCallback(() => { setForce(false); setPick(undefined) }, [])
   const onEnqueue = useCallback((t: string) => setQueue(q => [...q, t]), [])
 
   // ── Session reset / lifecycle ─────────────────────────────────────
@@ -630,7 +646,7 @@ const AppInner = () => {
       switch (tab) {
         case 0: return <Chat messages={turn.messages} streaming={turn.streaming} status={status}
                              cloud={cloud} cloudH={cloudH} pick={pick}
-                             onResize={setCloudH} onPick={onPick} onRewind={msgMenu} />
+                             onResize={setCloudH} onPick={onPick} onClose={closeCloud} onRewind={msgMenu} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} info={info ?? undefined}
                                focused={contentFocused} />
