@@ -321,6 +321,15 @@ const AppInner = () => {
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
           return
         }
+        case "reload":
+          gw.request<{ updated?: number }>("reload.env", {})
+            .then(r => {
+              const n = Number(r.updated ?? 0)
+              toast.show({ variant: "success",
+                message: `Reloaded .env (${n} var${n === 1 ? "" : "s"} updated) · /new to apply` })
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
         case "save":
           gw.request<{ file: string }>("session.save")
             .then(r => toast.show({ variant: "success", message: `Saved → ${r.file}` }))
