@@ -297,12 +297,30 @@ const AppInner = () => {
                 .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
             })
           return
-        case "reload-mcp":
+        case "reload-mcp": {
+          // Gateway gates this behind `approvals.mcp_reload_confirm` (default on)
+          // to warn about prompt-cache invalidation. When the arg is `now`/`once`/
+          // `approve`/`yes` we skip the gate; `always` additionally persists the
+          // approvals key to false so future calls never prompt again.
+          const a = arg.trim().toLowerCase()
+          const params: { confirm?: true; always?: true } = {}
+          if (a === "now" || a === "once" || a === "approve" || a === "yes") params.confirm = true
+          else if (a === "always") { params.confirm = true; params.always = true }
           toast.show({ variant: "info", message: "Reloading MCP servers…" })
-          gw.request<{ status: string }>("reload.mcp")
-            .then(() => toast.show({ variant: "success", message: "MCP servers reloaded" }))
+          gw.request<{ status?: string; message?: string }>("reload.mcp", params)
+            .then(r => {
+              if (r.status === "confirm_required") {
+                toast.show({ variant: "warning",
+                  message: r.message || "/reload-mcp invalidates prompt cache. Re-run as `/reload-mcp now` or `/reload-mcp always`." })
+                return
+              }
+              toast.show({ variant: "success", message: params.always
+                ? "MCP servers reloaded · future /reload-mcp runs silently"
+                : "MCP servers reloaded" })
+            })
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
           return
+        }
         case "save":
           gw.request<{ file: string }>("session.save")
             .then(r => toast.show({ variant: "success", message: `Saved → ${r.file}` }))
