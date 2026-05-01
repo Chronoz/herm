@@ -83,3 +83,92 @@ export function hex(c: RGB | null): string | undefined {
   if (!c) return undefined
   return `#${c.r.toString(16).padStart(2, "0")}${c.g.toString(16).padStart(2, "0")}${c.b.toString(16).padStart(2, "0")}`
 }
+
+// ─── Rendering pipeline ─────────────────────────────────────────────────
+//
+// renderChafa() shells the chafa binary and returns parsed rows. Cached by
+// (resolved path, mtime, width) — re-renders on the same file at the same
+// width are free. Cache is an LRU capped at ~50 entries to bound memory
+// for a scrollback with lots of images. Height is omitted from the key
+// because we always pass chafa a 4:1 w/h cap and let it pick the actual
+// row count to preserve aspect.
+
+import { spawnSync } from "child_process"
+import { existsSync, statSync } from "fs"
+
+const CHAFA_PATHS = [
+  "/usr/sbin/chafa",
+  "/usr/bin/chafa",
+  "/usr/local/bin/chafa",
+  "/opt/homebrew/bin/chafa",
+  "/home/linuxbrew/.linuxbrew/bin/chafa",
+]
+
+let cachedBin: string | null | undefined = undefined
+
+/** Locate the chafa binary once per process. null → not installed. */
+export function chafaBin(): string | null {
+  if (cachedBin !== undefined) return cachedBin
+  for (const p of CHAFA_PATHS) if (existsSync(p)) { cachedBin = p; return p }
+  cachedBin = null
+  return null
+}
+
+/** Expand ~ in a user-supplied path. Returns the absolute path or null
+ *  if the file doesn't exist. */
+export function resolveImage(path: string): string | null {
+  const full = path.startsWith("~")
+    ? (process.env.HOME ?? "") + path.slice(1)
+    : path
+  return existsSync(full) ? full : null
+}
+
+export type Rendered = { rows: Cell[][] } | { err: string }
+
+const CACHE = new Map<string, Cell[][]>()
+const CACHE_CAP = 50
+
+function cacheGet(k: string): Cell[][] | undefined {
+  const v = CACHE.get(k)
+  if (!v) return undefined
+  // LRU touch: re-insert at tail
+  CACHE.delete(k)
+  CACHE.set(k, v)
+  return v
+}
+
+function cachePut(k: string, v: Cell[][]): void {
+  if (CACHE.size >= CACHE_CAP) CACHE.delete(CACHE.keys().next().value!)
+  CACHE.set(k, v)
+}
+
+/** Render an image to parsed cells at the given cell-width. Height is
+ *  capped at roughly width/3 so a 2:1-ish image fits most message widths.
+ *  Returns { err } on any failure (caller should fall back to MediaChip). */
+export function renderChafa(path: string, width: number, height?: number): Rendered {
+  const bin = chafaBin()
+  if (!bin) return { err: "chafa not installed" }
+  const full = resolveImage(path)
+  if (!full) return { err: `not found: ${path}` }
+
+  let mtime = 0
+  try { mtime = statSync(full).mtimeMs | 0 } catch { /* ignore — cache key is still unique */ }
+  const h = height ?? Math.max(6, Math.round(width / 3))
+  const key = `${full}:${mtime}:${width}x${h}`
+  const cached = cacheGet(key)
+  if (cached) return { rows: cached }
+
+  const r = spawnSync(bin, [
+    `--size=${width}x${h}`,
+    "--format=symbols",
+    "--symbols=block",
+    "--colors=full",
+    full,
+  ], { encoding: "utf8", timeout: 5_000 })
+  if (r.error) return { err: r.error.message }
+  if (r.status !== 0) return { err: (r.stderr || `chafa exit ${r.status}`).trim() }
+
+  const rows = parseChafa(r.stdout)
+  cachePut(key, rows)
+  return { rows }
+}

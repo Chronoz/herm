@@ -2,10 +2,11 @@ import { memo, useMemo, useRef, useState, type RefObject } from "react"
 import type { RGBA, MouseEvent } from "@opentui/core"
 import type { Message, Part, TextPart, ToolPart, PromptPart } from "../../types/message"
 import { ErrorBlock } from "./ErrorBlock"
-import { MediaChip, splitContent } from "./MediaChip"
+import { MediaChip, classify, splitContent } from "./MediaChip"
 import { CodeBlock } from "./CodeBlock"
 import { DiffBlock, isDiff } from "./DiffBlock"
 import { PromptCard, type PromptCardHandle } from "./PromptCard"
+import { ChafaImage } from "../../ui/ChafaImage"
 import { useTheme } from "../../theme"
 import { useSkin } from "../../app/skin"
 
@@ -208,9 +209,14 @@ const AssistantMessage = memo(({ message, streaming, prompt, onPick }: {
     const last = streaming && (p as TextPart).streaming
     return seg.map((s, j) => {
       const tail = last && j === seg.length - 1
-      if ("media" in s) return (
-        <box key={`${k}-m${j}`} marginTop={1}><MediaChip path={s.media} /></box>
-      )
+      if ("media" in s) {
+        const kind = classify(s.media)
+        return kind === "img" ? (
+          <box key={`${k}-m${j}`}><ChafaImage path={s.media} /></box>
+        ) : (
+          <box key={`${k}-m${j}`} marginTop={1}><MediaChip path={s.media} /></box>
+        )
+      }
       if ("code" in s) return (
         <CodeBlock key={`${k}-c${j}`} code={s.code} lang={s.lang} streaming={tail} />
       )
