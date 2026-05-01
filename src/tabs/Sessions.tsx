@@ -14,6 +14,7 @@ import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 import { Col, Hdr, Marquee } from "../ui/table"
+import { Ticker, inline } from "../ui/ticker"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
@@ -85,6 +86,7 @@ const PeekRow = memo((props: { row: Folded }) => {
   const [hot, setHot] = useState(false)
   const left = props.row.role === "user"
   const color = left ? theme.primary : theme.accent
+  const fg = left ? theme.text : theme.markdownText
   // Width-2 box with a single-side border draws exactly "│ " / " │",
   // matching components/chat/MessageItem Gutter at height=1.
   const bar = (side: "left" | "right") => (
@@ -102,10 +104,13 @@ const PeekRow = memo((props: { row: Folded }) => {
          onMouseOver={() => setHot(true)}
          onMouseOut={() => setHot(false)}>
       {left ? bar("left") : null}
-      <Marquee grow min={0} active={hot} speed={35} hold={150}
-               fg={hot ? theme.text : (left ? theme.text : theme.markdownText)}>
-        {props.row.text}
-      </Marquee>
+      <Ticker active={hot} speed={35} hold={150} fg={fg}>
+        {inline(props.row.text).map((s, i) =>
+          s.c ? <span key={i} fg={theme.warning}>{s.t}</span>
+          : s.b ? <span key={i} fg={fg}><strong>{s.t}</strong></span>
+          : s.i ? <span key={i} fg={fg}><u>{s.t}</u></span>
+          : <span key={i} fg={fg}>{s.t}</span>)}
+      </Ticker>
       {left ? null : bar("right")}
     </box>
   )
@@ -132,12 +137,10 @@ const Peek = memo((props: { sid: string; total: number; peek: typeof sdb.peek })
   const more = Math.max(0, props.total - 60)
 
   return (
-    <box flexDirection="column" flexGrow={1} minHeight={4}>
-      <box height={1}>
-        <text fg={theme.textMuted}>
-          {`Transcript${more > 0 ? `  ·  ${more} earlier` : ""}`}
-        </text>
-      </box>
+    <box flexDirection="column" flexGrow={1} minHeight={5}
+         border borderStyle="single" borderColor={theme.border}
+         title={` Transcript${more > 0 ? `  ·  ${more} earlier` : ""} `}
+         titleAlignment="left">
       <scrollbox ref={sb} scrollY flexGrow={1} minHeight={3}>
         <box flexDirection="column" width="100%">
           {data.turns.map((r, i) => <PeekRow key={i} row={r} />)}
