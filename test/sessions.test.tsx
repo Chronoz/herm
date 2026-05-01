@@ -828,3 +828,100 @@ describe("Sessions tab — transcript peek", () => {
   })
 })
 
+// ─── Lineage nav (herm-ngy) ──────────────────────────────────────────
+//
+// ←/→ walk the compression chain from the focused row. Tests verify:
+//   • → jumps to compressedTo.id via onSwitch (after confirm)
+//   • ← jumps to continuesFrom.id via onSwitch (after confirm)
+//   • keys at a row without that lineage field do nothing (no confirm)
+//   • io.lineage is queried on demand per keypress (not cached at mount)
+
+describe("Sessions tab — lineage keyboard nav (herm-ngy)", () => {
+  const LINEAGE_ROWS = [
+    { id: "sid-root", title: "Root", preview: "", message_count: 5, started_at: 1700000000, source: "tui" },
+    { id: "sid-mid",  title: "Middle", preview: "", message_count: 7, started_at: 1700000100, source: "tui" },
+    { id: "sid-tip",  title: "Tip", preview: "", message_count: 3, started_at: 1700000200, source: "tui" },
+  ]
+
+  // Chain: root ← mid ← tip (tip continues from mid, which continues from root).
+  const lineageMap: Record<string, { continuesFrom?: { id: string; title: string | null }; compressedTo?: { id: string; title: string | null } }> = {
+    "sid-root": { compressedTo: { id: "sid-mid", title: "Middle" } },
+    "sid-mid":  { continuesFrom: { id: "sid-root", title: "Root" }, compressedTo: { id: "sid-tip", title: "Tip" } },
+    "sid-tip":  { continuesFrom: { id: "sid-mid", title: "Middle" } },
+  }
+  const lineage = (sid: string) => lineageMap[sid] ?? {}
+
+  test("→ from root jumps forward to compressedTo via confirm", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: LINEAGE_ROWS }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={{ ...NOIO, lineage }} onSwitch={sid => { switched = sid }} />,
+      { gw },
+    )
+    await until(t, () => t.frame().includes("Sessions (3)"))
+    // Table sort is oldest-first, so visible[0] = sid-root (Root on top).
+    // Press → to go to its compressedTo (sid-mid).
+    act(() => t.keys.pressArrow("right"))
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
+    await t.settle()
+    expect(switched).toBe("sid-mid")
+    t.destroy()
+  })
+
+  test("← from tip jumps backward to continuesFrom via confirm", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: LINEAGE_ROWS }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={{ ...NOIO, lineage }} onSwitch={sid => { switched = sid }} />,
+      { gw },
+    )
+    await until(t, () => t.frame().includes("Sessions (3)"))
+    // Walk down to sid-tip (last in oldest-first sort).
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    // ← from tip → continuesFrom (sid-mid).
+    act(() => t.keys.pressArrow("left"))
+    await until(t, () => t.frame().includes("Load session?"))
+    await act(async () => { await t.keys.typeText("y") })
+    await t.settle()
+    expect(switched).toBe("sid-mid")
+    t.destroy()
+  })
+
+  test("arrow at tip without compressedTo is a no-op (no confirm, no switch)", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: LINEAGE_ROWS }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={{ ...NOIO, lineage }} onSwitch={sid => { switched = sid }} />,
+      { gw },
+    )
+    await until(t, () => t.frame().includes("Sessions (3)"))
+    // Walk to sid-tip (last), which has NO compressedTo. → should do nothing.
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    act(() => t.keys.pressArrow("right"))
+    await t.settle()
+    expect(t.frame()).not.toContain("Load session?")
+    expect(switched).toBe("")
+    t.destroy()
+  })
+
+  test("arrow at root without continuesFrom is a no-op", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: LINEAGE_ROWS }) })
+    let switched = ""
+    const t = await mountNode(
+      <Sessions focused io={{ ...NOIO, lineage }} onSwitch={sid => { switched = sid }} />,
+      { gw },
+    )
+    await until(t, () => t.frame().includes("Sessions (3)"))
+    // sel=0 → sid-root (top of oldest-first sort). ← is no-op (no continuesFrom).
+    act(() => t.keys.pressArrow("left"))
+    await t.settle()
+    expect(t.frame()).not.toContain("Load session?")
+    expect(switched).toBe("")
+    t.destroy()
+  })
+})
+
+

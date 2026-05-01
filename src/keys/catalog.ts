@@ -87,6 +87,8 @@ export const DEFAULTS = {
   //     counterpart; sessions.rename diverges from oc's session-
   //     dialog ctrl+r.
   "sessions.rename":   def("ctrl+r",               "Retitle session",                    "sessions"), // match oc session_rename
+  "sessions.prev":     def("left",                 "Walk lineage back (continues from)", "sessions"),
+  "sessions.next":     def("right",                "Walk lineage forward (compressed to)", "sessions"),
   "agents.kill":       def("k",                    "Kill subagent",                      "agents"),	// k: I like this
   "agents.history":    def("h",                    "Spawn history",                      "agents"),	// k: keep
   "config.save":       def("ctrl+s",               "Write config",                       "config"),

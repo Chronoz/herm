@@ -699,6 +699,24 @@ export const Sessions = memo((props: Props) => {
     })
     if (matched) return
     if (keys.match("sessions.rename", key)) return void rename()
+    if (keys.match("sessions.prev", key) || keys.match("sessions.next", key)) {
+      // Walk the compression chain. continuesFrom is the ancestor
+      // (older session this was resumed from), compressedTo is the
+      // descendant (newer session this compressed into). Look up
+      // lineage on demand — query is in-process and sub-ms, no
+      // reason to cache across the small number of ←/→ presses.
+      const v = visible[sel]
+      if (!v) return
+      const ln = io.lineage(v.row.id)
+      const target = keys.match("sessions.prev", key)
+        ? ln.continuesFrom?.id
+        : ln.compressedTo?.id
+      if (!target) return
+      // Match lineage-click semantics: confirm switching (unless it's
+      // the current session, which lineageSwitch short-circuits).
+      lineageSwitch(target)
+      return
+    }
   })
 
   const empty = searching ? results.length === 0 && query.length > 0 : rows.length === 0
@@ -712,7 +730,7 @@ export const Sessions = memo((props: Props) => {
         title={searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
         hint={searching
           ? "↑↓ navigate  Enter/click switch  Esc cancel"
-          : `↑↓ navigate  ${keys.print("list.activate")}/click switch  ${keys.print("list.search")} search  ${keys.print("sessions.rename")} rename  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}
+          : `↑↓ navigate  ←→ lineage  ${keys.print("list.activate")}/click switch  ${keys.print("list.search")} search  ${keys.print("sessions.rename")} rename  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}
         error={warn || null}
         grow={3}
       >
