@@ -28,9 +28,18 @@ import { App } from "./app";
 import * as perf from "./utils/perf";
 import * as control from "./utils/control";
 import * as preferences from "./utils/preferences";
+import { resetTerminalModes, installExitResetHooks } from "./utils/terminal-reset";
 
 // Initialize and render
 const main = async () => {
+  // Self-heal a tab that a prior crashed TUI left with mouse / focus
+  // / bracketed-paste / kitty-keyboard modes stuck on. @opentui/core
+  // only resets ?1049 (alt-screen), so without this the composer
+  // gets poisoned by raw escape sequences on startup.
+  resetTerminalModes()
+  // And on our own exit paths, so we don't poison the next process.
+  installExitResetHooks()
+
   perf.mem("pre-renderer")
 
   const prefs = preferences.load()
