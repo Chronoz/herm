@@ -40,6 +40,7 @@ import { openConfirm } from "./dialogs/confirm"
 import { openRollback } from "./dialogs/rollback"
 import { openHistory } from "./dialogs/history"
 import { openStatus, openUsage, openProfile } from "./dialogs/info"
+import { openChafa } from "./dialogs/chafa"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
@@ -330,6 +331,10 @@ const AppInner = () => {
         case "status": openStatus(dialog, info, sid); return
         case "usage": openUsage(dialog, gw); return
         case "profile": openProfile(dialog); return
+        case "chafa":
+          if (!arg.trim()) { toast.show({ variant: "info", message: "usage: /chafa <path>" }); return }
+          openChafa(dialog, arg.trim())
+          return
         case "steer":
           openTextPrompt(dialog, { title: "Steer", label: "Note to inject on next tool result" })
             .then(text => {
