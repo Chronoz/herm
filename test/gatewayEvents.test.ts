@@ -7,8 +7,7 @@ function map(ev: GatewayEvent, side: Partial<Side> = {}) {
   const spy = (name: string) => (...a: unknown[]) => { calls[name] = a }
   const s: Side = {
     onReady: spy("ready"), onSessionInfo: spy("info"), onUsage: spy("usage"),
-    onTurnComplete: spy("done"), onStatus: spy("status"), onClarify: spy("clarify"),
-    onApproval: spy("approval"), onSudo: spy("sudo"), onSecret: spy("secret"),
+    onTurnComplete: spy("done"), onStatus: spy("status"),
     onBackground: spy("bg"), onBtw: spy("btw"), ...side,
   }
   return { action: mapEvent(ev, s), calls }
@@ -101,11 +100,14 @@ describe("mapEvent", () => {
       .toEqual({ kind: "thinking", text: "done", final: true })
   })
 
-  test("request events fire side callbacks, no action", () => {
-    const r = map({ type: "clarify.request", payload: { request_id: "x", question: "?", choices: null } })
-    expect(r.action).toBeNull()
-    expect(r.calls.clarify).toBeDefined()
-    expect(map({ type: "approval.request", payload: { command: "rm", description: "d" } }).calls.approval)
-      .toBeDefined()
+  test("request events return prompt actions (no side callback)", () => {
+    expect(map({ type: "clarify.request", payload: { request_id: "x", question: "?", choices: null } }).action)
+      .toEqual({ kind: "prompt", id: "x", req: { variant: "clarify", request_id: "x", question: "?", choices: null } })
+    expect(map({ type: "approval.request", payload: { command: "rm", description: "d" } }).action)
+      .toMatchObject({ kind: "prompt", req: { variant: "approval", command: "rm", description: "d" } })
+    expect(map({ type: "sudo.request", payload: { request_id: "s" } }).action)
+      .toEqual({ kind: "prompt", id: "s", req: { variant: "sudo", request_id: "s" } })
+    expect(map({ type: "secret.request", payload: { request_id: "k", prompt: "p", env_var: "API_KEY" } }).action)
+      .toEqual({ kind: "prompt", id: "k", req: { variant: "secret", request_id: "k", prompt: "p", env_var: "API_KEY" } })
   })
 })

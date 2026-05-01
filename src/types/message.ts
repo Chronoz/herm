@@ -33,7 +33,25 @@ export type ThinkingPart = {
   streaming: boolean
 }
 
-export type Part = TextPart | ToolPart | ThinkingPart
+/** Agent-originated interactive prompt. Renders inline in the
+ *  transcript; `answered` is set (in place) once the user responds,
+ *  collapsing the card to a one-line outcome row that persists in
+ *  history. */
+export type PromptPart = {
+  type: "prompt"
+  id: string
+  variant: "approval" | "clarify" | "sudo" | "secret"
+  req: PromptReq
+  answered?: { label: string; ok: boolean; at: number }
+}
+
+export type PromptReq =
+  | { variant: "approval"; command: string; description: string }
+  | { variant: "clarify"; request_id: string; question: string; choices: string[] | null }
+  | { variant: "sudo"; request_id: string }
+  | { variant: "secret"; request_id: string; prompt: string; env_var: string }
+
+export type Part = TextPart | ToolPart | ThinkingPart | PromptPart
 
 export type Usage = {
   input: number

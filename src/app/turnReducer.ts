@@ -2,7 +2,7 @@
 // order the gateway emits them (text → tool → text → …), so rendering can
 // iterate `parts` chronologically without regrouping.
 
-import type { Message, Part, TextPart, ToolPart, Usage } from "../types/message"
+import type { Message, Part, TextPart, ToolPart, PromptPart, PromptReq, Usage } from "../types/message"
 import { mid, pid } from "../types/message"
 import type { SubagentPayload, TranscriptMessage } from "../utils/gateway-types"
 
@@ -35,6 +35,8 @@ export type Action =
   | { kind: "tool.complete"; id: string; summary?: string; error?: string; inline_diff?: string }
   | { kind: "thinking"; text: string; final: boolean }
   | { kind: "subagent"; event: "start" | "thinking" | "tool" | "progress" | "complete"; payload: SubagentPayload }
+  | { kind: "prompt"; id: string; req: PromptReq }
+  | { kind: "prompt.answered"; id: string; label: string; ok: boolean }
   | { kind: "error"; text: string }
   | { kind: "interrupt.notice"; text: string }
 
@@ -128,6 +130,27 @@ export function turnReducer(state: TurnState, a: Action): TurnState {
 
     case "subagent":
       return { ...state, messages: renderSubagent(state.messages, a.event, a.payload) }
+
+    case "prompt": {
+      const part: PromptPart = {
+        type: "prompt", id: a.id, variant: a.req.variant, req: a.req,
+      }
+      // Append to the in-progress assistant turn (prompts arrive
+      // mid-stream, between tool calls). Seal any open text so the
+      // prompt sits chronologically.
+      return {
+        ...state,
+        messages: appendPart(state.messages, part, true),
+      }
+    }
+
+    case "prompt.answered":
+      return {
+        ...state,
+        messages: updatePrompt(state.messages, a.id, p => ({
+          ...p, answered: { label: a.label, ok: a.ok, at: Date.now() },
+        })),
+      }
 
     case "error":
       return {
@@ -269,6 +292,17 @@ function updateToolById(messages: Message[], id: string, fn: (p: ToolPart) => To
   if (!last || last.role !== "assistant") return messages
   const parts = last.parts.map(p => p.type === "tool" && p.id === id ? fn(p) : p)
   return [...messages.slice(0, -1), { ...last, parts }]
+}
+
+/** Prompts can be answered after the assistant turn has moved on
+ *  (user scrolled away, agent kept streaming). Search all messages,
+ *  not just the tail. */
+function updatePrompt(messages: Message[], id: string, fn: (p: PromptPart) => PromptPart): Message[] {
+  return messages.map(m => {
+    if (m.role !== "assistant") return m
+    if (!m.parts.some(p => p.type === "prompt" && p.id === id)) return m
+    return { ...m, parts: m.parts.map(p => p.type === "prompt" && p.id === id ? fn(p) : p) }
+  })
 }
 
 function upsertThinking(messages: Message[], text: string, final: boolean): Message[] {

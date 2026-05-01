@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react"
-import { MessageItem } from "./MessageItem"
+import { MessageItem, type PromptWire } from "./MessageItem"
 import { TypingIndicator } from "./TypingIndicator"
 import { useTheme } from "../../theme"
 import { randomTip, splitTip } from "../../utils/tips"
@@ -8,11 +8,12 @@ import type { Message } from "../../types/message"
 type Props = {
   messages: Message[]
   streaming: boolean
+  prompt?: PromptWire
   onRewind?: (m: Message) => void
   onPick?: (m: Message) => void
 }
 
-export const MessageList = memo(({ messages, streaming, onRewind, onPick }: Props) => {
+export const MessageList = memo(({ messages, streaming, prompt, onRewind, onPick }: Props) => {
   const theme = useTheme().theme
 
   const style = useMemo(() => ({
@@ -83,6 +84,7 @@ export const MessageList = memo(({ messages, streaming, onRewind, onPick }: Prop
             key={msg.id}
             message={msg}
             streaming={lastStreaming && i === messages.length - 1}
+            prompt={prompt}
             onRewind={onRewind}
             onPick={onPick}
           />

@@ -57,7 +57,9 @@ export const Tail = memo((props: { run: boolean }) => {
 })
 
 function parts(m: Message | undefined): Part[] {
-  return m?.parts.filter(p => p.type !== "text") ?? []
+  // ThoughtCloud shows the agent's process (reasoning + tool calls).
+  // Prompts render inline in the transcript body, not here.
+  return m?.parts.filter(p => p.type === "thinking" || p.type === "tool") ?? []
 }
 
 type Pane = "all" | "reasoning" | "tools"

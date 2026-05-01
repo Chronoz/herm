@@ -4,17 +4,13 @@ import * as perf from "../utils/perf"
 import * as spawnHistory from "./spawnHistory"
 import type { GatewayEvent, GatewaySkin, SessionInfo } from "../utils/gateway-types"
 import type { Action } from "./turnReducer"
-import type { Usage } from "../types/message"
+import { pid, type Usage } from "../types/message"
 
 export type Side = {
   onReady?: () => void
   onSessionInfo?: (info: SessionInfo) => void
   onUsage?: (u: Usage) => void
   onTurnComplete?: () => void
-  onClarify?: (req: { request_id: string; question: string; choices: string[] | null }) => void
-  onApproval?: (req: { command: string; description: string }) => void
-  onSudo?: (req: { request_id: string }) => void
-  onSecret?: (req: { request_id: string; prompt: string; env_var: string }) => void
   onBackground?: (task_id: string, text: string) => void
   onBtw?: (text: string) => void
   onStatus?: (text: string) => void
@@ -123,20 +119,24 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
       return { kind: "error", text: ev.payload?.message ?? "Unknown error" }
 
     case "clarify.request":
-      side.onClarify?.(ev.payload)
-      return null
+      return { kind: "prompt", id: ev.payload.request_id,
+               req: { variant: "clarify", ...ev.payload } }
 
     case "approval.request":
-      side.onApproval?.(ev.payload)
-      return null
+      // Approval has no request_id upstream — the gateway's approval
+      // responder is a single pending slot. Mint a unique part id so
+      // multiple approvals in one turn don't alias each other when
+      // prompt.answered updates by id.
+      return { kind: "prompt", id: `approval-${pid()}`,
+               req: { variant: "approval", ...ev.payload } }
 
     case "sudo.request":
-      side.onSudo?.(ev.payload)
-      return null
+      return { kind: "prompt", id: ev.payload.request_id,
+               req: { variant: "sudo", ...ev.payload } }
 
     case "secret.request":
-      side.onSecret?.(ev.payload)
-      return null
+      return { kind: "prompt", id: ev.payload.request_id,
+               req: { variant: "secret", ...ev.payload } }
 
     case "background.complete":
       side.onBackground?.(ev.payload.task_id, ev.payload.text)

@@ -1,10 +1,11 @@
-import { memo, useMemo, useRef, useState } from "react"
+import { memo, useMemo, useRef, useState, type RefObject } from "react"
 import type { RGBA, MouseEvent } from "@opentui/core"
-import type { Message, Part, TextPart, ToolPart } from "../../types/message"
+import type { Message, Part, TextPart, ToolPart, PromptPart } from "../../types/message"
 import { ErrorBlock } from "./ErrorBlock"
 import { MediaChip, splitContent } from "./MediaChip"
 import { CodeBlock } from "./CodeBlock"
 import { DiffBlock, isDiff } from "./DiffBlock"
+import { PromptCard, type PromptCardHandle } from "./PromptCard"
 import { useTheme } from "../../theme"
 import { useSkin } from "../../app/skin"
 
@@ -107,15 +108,22 @@ const Gutter = memo(({ color, glyph = "│", side = "left", children }: {
   )
 })
 
-export const MessageItem = memo(({ message, streaming, onRewind, onPick }: {
+export type PromptWire = {
+  /** Ref to the single pending prompt card, for key routing. */
+  ref: RefObject<PromptCardHandle | null>
+  onAnswer: (id: string, label: string, ok: boolean) => void
+}
+
+export const MessageItem = memo(({ message, streaming, prompt, onRewind, onPick }: {
   message: Message
   streaming: boolean
+  prompt?: PromptWire
   onRewind?: (m: Message) => void
   onPick?: (m: Message) => void
 }) => {
   if (message.role === "system") return <SystemMessage message={message} />
   if (message.role === "user") return <UserMessage message={message} onRewind={onRewind} />
-  return <AssistantMessage message={message} streaming={streaming} onPick={onPick} />
+  return <AssistantMessage message={message} streaming={streaming} prompt={prompt} onPick={onPick} />
 })
 
 const SystemMessage = memo(({ message }: { message: Message }) => {
@@ -153,8 +161,8 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
   )
 })
 
-const AssistantMessage = memo(({ message, streaming, onPick }: {
-  message: Message; streaming: boolean; onPick?: (m: Message) => void
+const AssistantMessage = memo(({ message, streaming, prompt, onPick }: {
+  message: Message; streaming: boolean; prompt?: PromptWire; onPick?: (m: Message) => void
 }) => {
   const ctx = useTheme()
   const theme = ctx.theme
@@ -162,7 +170,8 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
   const [hover, setHover] = useState(false)
   const click = useClick(onPick && (() => onPick(message)))
   const err = !!message.error
-  const trail = message.parts.filter(p => p.type !== "text")
+  const trail = message.parts.filter((p): p is ToolPart | PromptPart =>
+    p.type === "tool" || p.type === "prompt")
   const diffs = trail.filter((p): p is ToolPart =>
     p.type === "tool" && (!!p.diff || isDiff(p.result)))
 
@@ -181,6 +190,18 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
   ].filter(Boolean).join(" · ")
 
   const part = (p: Part, i: number) => {
+    if (p.type === "prompt") {
+      // ref only attaches to the pending card (answered cards are
+      // inert outcome rows and never receive keys).
+      return (
+        <box key={`pr-${p.id}`} marginTop={1}
+             onMouseDown={(e: MouseEvent) => e.stopPropagation()}>
+          <PromptCard part={p}
+            ref={!p.answered ? prompt?.ref : undefined}
+            onAnswer={prompt?.onAnswer ?? (() => {})} />
+        </box>
+      )
+    }
     const seg = segs[i]
     if (!seg) return null
     const k = (p as TextPart).key ?? i
@@ -213,7 +234,7 @@ const AssistantMessage = memo(({ message, streaming, onPick }: {
           <box flexGrow={1}><text fg={theme.textMuted}>{header}</text></box>
           {trail.length ? (
             <box><text fg={theme.textMuted}>
-              {trunc(trail.map(p => p.type === "tool" ? p.name : "💭").join(" · "), 40)}
+              {trunc(trail.map(p => p.type === "tool" ? p.name : "?").join(" · "), 40)}
             </text></box>
           ) : null}
         </box>
