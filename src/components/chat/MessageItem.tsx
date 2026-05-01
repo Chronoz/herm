@@ -144,6 +144,10 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)
   const click = useClick(onRewind && (() => onRewind(message)))
+  const segs = useMemo(
+    () => message.parts.map(p => p.type === "text" && p.content ? splitContent(p.content) : null),
+    [message.parts],
+  )
   return (
     <box
       flexDirection="column"
@@ -154,8 +158,26 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
       {...click}
     >
       <Gutter color={theme.primary} side="left">
-        <box minHeight={1}>
-          <text fg={theme.text} wrapMode="word">{extract(message)}</text>
+        <box minHeight={1} flexDirection="column">
+          {message.parts.map((p, i) => {
+            const seg = segs[i]
+            if (!seg) return null
+            const k = (p as TextPart).key ?? i
+            return seg.map((s, j) => {
+              if ("media" in s) {
+                const kind = classify(s.media)
+                return kind === "img" ? (
+                  <box key={`${k}-m${j}`}><ChafaImage path={s.media} /></box>
+                ) : (
+                  <box key={`${k}-m${j}`} marginTop={1}><MediaChip path={s.media} /></box>
+                )
+              }
+              if ("code" in s) return (
+                <CodeBlock key={`${k}-c${j}`} code={s.code} lang={s.lang} />
+              )
+              return <text key={`${k}-${j}`} fg={theme.text} wrapMode="word">{s.md}</text>
+            })
+          })}
         </box>
       </Gutter>
     </box>
