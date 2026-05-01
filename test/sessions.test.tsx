@@ -133,15 +133,16 @@ describe("Sessions tab", () => {
     t.destroy()
   })
 
-  test("d confirms then calls io.remove and reloads", async () => {
-    const deleted: string[] = []
+  test("d confirms then deletes via session.delete RPC and reloads", async () => {
     let listed = ROWS
-    const gw = new MockGateway({ "session.list": () => ({ sessions: listed }) })
-    const remove = (sid: string) => {
-      deleted.push(sid)
-      listed = listed.filter(r => r.id !== sid)
-      return true
-    }
+    const gw = new MockGateway({
+      "session.list": () => ({ sessions: listed }),
+      "session.delete": (p) => {
+        listed = listed.filter(r => r.id !== p.session_id)
+        return { deleted: p.session_id }
+      },
+    })
+    const remove = () => { throw new Error("should use RPC, not direct delete") }
     const t = await mountNode(<Sessions focused io={{ ...NOIO, remove }} />, { gw })
     await until(t, () => t.frame().includes("Sessions (2)"))
 
@@ -152,24 +153,51 @@ describe("Sessions tab", () => {
     await act(async () => { await t.keys.typeText("y") })
     await until(t, () => t.frame().includes("Sessions (1)"))
 
-    expect(deleted).toEqual(["sid-a"])
+    expect(t.gw.last("session.delete")?.params.session_id).toBe("sid-a")
     expect(t.frame()).not.toContain("First session")
     expect(t.frame()).toContain("Second session")
     t.destroy()
   })
 
-  test("delete error surfaces toast, list unchanged", async () => {
-    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
-    const remove = () => { throw new Error("session is active") }
-    const t = await mountNode(<Sessions focused io={{ ...NOIO, remove }} />, { gw })
+  test("session.delete 'active' error surfaces toast, no local fallback", async () => {
+    const gw = new MockGateway({
+      "session.list": () => ({ sessions: ROWS }),
+      "session.delete": () => { throw new Error("cannot delete an active session") },
+    })
+    let local = 0
+    const t = await mountNode(<Sessions focused io={{ ...NOIO, remove: () => (local++, true) }} />, { gw })
     await until(t, () => t.frame().includes("Sessions (2)"))
 
     await act(async () => { await t.keys.typeText("d") })
     await until(t, () => t.frame().includes("Delete Session?"))
     await act(async () => { await t.keys.typeText("y") })
-    await until(t, () => t.frame().includes("session is active"))
+    await until(t, () => t.frame().includes("active session"))
 
+    expect(local).toBe(0)
     expect(t.frame()).toContain("Sessions (2)")
+    t.destroy()
+  })
+
+  test("session.delete unavailable falls back to io.remove", async () => {
+    const deleted: string[] = []
+    let listed = ROWS
+    const gw = new MockGateway({
+      "session.list": () => ({ sessions: listed }),
+      "session.delete": () => { throw new Error("Method not found") },
+    })
+    const remove = (sid: string) => {
+      deleted.push(sid)
+      listed = listed.filter(r => r.id !== sid)
+      return true
+    }
+    const t = await mountNode(<Sessions focused io={{ ...NOIO, remove }} />, { gw })
+    await until(t, () => t.frame().includes("Sessions (2)"))
+
+    await act(async () => { await t.keys.typeText("d") })
+    await act(async () => { await t.keys.typeText("y") })
+    await until(t, () => t.frame().includes("Sessions (1)"))
+
+    expect(deleted).toEqual(["sid-a"])
     t.destroy()
   })
 

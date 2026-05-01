@@ -2,10 +2,8 @@ import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
-import {
-  queryRecentSessions, searchSessions, deleteSession, renameSession, querySubagents, queryLineage,
-  type SessionRow, type SessionHit, type LineageInfo,
-} from "../utils/hermes-home"
+import * as sdb from "../utils/sessions-db"
+import type { SessionRow, SessionHit, LineageInfo } from "../utils/sessions-db"
 import type {
   SessionListItem, SessionListResponse,
 } from "../utils/gateway-types"
@@ -21,10 +19,15 @@ import { openTextPrompt } from "../dialogs/text-prompt"
 import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
 import { home } from "../home"
 
-// List comes from the gateway (session.list) so rows are resumable
-// under profiles/remote gateways; detail is enriched best-effort from
-// state.db. Search/delete go direct to state.db — stock tui_gateway
-// has no session.search/.delete RPC (UPSTREAM.md).
+// Architecture: herm's Sessions tab is a **local state.db reader**.
+// Stock tui_gateway exposes only ~30% of what the tab needs via RPC
+// (see sessions-db.ts header). The gateway is authoritative for
+// exactly one thing — *which session ids it can resume* — so we join
+// session.list against the local roots() by id. Enrichment (tokens,
+// cost, model, lineage, subagents, last_active) all comes from
+// state.db. When state.db isn't the gateway's state.db (remote
+// gateway, separate profile), enrichment is absent and rows render
+// un-enriched; the tab keeps working at session.list fidelity.
 
 type Row = SessionListItem & { detail?: SessionRow }
 
@@ -73,7 +76,7 @@ const Detail = memo((props: {
   // sub-ms. Cached by row.id so the lookup doesn't fire on every render.
   const [info, setInfo] = useState<LineageInfo>({})
   useEffect(() => {
-    setInfo((props.lineage ?? queryLineage)(r.id))
+    setInfo((props.lineage ?? sdb.lineage)(r.id))
   }, [r.id, props.lineage])
   const hasLineage = info.continuesFrom || info.compressedTo || subs > 0
   const go = (sid: string) => () => props.onSwitch?.(sid)
@@ -301,12 +304,12 @@ const SearchItem = memo((props: {
 // Data-layer ops are injectable so tests don't fight analytics.test
 // for the shared sandbox state.db. Defaults are the real functions.
 type IO = {
-  list: typeof queryRecentSessions
-  search: typeof searchSessions
-  remove: typeof deleteSession
-  rename: typeof renameSession
-  subagents: typeof querySubagents
-  lineage: typeof queryLineage
+  list: typeof sdb.roots
+  search: typeof sdb.search
+  remove: typeof sdb.remove
+  rename: typeof sdb.rename
+  subagents: typeof sdb.children
+  lineage: typeof sdb.lineage
 }
 
 type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
@@ -319,12 +322,12 @@ export const Sessions = memo((props: Props) => {
   const dims = useTerminalDimensions()
 
   const io: IO = {
-    list: props.io?.list ?? queryRecentSessions,
-    search: props.io?.search ?? searchSessions,
-    remove: props.io?.remove ?? deleteSession,
-    rename: props.io?.rename ?? renameSession,
-    subagents: props.io?.subagents ?? querySubagents,
-    lineage: props.io?.lineage ?? queryLineage,
+    list: props.io?.list ?? sdb.roots,
+    search: props.io?.search ?? sdb.search,
+    remove: props.io?.remove ?? sdb.remove,
+    rename: props.io?.rename ?? sdb.rename,
+    subagents: props.io?.subagents ?? sdb.children,
+    lineage: props.io?.lineage ?? sdb.lineage,
   }
 
   const [rows, setRows] = useState<Row[]>([])
@@ -338,9 +341,9 @@ export const Sessions = memo((props: Props) => {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SessionHit[]>([])
   const [searchSel, setSearchSel] = useState(0)
-  // Cache of parent_id → children. Populated on demand when a parent
-  // with subagent_count > 0 becomes the anchor. Cleared on every load.
-  const kids = useRef(new Map<string, Row[]>())
+  // parent_id → children, populated at load() time for every row
+  // with subagent_count > 0 so render stays pure (no sync fetch).
+  const [kids, setKids] = useState<Map<string, Row[]>>(new Map())
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const vscroll = useRef<ScrollBoxRenderable | null>(null)
 
@@ -352,25 +355,14 @@ export const Sessions = memo((props: Props) => {
   const anchored = anchor && rows.find(r => r.id === anchor.id)
   const owner =
     anchor?.indent
-      ? rows.find(r => kids.current.get(r.id)?.some(c => c.id === anchor.id))
+      ? rows.find(r => kids.get(r.id)?.some(c => c.id === anchor.id))
       : (anchored?.detail?.subagent_count ?? 0) > 0 ? anchored : undefined
-
-  // Fetch children for `owner` if not cached. This is a synchronous
-  // state.db query, so doing it inline during render is safe and keeps
-  // visible[] consistent with the anchor in the same pass.
-  if (owner && !kids.current.has(owner.id)) {
-    kids.current.set(owner.id, io.subagents(owner.id).map(d => ({
-      id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
-      message_count: d.message_count, started_at: d.started_at,
-      source: d.sessionSource, detail: d,
-    })))
-  }
 
   // Flat visible sequence = parents with `owner`'s children inlined.
   const visible = rows.flatMap((r, i) =>
     r.id === owner?.id
       ? [{ row: r, indent: false, parentIdx: i },
-         ...(kids.current.get(r.id) ?? []).map(c =>
+         ...(kids.get(r.id) ?? []).map(c =>
            ({ row: c, indent: true, parentIdx: i }))]
       : [{ row: r, indent: false, parentIdx: i }])
 
@@ -401,8 +393,13 @@ export const Sessions = memo((props: Props) => {
 
   const LIMIT = 2000
 
+  const toRow = (d: SessionRow): Row => ({
+    id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
+    message_count: d.message_count, started_at: d.started_at,
+    source: d.sessionSource, detail: d,
+  })
+
   const load = useCallback(async () => {
-    kids.current = new Map()
     const [rpc, fs] = await Promise.allSettled([
       gw.request<SessionListResponse>("session.list", { limit: LIMIT }),
       Promise.resolve().then(() => io.list(LIMIT)),
@@ -411,31 +408,28 @@ export const Sessions = memo((props: Props) => {
       ? new Map(fs.value.map(r => [r.id, r]))
       : new Map<string, SessionRow>()
 
-    if (rpc.status === "fulfilled" && rpc.value.sessions?.length) {
-      setWarn("")
-      // Stock session.list doesn't drop 0-msg stubs — every abandoned
-      // connect leaves one, and they're never useful to resume.
-      setRows(rpc.value.sessions
-        .filter(s => (s.message_count ?? 0) > 0)
-        .map(s => ({ ...s, detail: local.get(s.id) })))
-      return
-    }
-    // RPC failed or empty — fall back to filesystem, but flag it.
-    if (fs.status === "fulfilled" && fs.value.length) {
-      setWarn(rpc.status === "rejected"
+    // Stock session.list doesn't drop 0-msg stubs — every abandoned
+    // connect leaves one, and they're never useful to resume.
+    const list: Row[] = rpc.status === "fulfilled" && rpc.value.sessions?.length
+      ? rpc.value.sessions
+          .filter(s => (s.message_count ?? 0) > 0)
+          .map(s => ({ ...s, detail: local.get(s.id) }))
+      : fs.status === "fulfilled"
+        ? fs.value.filter(d => d.message_count > 0).map(toRow)
+        : []
+
+    // Prefetch children for every parent with subagents so render
+    // stays pure. Shared readonly handle + prepared statement; ~3ms
+    // for 22 parents / 123 children on a 495-root state.db.
+    setKids(new Map(list
+      .filter(r => (r.detail?.subagent_count ?? 0) > 0)
+      .map(r => [r.id, io.subagents(r.id).map(toRow)])))
+    setRows(list)
+    setWarn(rpc.status === "rejected"
+      ? list.length
         ? `gateway session.list failed (${(rpc.reason as Error).message}) — listing state.db directly; rows may not resume`
-        : "")
-      setRows(fs.value
-        .filter(d => d.message_count > 0)
-        .map(d => ({
-        id: d.id, title: d.title ?? "", preview: d.lastMessage ?? "",
-        message_count: d.message_count, started_at: d.started_at,
-        source: d.sessionSource, detail: d,
-      })))
-      return
-    }
-    setRows([])
-    setWarn(rpc.status === "rejected" ? (rpc.reason as Error).message : "")
+        : (rpc.reason as Error).message
+      : "")
   }, [gw])
 
   useEffect(() => { load() }, [load])
@@ -511,18 +505,26 @@ export const Sessions = memo((props: Props) => {
       body: trunc(r.title || "Untitled", 46),
       yes: "Delete",
       danger: true,
-    }).then(ok => {
+    }).then(async ok => {
       if (!ok) return
-      try {
-        if (!io.remove(r.id)) throw new Error("not found")
-        home.invalidate("recentSessions")
-        toast.show({ variant: "success", message: "Session deleted" })
-        void load()
-      } catch (e) {
-        toast.show({ variant: "error", message: `Delete failed: ${(e as Error).message}` })
-      }
+      // session.delete RPC first — it refuses to remove the active
+      // session and also unlinks transcript files. Fall back to the
+      // direct DELETE only when the gateway rejects/is down.
+      const done = await gw.request<{ deleted: string }>("session.delete", { session_id: r.id })
+        .then(() => true)
+        .catch((e: Error) => {
+          if (/active session/i.test(e.message)) {
+            toast.show({ variant: "error", message: "Can't delete the active session" })
+            return false
+          }
+          return io.remove(r.id)
+        })
+      if (!done) return
+      home.invalidate("recentSessions")
+      toast.show({ variant: "success", message: "Session deleted" })
+      void load()
     })
-  }, [dialog, toast, load])
+  }, [gw, dialog, toast, load])
   confirmDeleteRef.current = confirmDelete
 
   const rename = useCallback(async () => {

@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeEach, afterAll } from "bun:test"
 import { openStateDb } from "./fixtures/state-db"
 import { searchSessions, queryRecentSessions, querySubagents, queryLineage } from "../src/utils/hermes-home"
+import { kind, resetDb } from "../src/utils/sessions-db"
 
 // Seeds a clean state.db and exercises the real SQL paths in
-// hermes-home.ts — queryRecentSessions and searchSessions.
+// sessions-db.ts via the hermes-home re-exports.
 //
 // The sandbox state.db is process-wide (see test/preload.ts), so we
 // wipe tables before each seed AND at the end, leaving the DB empty
@@ -246,15 +247,19 @@ describe("querySubagents (gsk.14: fetch children for expansion)", () => {
     expect(querySubagents("live").map(s => s.id)).toEqual(["sub1", "sub2"])
   })
 
-  test("subagent rows carry subagent_count=0 and lineage_root_id=null", () => {
+  test("subagent rows carry real subagent_count (N-level recursion)", () => {
     const db = seed()
     sess(db, "root", "tui", 1700000000)
     sess(db, "sub", "tui", 1700000500, { parent_session_id: "root" })
+    sess(db, "grand1", "tool", 1700000600, { parent_session_id: "sub" })
+    sess(db, "grand2", "tool", 1700000700, { parent_session_id: "sub" })
     db.close()
 
     const subs = querySubagents("root")
-    expect(subs[0].subagent_count).toBe(0)
+    expect(subs[0].id).toBe("sub")
+    expect(subs[0].subagent_count).toBe(2)
     expect(subs[0].lineage_root_id).toBe(null)
+    expect(querySubagents("sub").map(s => s.id)).toEqual(["grand1", "grand2"])
   })
 })
 
@@ -327,3 +332,28 @@ describe("queryLineage (gsk.16: compression chain predecessor/successor)", () =>
     expect(queryLineage("src").compressedTo).toBeUndefined()
   })
 })
+
+describe("kind() — pure classifier (single source of truth for parent→child semantics)", () => {
+  test("null parent → root", () => {
+    expect(kind(null, { started_at: 100 })).toBe("root")
+  })
+  test("parent still live → subagent regardless of end_reason", () => {
+    expect(kind({ ended_at: null, end_reason: null }, { started_at: 100 })).toBe("subagent")
+    expect(kind({ ended_at: null, end_reason: "compression" }, { started_at: 100 })).toBe("subagent")
+  })
+  test("child started before parent ended → subagent", () => {
+    expect(kind({ ended_at: 200, end_reason: "compression" }, { started_at: 100 })).toBe("subagent")
+  })
+  test("child started at/after compression-ended parent → continuation", () => {
+    expect(kind({ ended_at: 100, end_reason: "compression" }, { started_at: 100 })).toBe("continuation")
+    expect(kind({ ended_at: 100, end_reason: "compression" }, { started_at: 500 })).toBe("continuation")
+  })
+  test("child started at/after branched parent → branch", () => {
+    expect(kind({ ended_at: 100, end_reason: "branched" }, { started_at: 200 })).toBe("branch")
+  })
+  test("parent ended normally, child after → subagent (degenerate: orphaned child)", () => {
+    expect(kind({ ended_at: 100, end_reason: "exit" }, { started_at: 200 })).toBe("subagent")
+  })
+})
+
+afterAll(() => { wipe(); resetDb() })
