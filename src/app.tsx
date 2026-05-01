@@ -427,11 +427,18 @@ const AppInner = () => {
       setStatus("")
     }
     interrupted.current = false
-    dispatch({ kind: "user", text })
+    // Echo attachments into the user's transcript message as MEDIA: lines
+    // so ChafaImage renders them inline. Gateway also tracks them in
+    // session["attached_images"] for the agent-side enrichment — these
+    // are display only, the path in the chip is what the agent sees.
+    const withMedia = attachments.length
+      ? [...attachments.flatMap(a => a.path ? [`MEDIA:${a.path}`] : []), text].filter(Boolean).join("\n")
+      : text
+    dispatch({ kind: "user", text: withMedia })
     setAttachments([])
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
-  }, [gw, slash, applyTitle])
+  }, [gw, slash, applyTitle, attachments])
 
   // ── Queue drain ───────────────────────────────────────────────────
   // Purely client-side: prompts typed while streaming accumulate in

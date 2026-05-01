@@ -25,11 +25,18 @@ describe("composer: image attachments (D4+D7)", () => {
     // stopPropagation: <input> didn't receive the literal "v"
     expect(f).not.toMatch(/> v\b/)
 
-    // send → chips clear (server drains attached_images on prompt.submit)
+    // send → pre-send chip clears from the composer tray (gateway drains
+    // attached_images on prompt.submit). The path echoes into the user's
+    // transcript as a MEDIA: line so ChafaImage renders it inline (falls
+    // back to MediaChip when chafa is absent or the file is missing —
+    // this test uses a /tmp path that doesn't exist, so badge renders).
     await act(async () => { await t.keys.typeText("describe this") })
     act(() => t.keys.pressEnter())
     await until(t, () => t.gw.last("prompt.submit") !== undefined)
-    await until(t, () => !t.frame().includes("clip_1.png"))
+    // Pre-send tray chip — the one with 800×600 dims — is gone.
+    await until(t, () => !t.frame().includes("800×600"))
+    // But the transcript MEDIA echo is visible: basename in the user turn.
+    expect(t.frame()).toContain("clip_1.png")
     t.destroy()
   })
 
