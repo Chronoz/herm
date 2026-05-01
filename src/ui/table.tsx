@@ -93,7 +93,7 @@ export const Marquee = (p: {
     <box ref={ref}
          width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
          minWidth={p.grow ? (p.min ?? 12) : p.w} height={1} overflow="hidden">
-      <text>{p.bold
+      <text wrapMode="none">{p.bold
         ? <span fg={fg}><strong>{shown}</strong></span>
         : <span fg={fg}>{shown}</span>}</text>
     </box>
