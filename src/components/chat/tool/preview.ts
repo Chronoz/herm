@@ -55,8 +55,3 @@ export function spec(name: string): Spec {
   return SPEC[name] ?? GENERIC
 }
 
-/** Short, human label for the tool name itself. */
-export function label(name: string): string {
-  const s = spec(name)
-  return s.verb || name.replace(/_/g, " ")
-}

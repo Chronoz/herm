@@ -140,33 +140,37 @@ describe("tool/file-edit", () => {
     expect(isDiff(undefined)).toBe(false)
   })
 
-  test("patch with inline_diff renders as a BlockTool with DiffBlock + delta footer", async () => {
+  test("patch renders as accent pill with basename; no diff body here", async () => {
     const t = await tool({
       type: "tool", id: "td", name: "patch", args: "",
       preview: "src/foo.ts", status: "done", duration: 42, diff: UDIFF,
     })
-    await until(t, () => t.frame().includes("@@ -1,3 +1,3 @@"))
-
+    await until(t, () => t.frame().includes("changed foo.ts"))
     const f = t.frame()
-    // BlockTool heavy left bar + title row
-    expect(f).toContain("┃")
-    expect(f).toContain("← Edit src/foo.ts")
-    // diff body
-    expect(f).toContain("+new line")
-    expect(f).toContain("-old line")
-    // delta footer
-    expect(f).toContain("+1")
-    expect(f).toContain("-1")
+    // diff body does NOT render in ThoughtCloud — InlineDiff in the
+    // assistant message owns that.
+    expect(f).not.toContain("┃")
+    expect(f).not.toContain("@@")
+    expect(f).not.toContain("+new line")
     t.destroy()
   })
 
-  test("write_file without a diff stays inline", async () => {
+  test("write_file renders same pill shape", async () => {
     const t = await tool({
       type: "tool", id: "tw", name: "write_file", args: "",
       preview: "docs/README.md", status: "done", duration: 9,
     })
-    await until(t, () => t.frame().includes("← Write docs/README.md"))
+    await until(t, () => t.frame().includes("changed README.md"))
     expect(t.frame()).not.toContain("┃")
+    t.destroy()
+  })
+
+  test("file-edit without preview falls back to generic inline row", async () => {
+    const t = await tool({
+      type: "tool", id: "tn", name: "patch", args: "",
+      status: "done", duration: 5, diff: UDIFF,
+    })
+    await until(t, () => t.frame().includes("Edit") && !t.frame().includes("changed"))
     t.destroy()
   })
 })

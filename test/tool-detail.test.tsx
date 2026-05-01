@@ -44,24 +44,15 @@ describe("Tool > detail mode", () => {
     { width: 100, height: 20 },
   )
 
-  test("expanded: FileEdit renders full diff block", async () => {
-    const t = await mount(file, "expanded")
-    await until(t, () => t.frame().includes("+1") && t.frame().includes("-1"))
-    // diff body lines present
-    expect(t.frame()).toContain("new")
-    expect(t.frame()).toContain("old")
-    t.destroy()
-  })
-
-  test("collapsed: FileEdit becomes inline row with delta, no diff body", async () => {
-    const t = await mount(file, "collapsed")
-    await until(t, () => t.frame().includes("src/x.ts"))
-    const f = t.frame()
-    expect(f).toContain("+1")
-    expect(f).toContain("-1")
-    // diff body lines NOT rendered
-    expect(f).not.toContain("@@ -1 +1 @@")
-    t.destroy()
+  test("FileEdit renders accent pill regardless of detail mode", async () => {
+    for (const mode of ["expanded", "collapsed"] as const) {
+      const t = await mount(file, mode)
+      await until(t, () => t.frame().includes("changed x.ts"))
+      const f = t.frame()
+      expect(f).not.toContain("@@")
+      expect(f).not.toContain("+1")
+      t.destroy()
+    }
   })
 
   test("hidden: completed tool renders nothing; running still shows", async () => {
