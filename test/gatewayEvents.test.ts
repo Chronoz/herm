@@ -110,4 +110,19 @@ describe("mapEvent", () => {
     expect(map({ type: "secret.request", payload: { request_id: "k", prompt: "p", env_var: "API_KEY" } }).action)
       .toEqual({ kind: "prompt", id: "k", req: { variant: "secret", request_id: "k", prompt: "p", env_var: "API_KEY" } })
   })
+
+  test("review.summary → persistent system line (trimmed)", () => {
+    expect(map({ type: "review.summary", payload: { text: "💾 Self-improvement review: patched skill foo" } }).action)
+      .toEqual({ kind: "system", text: "💾 Self-improvement review: patched skill foo" })
+    // Leading/trailing whitespace is stripped.
+    expect(map({ type: "review.summary", payload: { text: "  padded\n\n" } }).action)
+      .toEqual({ kind: "system", text: "padded" })
+  })
+
+  test("review.summary with empty/missing text → null (no blank system line)", () => {
+    expect(map({ type: "review.summary", payload: { text: "" } }).action).toBeNull()
+    expect(map({ type: "review.summary", payload: { text: "   \n\t" } }).action).toBeNull()
+    expect(map({ type: "review.summary", payload: undefined } as GatewayEvent).action).toBeNull()
+    expect(map({ type: "review.summary" } as GatewayEvent).action).toBeNull()
+  })
 })

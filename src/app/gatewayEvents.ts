@@ -142,6 +142,20 @@ export function mapEvent(ev: GatewayEvent, side: Side): Action | null {
       side.onBackground?.(ev.payload.task_id, ev.payload.text)
       return null
 
+    case "review.summary": {
+      // Self-improvement background review saved a skill patch or
+      // memory entry. Upstream tui_gateway emits this so clients can
+      // surface the mutation — without it, the file change happens
+      // silently. Python side already formats the text with a 💾
+      // prefix, so we pass through verbatim (trimmed). Guard blank
+      // payloads: upstream does the same, and a blank system line is
+      // noise. No toast — these fire stochastically post-turn and
+      // per-event toasting would spam.
+      const text = String(ev.payload?.text ?? "").trim()
+      if (!text) return null
+      return { kind: "system", text }
+    }
+
     case "btw.complete":
       side.onBtw?.(ev.payload.text)
       return null

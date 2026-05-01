@@ -27,6 +27,7 @@ export type GatewayEvent =
   | { type: "sudo.request"; payload: { request_id: string } }
   | { type: "secret.request"; payload: { request_id: string; prompt: string; env_var: string } }
   | { type: "background.complete"; payload: { task_id: string; text: string } }
+  | { type: "review.summary"; payload?: { text?: string } }
   | { type: "btw.complete"; payload: { text: string } }
   | { type: "browser.progress"; payload?: { message?: string; level?: "info" | "error" } }
   | { type: "subagent.start"; payload: SubagentPayload }
