@@ -712,79 +712,66 @@ describe("Sessions tab — lineage block", () => {
 const pm = (role: PeekMsg["role"], content: string | null, extra: Partial<PeekMsg> = {}): PeekMsg =>
   ({ role, content, tool_name: null, tool_calls: null, at: 0, ...extra })
 
-describe("fold() — collapse raw message rows for peek", () => {
-  test("user/assistant text pass through", () => {
-    const out = fold([pm("user", "hi"), pm("assistant", "hello")])
-    expect(out).toEqual([
-      { role: "user", text: "hi" },
-      { role: "assistant", text: "hello" },
-    ])
+describe("fold() — reduce raw message rows for peek", () => {
+  test("user/assistant text pass through; tools counted", () => {
+    expect(fold([pm("user", "hi"), pm("assistant", "hello")])).toEqual({
+      turns: [
+        { role: "user", text: "hi" },
+        { role: "assistant", text: "hello" },
+      ],
+      tools: 0,
+    })
   })
 
-  test("tool-call assistant + tool results collapse to one tools row", () => {
-    const out = fold([
+  test("tool results are counted, not rendered; empty assistant dropped", () => {
+    expect(fold([
       pm("user", "run it"),
       pm("assistant", null, { tool_calls: '[{"name":"terminal"},{"name":"read_file"}]' }),
       pm("tool", "out1", { tool_name: "terminal" }),
       pm("tool", "out2", { tool_name: "read_file" }),
       pm("assistant", "done"),
-    ])
-    expect(out).toEqual([
-      { role: "user", text: "run it" },
-      { role: "tools", text: "terminal · read_file", n: 2 },
-      { role: "assistant", text: "done" },
-    ])
+    ])).toEqual({
+      turns: [
+        { role: "user", text: "run it" },
+        { role: "assistant", text: "done" },
+      ],
+      tools: 2,
+    })
   })
 
-  test("consecutive tool-call loops collapse into one run with dedup'd names", () => {
-    const out = fold([
-      pm("assistant", null, { tool_calls: '[{"name":"terminal"}]' }),
-      pm("tool", "a", { tool_name: "terminal" }),
-      pm("assistant", null, { tool_calls: '[{"name":"terminal"}]' }),
-      pm("tool", "b", { tool_name: "terminal" }),
-      pm("assistant", null, { tool_calls: '[{"name":"patch"}]' }),
-      pm("tool", "c", { tool_name: "patch" }),
-    ])
-    expect(out).toEqual([{ role: "tools", text: "terminal · patch", n: 3 }])
-  })
-
-  test("assistant with BOTH content and tool_calls emits text row then starts a run", () => {
-    const out = fold([
+  test("assistant with BOTH content and tool_calls keeps the text row", () => {
+    expect(fold([
       pm("assistant", "thinking…", { tool_calls: '[{"name":"search"}]' }),
       pm("tool", "hit", { tool_name: "search" }),
       pm("assistant", "found it"),
-    ])
-    expect(out).toEqual([
-      { role: "assistant", text: "thinking…" },
-      { role: "tools", text: "search", n: 1 },
-      { role: "assistant", text: "found it" },
-    ])
+    ])).toEqual({
+      turns: [
+        { role: "assistant", text: "thinking…" },
+        { role: "assistant", text: "found it" },
+      ],
+      tools: 1,
+    })
   })
 
   test("system rows dropped; whitespace collapsed", () => {
-    const out = fold([
+    expect(fold([
       pm("system", "memory flush"),
       pm("user", "line1\n\n  line2"),
-    ])
-    expect(out).toEqual([{ role: "user", text: "line1 line2" }])
+    ])).toEqual({ turns: [{ role: "user", text: "line1 line2" }], tools: 0 })
   })
 
-  test("truncated tool_calls JSON still yields names via regex", () => {
-    const out = fold([
-      pm("assistant", null, { tool_calls: '[{"id":"x","name":"write_file","args":{"path":"/very/long/pa' }),
-      pm("tool", "", { tool_name: "write_file" }),
-    ])
-    expect(out[0]).toEqual({ role: "tools", text: "write_file", n: 1 })
-  })
-
-  test("orphan tool result (no preceding assistant tool_calls) starts a run from tool_name", () => {
-    const out = fold([pm("tool", "x", { tool_name: "terminal" })])
-    expect(out).toEqual([{ role: "tools", text: "terminal", n: 1 }])
+  test("pure tool session → no turns, tools counted", () => {
+    expect(fold([
+      pm("assistant", null, { tool_calls: "[…]" }),
+      pm("tool", "a", { tool_name: "terminal" }),
+      pm("tool", "b", { tool_name: "terminal" }),
+      pm("tool", "c", { tool_name: "patch" }),
+    ])).toEqual({ turns: [], tools: 3 })
   })
 })
 
 describe("Sessions tab — transcript peek", () => {
-  test("detail panel renders folded transcript tail", async () => {
+  test("renders user left-bar / assistant right-bar; footer shows tool count", async () => {
     const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
     const peek = (sid: string): PeekMsg[] => sid === "sid-a" ? [
       pm("user", "please fix the parser"),
@@ -795,14 +782,16 @@ describe("Sessions tab — transcript peek", () => {
     const t = await mountNode(<Sessions focused io={{ ...NOIO, peek }} />, { gw, width: 200, height: 50 })
     await until(t, () => t.frame().includes("Transcript"))
 
-    const f = t.frame()
-    expect(f).toContain("Transcript")
-    expect(f).toContain("▸")
-    expect(f).toContain("please fix the parser")
-    expect(f).toContain("⚙")
-    expect(f).toContain("read_file  (1)")
-    expect(f).toContain("◂")
-    expect(f).toContain("missing brace on line 42")
+    const lines = t.frame().split("\n")
+    // User row: bar at left edge of detail content area, text follows.
+    const u = lines.find(l => l.includes("please fix the parser"))!
+    expect(u).toMatch(/│ please fix the parser/)
+    // Assistant row: bar at right edge.
+    const a = lines.find(l => l.includes("missing brace"))!
+    expect(a).toMatch(/missing brace on line 42\.\s*│/)
+    // No tool rows rendered; footer has the count.
+    expect(t.frame()).not.toContain("read_file")
+    expect(t.frame()).toContain("2 turns  ·  1 tool call")
     t.destroy()
   })
 
@@ -823,4 +812,19 @@ describe("Sessions tab — transcript peek", () => {
     expect(t.frame()).not.toContain("alpha content here")
     t.destroy()
   })
+
+  test("tool-only session still shows footer (not 'no local transcript')", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    const peek = (): PeekMsg[] => [
+      pm("assistant", null, { tool_calls: "[…]" }),
+      pm("tool", "x", { tool_name: "terminal" }),
+      pm("tool", "y", { tool_name: "terminal" }),
+    ]
+    const t = await mountNode(<Sessions focused io={{ ...NOIO, peek }} />, { gw, width: 200, height: 50 })
+    await until(t, () => t.frame().includes("Transcript"))
+    expect(t.frame()).toContain("0 turns  ·  2 tool calls")
+    expect(t.frame()).not.toContain("(no local transcript)")
+    t.destroy()
+  })
 })
+

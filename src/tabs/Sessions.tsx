@@ -49,113 +49,105 @@ const stamp = (ts: number): string => {
 
 // ─── Transcript Peek ─────────────────────────────────────────────────
 //
-// Raw message rows are dense (every assistant tool_call is a row;
-// every tool result is a row). Fold them so the peek answers "what
-// was this session about?" without loading it:
-//   user              → one row, content
-//   assistant+content → one row, content
-//   assistant+tool_calls (no content) + trailing tool results
-//                     → ONE row: "⚙ name₁ · name₂ · … (N results)"
-// System rows are dropped — they're boilerplate (memory flush markers,
-// slash-command echoes) and never what you're scanning for.
+// Purpose: decide whether to load a session without replacing the
+// current chat. So: conversation only. Tool chatter is collapsed to
+// a single count in the footer — scanning "what was said" matters;
+// which tools ran doesn't, at peek granularity.
+//
+// Row style mirrors the chat transcript (MessageItem's Gutter): user
+// = left bar in theme.primary, assistant = right bar in theme.accent.
+// One line each; hover a row to fast-marquee the clipped text.
 
-type Folded = { role: "user" | "assistant" | "tools"; text: string; n?: number }
-
-// Pull tool names out of the SUBSTR'd tool_calls JSON. The string may
-// be truncated mid-object, so JSON.parse isn't an option; regex over
-// `"name":"…"` is enough for a one-line label.
-const names = (tc: string | null): string[] =>
-  tc ? [...tc.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map(m => m[1]) : []
+type Folded = { role: "user" | "assistant"; text: string }
 
 const line = (s: string | null) =>
   (s ?? "").replace(/\s+/g, " ").trim()
 
-/** Collapse raw PeekMsg[] into display rows. Exported for tests. */
-export const fold = (msgs: PeekMsg[]): Folded[] => {
-  const out: Folded[] = []
-  let run: { calls: string[]; n: number } | null = null
-  const flush = () => {
-    if (!run) return
-    out.push({ role: "tools", text: run.calls.join(" · ") || "tool", n: run.n })
-    run = null
-  }
+/** Reduce raw PeekMsg[] to { turns, tools }. Exported for tests. */
+export const fold = (msgs: PeekMsg[]): { turns: Folded[]; tools: number } => {
+  const turns: Folded[] = []
+  let tools = 0
   for (const m of msgs) {
-    if (m.role === "user") {
-      flush()
-      out.push({ role: "user", text: line(m.content) })
-      continue
-    }
-    if (m.role === "assistant") {
-      const body = line(m.content)
-      const called = names(m.tool_calls)
-      // Speaking assistant turn ends any tool run.
-      if (body) { flush(); out.push({ role: "assistant", text: body }) }
-      // Tool invocations start/extend a run.
-      if (called.length) {
-        run = run ?? { calls: [], n: 0 }
-        for (const c of called) if (!run.calls.includes(c)) run.calls.push(c)
-      }
-      continue
-    }
-    if (m.role === "tool") {
-      run = run ?? { calls: m.tool_name ? [m.tool_name] : [], n: 0 }
-      run.n++
-      if (m.tool_name && !run.calls.includes(m.tool_name)) run.calls.push(m.tool_name)
-    }
-    // system → dropped
+    if (m.role === "tool") { tools++; continue }
+    if (m.role !== "user" && m.role !== "assistant") continue
+    const text = line(m.content)
+    // Assistant rows with tool_calls but no content are pure tool-
+    // invocation turns — nothing to read, counted in `tools` via
+    // their result rows.
+    if (!text) continue
+    turns.push({ role: m.role, text })
   }
-  flush()
-  return out
+  return { turns, tools }
 }
+
+const PeekRow = memo((props: { row: Folded }) => {
+  const theme = useTheme().theme
+  const [hot, setHot] = useState(false)
+  const left = props.row.role === "user"
+  const color = left ? theme.primary : theme.accent
+  // Width-2 box with a single-side border draws exactly "│ " / " │",
+  // matching components/chat/MessageItem Gutter at height=1.
+  const bar = (side: "left" | "right") => (
+    <box width={2} flexShrink={0} height={1}
+         border={[side]} borderColor={color}
+         customBorderChars={{
+           topLeft: "│", bottomLeft: "│", vertical: "│",
+           topRight: "│", bottomRight: "│", horizontal: "",
+           topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
+         }} />
+  )
+  return (
+    <box height={1} flexDirection="row"
+         backgroundColor={hot ? theme.backgroundElement : undefined}
+         onMouseOver={() => setHot(true)}
+         onMouseOut={() => setHot(false)}>
+      {left ? bar("left") : null}
+      <Marquee grow min={0} active={hot} speed={35} hold={150}
+               fg={hot ? theme.text : (left ? theme.text : theme.markdownText)}>
+        {props.row.text}
+      </Marquee>
+      {left ? null : bar("right")}
+    </box>
+  )
+})
 
 const Peek = memo((props: { sid: string; total: number; peek: typeof sdb.peek }) => {
   const theme = useTheme().theme
-  const [rows, setRows] = useState<Folded[] | null>(null)
+  const [data, setData] = useState<{ turns: Folded[]; tools: number } | null>(null)
   const sb = useRef<ScrollBoxRenderable | null>(null)
 
   useEffect(() => {
-    setRows(fold(props.peek(props.sid, 60)))
+    setData(fold(props.peek(props.sid, 60)))
   }, [props.sid, props.peek])
-  // Pin to bottom on load — the question is "where did this end up",
-  // not "how did it start". Fires once per sid.
+  // Pin to bottom on load — "where did this end up", not "how did
+  // it start".
   useEffect(() => {
-    if (rows && sb.current) sb.current.scrollTop = sb.current.scrollHeight
-  }, [rows])
+    if (data && sb.current) sb.current.scrollTop = sb.current.scrollHeight
+  }, [data])
 
-  if (rows === null) return null
-  if (rows.length === 0) return (
+  if (data === null) return null
+  if (data.turns.length === 0 && data.tools === 0) return (
     <box height={1}><text fg={theme.textMuted}>(no local transcript)</text></box>
   )
   const more = Math.max(0, props.total - 60)
-  const tag = (f: Folded) =>
-    f.role === "user" ? { g: "▸", fg: theme.info }
-    : f.role === "assistant" ? { g: "◂", fg: theme.success }
-    : { g: "⚙", fg: theme.warning }
 
   return (
     <box flexDirection="column" flexGrow={1} minHeight={4}>
       <box height={1}>
         <text fg={theme.textMuted}>
-          {`Transcript  ·  last ${rows.length} turns${more > 0 ? `  ·  ${more} earlier` : ""}`}
+          {`Transcript${more > 0 ? `  ·  ${more} earlier` : ""}`}
         </text>
       </box>
       <scrollbox ref={sb} scrollY flexGrow={1} minHeight={3}>
         <box flexDirection="column" width="100%">
-          {rows.map((f, i) => {
-            const t = tag(f)
-            return (
-              <box key={i} height={1} flexDirection="row">
-                <box width={2} flexShrink={0}><text fg={t.fg}>{t.g}</text></box>
-                <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-                  <text fg={f.role === "tools" ? theme.textMuted : theme.text}>
-                    {f.role === "tools" && f.n ? `${f.text}  (${f.n})` : f.text}
-                  </text>
-                </box>
-              </box>
-            )
-          })}
+          {data.turns.map((r, i) => <PeekRow key={i} row={r} />)}
         </box>
       </scrollbox>
+      <box height={1}>
+        <text fg={theme.textMuted}>
+          {`${data.turns.length} turn${data.turns.length === 1 ? "" : "s"}  ·  ${data.tools} tool call${data.tools === 1 ? "" : "s"}`}
+        </text>
+      </box>
     </box>
   )
 })
