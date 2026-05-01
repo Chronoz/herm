@@ -8,7 +8,8 @@ import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
 import { useKeys, toBindings } from "../../keys"
 import { useGateway } from "../../app/gateway"
-import type { ImageAttachResponse } from "../../utils/gateway-types"
+import type { ImageAttachResponse, DropDetectResponse } from "../../utils/gateway-types"
+import { looksLikePath } from "../../utils/drop"
 import type { SlashCommand } from "../../commands/slash"
 import { useSlashPopover } from "../../app/useSlashPopover"
 import { useAtRefPopover } from "../../app/useAtRefPopover"
@@ -43,6 +44,7 @@ type Props = {
   cmds: ReadonlyArray<SlashCommand>
   onSend: (text: string) => void
   onSlash: (cmd: SlashCommand) => void
+  onAttach?: (r: ImageAttachResponse) => void
   onEnqueue?: (text: string) => void
   onDequeue?: (i: number) => void
 }
@@ -107,24 +109,47 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     if (next !== null) write(next)
   }
 
-  // ≥5 pasted lines → gateway writes a temp file and hands back a
-  // `[Pasted #N …]` placeholder (hermes CLI convention; expanded server-side
-  // in prompt.submit). Below the limit, insert verbatim minus trailing
-  // newlines — terminals append one on bracketed paste and `echo`/`cat`
-  // output copied from a shell always carries one, so a naive 1-line paste
-  // would otherwise push the cursor to a blank second row. A paste that is
-  // *only* newlines is let through unchanged (intentional line break).
+  // Paste routing, in priority order:
+  //  1. Single-line paste that *looks* like a local path → ask the gateway.
+  //     input.detect_drop is authoritative (stats the file, handles file://,
+  //     quoting, escaped spaces, ~/ expansion, WSL drive rewriting). Image
+  //     hits append to session["attached_images"] server-side; herm mirrors
+  //     the chip and inserts only the trailing remainder text, not the
+  //     `[User attached image: …]` placeholder (that's for blind clients).
+  //     Non-image hits (pdf/txt/…) insert the `[User attached file: …]`
+  //     wrapper so the agent sees the path. Any miss falls through.
+  //  2. ≥5 lines → gateway writes a temp file and hands back a
+  //     `[Pasted #N …]` placeholder (hermes CLI convention; expanded
+  //     server-side in prompt.submit).
+  //  3. Otherwise insert verbatim minus trailing newlines — terminals append
+  //     one on bracketed paste and `echo`/`cat` output copied from a shell
+  //     always carries one, so a naive 1-line paste would otherwise push the
+  //     cursor to a blank second row. A paste that is *only* newlines is let
+  //     through unchanged (intentional line break).
   const paste = useCallback((e: PasteEvent) => {
     e.preventDefault()
     const raw = decodePasteBytes(e.bytes).replace(/\r\n?/g, "\n")
     const text = /[^\n]/.test(raw) ? raw.replace(/\n+$/, "") : raw
-    if (text.split("\n").length < 5) {
-      ta.current?.insertText(text)
+    const verbatim = () => ta.current?.insertText(text)
+    if (looksLikePath(text)) {
+      gw.request<DropDetectResponse>("input.detect_drop", { text })
+        .then(r => {
+          if (!r.matched) return verbatim()
+          if (r.is_image) {
+            const { path, count, name, width, height, token_estimate } = r
+            live.current.props.onAttach?.({ attached: true, path, count, name, width, height, token_estimate })
+            if (!r.text.startsWith("[User attached")) ta.current?.insertText(r.text + " ")
+            return
+          }
+          ta.current?.insertText(r.text + " ")
+        })
+        .catch(verbatim)
       return
     }
+    if (text.split("\n").length < 5) return verbatim()
     gw.request<{ placeholder: string }>("paste.collapse", { text })
       .then(r => ta.current?.insertText(r.placeholder + " "))
-      .catch(() => ta.current?.insertText(text))
+      .catch(verbatim)
   }, [gw])
 
   const submit = () => {

@@ -353,3 +353,103 @@ describe("composer", () => {
     t.destroy()
   })
 })
+
+describe("composer: paste → file drop detection", () => {
+  type Drop = import("../src/utils/gateway-types").DropDetectResponse
+  async function dropSetup(respond: (text: string) => Drop) {
+    const gw = new MockGateway()
+    gw.on$("input.detect_drop", p => respond(String(p.text)))
+    const ref = createRef<ComposerHandle>()
+    const attached: Array<import("../src/utils/gateway-types").ImageAttachResponse> = []
+    const t: Harness = await mountNode(
+      <box flexDirection="column" flexGrow={1} width="100%" height="100%">
+        <box flexGrow={1} />
+        <Composer
+          ref={ref}
+          focused ready streaming={false} cmds={LOCAL_COMMANDS}
+          attachments={attached}
+          onSend={() => {}} onSlash={() => {}}
+          onAttach={r => attached.push(r)}
+        />
+      </box>,
+      { gw, width: 120, height: 30 },
+    )
+    await until(t, () => t.frame().includes("Ready"))
+    return { t, ref, attached }
+  }
+
+  test("image path → chip via onAttach, buffer stays empty", async () => {
+    const { t, ref, attached } = await dropSetup(() => ({
+      matched: true, is_image: true, path: "/tmp/shot.png", count: 1,
+      name: "shot.png", width: 1440, height: 900, token_estimate: 1600,
+      text: "[User attached image: shot.png]",
+    }))
+    await act(async () => { await t.keys.pasteBracketedText("/tmp/shot.png") })
+    await until(t, () => attached.length === 1)
+    expect(t.gw.last("input.detect_drop")?.params.text).toBe("/tmp/shot.png")
+    expect(attached[0]).toEqual({
+      attached: true, path: "/tmp/shot.png", count: 1, name: "shot.png",
+      width: 1440, height: 900, token_estimate: 1600,
+    })
+    expect(ref.current?.value()).toBe("")
+    t.destroy()
+  })
+
+  test("image path + trailing prose → chip, remainder inserted", async () => {
+    const { t, ref, attached } = await dropSetup(() => ({
+      matched: true, is_image: true, path: "/tmp/shot.png", count: 1,
+      name: "shot.png", text: "what is this?",
+    }))
+    await act(async () => { await t.keys.pasteBracketedText("/tmp/shot.png what is this?") })
+    await until(t, () => attached.length === 1)
+    expect(ref.current?.value()).toBe("what is this? ")
+    t.destroy()
+  })
+
+  test("non-image file → wrapped text inserted, no chip", async () => {
+    const { t, ref, attached } = await dropSetup(() => ({
+      matched: true, is_image: false, path: "/tmp/report.pdf", name: "report.pdf",
+      text: "[User attached file: /tmp/report.pdf]",
+    }))
+    await act(async () => { await t.keys.pasteBracketedText("/tmp/report.pdf") })
+    await until(t, () => (ref.current?.value() ?? "").length > 0)
+    expect(ref.current?.value()).toBe("[User attached file: /tmp/report.pdf] ")
+    expect(attached).toEqual([])
+    t.destroy()
+  })
+
+  test("miss → verbatim insert", async () => {
+    const { t, ref, attached } = await dropSetup(() => ({ matched: false }))
+    await act(async () => { await t.keys.pasteBracketedText("/not/a/real/file") })
+    await until(t, () => ref.current?.value() === "/not/a/real/file")
+    expect(attached).toEqual([])
+    t.destroy()
+  })
+
+  test("RPC error → verbatim insert", async () => {
+    const gw = new MockGateway()
+    gw.on$("input.detect_drop", () => { throw new Error("boom") })
+    const ref = createRef<ComposerHandle>()
+    const t: Harness = await mountNode(
+      <box flexDirection="column" flexGrow={1} width="100%" height="100%">
+        <box flexGrow={1} />
+        <Composer ref={ref} focused ready streaming={false} cmds={LOCAL_COMMANDS}
+          onSend={() => {}} onSlash={() => {}} />
+      </box>,
+      { gw, width: 120, height: 30 },
+    )
+    await until(t, () => t.frame().includes("Ready"))
+    await act(async () => { await t.keys.pasteBracketedText("~/oops.png") })
+    await until(t, () => ref.current?.value() === "~/oops.png")
+    t.destroy()
+  })
+
+  test("non-path paste never calls input.detect_drop", async () => {
+    const { t, ref } = await dropSetup(() => ({ matched: false }))
+    await act(async () => { await t.keys.pasteBracketedText("just words") })
+    await t.settle()
+    expect(ref.current?.value()).toBe("just words")
+    expect(t.gw.last("input.detect_drop")).toBeUndefined()
+    t.destroy()
+  })
+})
