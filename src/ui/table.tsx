@@ -59,6 +59,10 @@ export const Marquee = (p: {
   w?: number; grow?: boolean; min?: number
   fg?: RGBA; bold?: boolean
   active: boolean
+  /** ms per character step (default 180). */
+  speed?: number
+  /** ms to sit still before scrolling starts (default 600). */
+  hold?: number
   children: string
 }) => {
   const theme = useTheme().theme
@@ -78,10 +82,10 @@ export const Marquee = (p: {
         const w = ref.current?.width ?? 0
         if (text.length <= w) { setOff(0); return }
         setOff(o => (o + 1) % (text.length + GAP.length))
-      }, 180)
-    }, 600)
+      }, p.speed ?? 180)
+    }, p.hold ?? 600)
     return () => { clearTimeout(hold); if (id) clearInterval(id); setOff(0) }
-  }, [animate, text])
+  }, [animate, text, p.speed, p.hold])
 
   const loop = text + GAP + text
   const shown = off > 0 ? loop.slice(off, off + text.length + GAP.length) : text
@@ -89,7 +93,7 @@ export const Marquee = (p: {
     <box ref={ref}
          width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
          minWidth={p.grow ? (p.min ?? 12) : p.w} height={1} overflow="hidden">
-      <text>{p.bold
+      <text wrapMode="none">{p.bold
         ? <span fg={fg}><strong>{shown}</strong></span>
         : <span fg={fg}>{shown}</span>}</text>
     </box>

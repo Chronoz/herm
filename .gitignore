@@ -41,3 +41,4 @@ profiles/
 # scratch
 issues.jsonl
 *.bak
+*.code-workspace

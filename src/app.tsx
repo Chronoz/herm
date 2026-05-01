@@ -1,5 +1,5 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
-import { Profiler, useState, useEffect, useRef, useCallback, useReducer } from "react"
+import { Profiler, useState, useEffect, useRef, useCallback, useMemo, useReducer } from "react"
 import * as perf from "./utils/perf"
 import * as spawnHistory from "./app/spawnHistory"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
@@ -43,7 +43,8 @@ import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
-import { ApprovalPrompt, ClarifyPrompt, SudoPrompt, SecretPrompt } from "./ui/prompts"
+import { pending as pendingPrompt, type PromptCardHandle } from "./components/chat/PromptCard"
+import type { PromptWire } from "./components/chat/MessageItem"
 import { resolve as resolveSlash, type SlashCommand } from "./commands/slash"
 import { useSlashCommands } from "./app/useSlashCommands"
 import { Composer, type ComposerHandle } from "./components/chat/Composer"
@@ -113,6 +114,7 @@ const AppInner = () => {
   const interrupted = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
+  const promptRef = useRef<PromptCardHandle>(null)
   const { cmds } = useSlashCommands()
   // Live ref so send() (stable for queue-drain) reads the current catalog
   // without re-creating itself on every catalog refresh.
@@ -131,9 +133,12 @@ const AppInner = () => {
   // text is flowing (`hasContent`) or the turn ends. A manual force
   // (avatar click, cloud click, message pin) overrides auto for the rest
   // of THAT turn; the override clears on the next turn's rising edge.
-  const cloudAuto = turn.streaming && !turn.hasContent
+  // A pending inline prompt also suppresses the cloud — the overlay
+  // would occlude the card the user needs to answer.
+  const prompt = pendingPrompt(turn.messages)
+  const cloudAuto = turn.streaming && !turn.hasContent && !prompt
   const [force, setForce] = useState<boolean | undefined>(undefined)
-  const cloud = force ?? cloudAuto
+  const cloud = !prompt && (force ?? cloudAuto)
   const prevStream = useRef(turn.streaming)
   useEffect(() => {
     if (!prevStream.current && turn.streaming) { setForce(undefined); setPick(undefined) }
@@ -512,10 +517,6 @@ const AppInner = () => {
         setMsgCount(c => c + 1); setStatus(""); pollUsage()
         spawnHistory.flush(gw, sid)
       },
-      onClarify: (req) => dialog.replace(<ClarifyPrompt req={req} />),
-      onApproval: (req) => dialog.replace(<ApprovalPrompt req={req} />),
-      onSudo: (req) => dialog.replace(<SudoPrompt req={req} />),
-      onSecret: (req) => dialog.replace(<SecretPrompt req={req} />),
       onBackground: (tid, text) => {
         const head = text.split("\n")[0].slice(0, 80)
         dispatch({ kind: "system", text: `◷ background task ${tid} complete — ${head}` })
@@ -596,6 +597,12 @@ const AppInner = () => {
     streaming: turn.streaming,
     dialogOpen: dialog.stack.length > 0,
     composer,
+    // Route keys to the pending inline prompt card before anything
+    // else. Card returns true when the key was consumed; the shell
+    // then stopPropagates so the composer textarea doesn't see it.
+    // promptRef is null when no card is pending (Outcome rows don't
+    // take the ref), so feed short-circuits.
+    onPromptKey: (k) => promptRef.current?.feed(k) ?? false,
     onInterrupt: () => {
       interrupted.current = true
       // Drop any 16ms-batched deltas that haven't hit the reducer yet —
@@ -641,10 +648,24 @@ const AppInner = () => {
 
   const contentFocused = focusRegion === "content" && !turn.streaming
 
+  // ── Inline prompt wiring ──────────────────────────────────────────
+  // At most one pending prompt (gateway blocks on the answer). The
+  // card mounts inside MessageList; key routing and composer-defocus
+  // live here because the shell owns both. `prompt` is computed above
+  // (before `cloud`) because a pending prompt also suppresses the
+  // ThoughtCloud overlay.
+  const promptAnswer = useCallback((id: string, label: string, ok: boolean) =>
+    dispatch({ kind: "prompt.answered", id, label, ok }), [])
+  const promptWire: PromptWire = useMemo(
+    () => ({ ref: promptRef, onAnswer: promptAnswer }), [promptAnswer])
+  // Snap to Chat when a prompt arrives so it isn't answered blind.
+  useEffect(() => { if (prompt && tab !== CHAT_TAB) setTab(CHAT_TAB) }, [prompt?.id])
+
   const content = () => {
     const inner = (() => {
       switch (tab) {
         case 0: return <Chat messages={turn.messages} streaming={turn.streaming}
+                             prompt={promptWire}
                              cloud={cloud} cloudH={cloudH} pick={pick}
                              onResize={setCloudH} onPick={onPick} onClose={closeCloud} onRewind={msgMenu} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
@@ -668,7 +689,12 @@ const AppInner = () => {
 
   const theme = themeCtx.theme
   const onMouseUp = useCallback(() => copySelection(renderer), [renderer])
-  const inputFocused = focusRegion === "input"
+  // Composer defocuses while any prompt is pending. Approval/clarify
+  // list-mode don't need input, and this guarantees the textarea's
+  // `focused` prop flips false→true on answer so OpenTUI refocuses it
+  // (a card's own <input focused> would otherwise leave it blurred).
+  // Keys still reach the card via onPromptKey on the global bus.
+  const inputFocused = focusRegion === "input" && !prompt
 
   return (
     <Profiler id="shell" onRender={perf.onRender}>

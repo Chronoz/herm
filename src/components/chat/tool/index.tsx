@@ -12,10 +12,10 @@
 import { memo } from "react"
 import type { ToolPart as Part } from "../../../types/message"
 import type { DetailMode } from "../../../utils/preferences"
-import { InlineTool, BlockTool } from "./frame"
-import { DiffBlock, isDiff } from "../DiffBlock"
+import { InlineTool } from "./frame"
+import { isDiff } from "../DiffBlock"
 import { Subagent } from "./Subagent"
-import { spec, label } from "./preview"
+import { spec } from "./preview"
 import { useTheme } from "../../../theme"
 
 const FILE = new Set(["write_file", "patch"])
@@ -26,11 +26,10 @@ function short(s: string | undefined, n = 120): string {
   return one.length > n ? one.slice(0, n - 1) + "…" : one
 }
 
-/** "← Edit path/to/file" — oc's title convention with a leading glyph. */
-function title(tool: Part): string {
-  const s = spec(tool.name)
-  const body = tool.preview ? ` ${short(tool.preview, 80)}` : ""
-  return `${s.icon} ${label(tool.name)}${body}`
+function base(path: string): string {
+  const clean = path.replace(/\/+$/, "")
+  const slash = clean.lastIndexOf("/")
+  return slash >= 0 ? clean.slice(slash + 1) : clean
 }
 
 const Inline = memo(({ tool }: { tool: Part }) => {
@@ -43,38 +42,24 @@ const Inline = memo(({ tool }: { tool: Part }) => {
   )
 })
 
-const FileEdit = memo(({ tool, detail }: { tool: Part; detail: DetailMode }) => {
+/** Accent-filled pill: `changed <basename>`. The actual diff renders
+ *  as an InlineDiff chip in the assistant message body (d39945f), so
+ *  the ThoughtCloud row only needs to say *that* a file changed. */
+const FileEdit = memo(({ tool }: { tool: Part }) => {
   const theme = useTheme().theme
-  const diff = tool.diff ?? (isDiff(tool.result) ? tool.result : undefined)
-  if (!diff) return <Inline tool={tool} />
-  const lines = diff.split("\n")
-  const add = lines.filter(l => /^\+(?!\+\+)/.test(l)).length
-  const del = lines.filter(l => /^-(?!--)/.test(l)).length
-  const delta = (
-    <>
-      <span fg={theme.success}>+{add}</span>
-      <span fg={theme.textMuted}> / </span>
-      <span fg={theme.error}>-{del}</span>
-    </>
-  )
-  if (detail === "collapsed") {
-    return (
-      <InlineTool part={tool}>
-        {label(tool.name)} {short(tool.preview, 60)}  {delta}
-      </InlineTool>
-    )
-  }
+  // While running (no result yet) or when preview is absent (some
+  // providers omit the path), fall through to the generic inline row.
+  if (tool.status === "running" || !tool.preview) return <Inline tool={tool} />
   return (
-    <BlockTool part={tool} title={title(tool)}>
-      <box><DiffBlock text={diff} /></box>
-      <box height={1}><text>{delta}</text></box>
-    </BlockTool>
+    <InlineTool part={tool}>
+      <span bg={theme.accent} fg={theme.background}> changed {short(base(tool.preview), 48)} </span>
+    </InlineTool>
   )
 })
 
 export const Tool = memo(({ tool, detail = "expanded" }: { tool: Part; detail?: DetailMode }) => {
   if (detail === "hidden" && tool.status !== "running") return null
   if (tool.trail || tool.name === "delegate_task") return <Subagent tool={tool} />
-  if (FILE.has(tool.name) || tool.diff || isDiff(tool.result)) return <FileEdit tool={tool} detail={detail} />
+  if (FILE.has(tool.name) || tool.diff || isDiff(tool.result)) return <FileEdit tool={tool} />
   return <Inline tool={tool} />
 })

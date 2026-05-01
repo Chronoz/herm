@@ -1,7 +1,6 @@
-// InlineTool / BlockTool — the two shapes every tool renders into.
-// oc's routes/session/index.tsx InlineTool/BlockTool translated to
-// React/Herm theme. A tool is an inline row by default; it becomes a
-// block when it has a body worth showing (diff, output, checklist).
+// InlineTool — the single shape every tool renders into in the
+// ThoughtCloud. Diffs that warrant a body render as InlineDiff chips
+// in the assistant message body (MessageItem), not here.
 
 import { memo, useState, type ReactNode } from "react"
 import type { RGBA } from "@opentui/core"
@@ -68,50 +67,3 @@ export const InlineTool = memo((p: InlineProps) => {
   )
 })
 
-type BlockProps = {
-  part: ToolPart
-  title: string
-  children: ReactNode
-  onClick?: () => void
-}
-
-export const BlockTool = memo((p: BlockProps) => {
-  const theme = useTheme().theme
-  const [hover, setHover] = useState(false)
-  const running = p.part.status === "running"
-  const failed = p.part.status === "error"
-  const spin = useSpinnerGlyph(running)
-
-  return (
-    <box
-      border={["left"]}
-      borderColor={theme.background}
-      customBorderChars={{
-        topLeft: "", bottomLeft: "", topRight: "", bottomRight: "",
-        horizontal: "", vertical: "┃", topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
-      }}
-      backgroundColor={hover ? theme.backgroundMenu : theme.backgroundPanel}
-      paddingLeft={2}
-      paddingTop={1}
-      paddingBottom={1}
-      marginTop={1}
-      flexDirection="column"
-      gap={1}
-      onMouseOver={p.onClick ? () => setHover(true) : undefined}
-      onMouseOut={p.onClick ? () => setHover(false) : undefined}
-      onMouseDown={p.onClick}
-    >
-      <box height={1}>
-        {running
-          ? <text><span fg={theme.warning}>{spin} </span><span fg={theme.textMuted}>{p.title.replace(/^# /, "")}</span></text>
-          : <text fg={theme.textMuted}>{p.title}</text>}
-      </box>
-      {p.children}
-      {failed && p.part.result ? (
-        <box minHeight={1}>
-          <text fg={theme.error} wrapMode="word">{p.part.result}</text>
-        </box>
-      ) : null}
-    </box>
-  )
-})

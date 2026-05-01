@@ -1,5 +1,6 @@
 import { memo } from "react"
 import { MessageList } from "../components/chat/MessageList"
+import type { PromptWire } from "../components/chat/MessageItem"
 import { ThoughtCloud } from "../components/chat/ThoughtCloud"
 import { useTheme } from "../theme"
 import type { Message } from "../types/message"
@@ -7,6 +8,7 @@ import type { Message } from "../types/message"
 export const Chat = memo(({
   messages,
   streaming,
+  prompt,
   cloud,
   cloudH,
   pick,
@@ -17,6 +19,7 @@ export const Chat = memo(({
 }: {
   messages: Message[]
   streaming: boolean
+  prompt?: PromptWire
   cloud: boolean
   cloudH: number
   pick?: Message
@@ -33,7 +36,7 @@ export const Chat = memo(({
       position="relative"
       backgroundColor={theme.background}
     >
-      <MessageList messages={messages} streaming={streaming} onRewind={onRewind} onPick={onPick} />
+      <MessageList messages={messages} streaming={streaming} prompt={prompt} onRewind={onRewind} onPick={onPick} />
       {cloud ? (
         <box position="absolute" top={0} left={0} right={0} zIndex={1}>
           <ThoughtCloud

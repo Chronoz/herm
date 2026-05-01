@@ -3,7 +3,7 @@
 // there is exactly one global useKeyboard.
 
 import { useKeyboard, useRenderer } from "@opentui/react"
-import { resolveRenderLib, RGBA } from "@opentui/core"
+import { resolveRenderLib, RGBA, type ParsedKey } from "@opentui/core"
 import { useRef, useEffect, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
 import { editInEditor } from "../utils/editor"
@@ -26,6 +26,9 @@ type Opts = {
   streaming: boolean
   dialogOpen: boolean
   composer: RefObject<ComposerHandle | null>
+  /** Offer the key to a pending inline prompt card. Return true to
+   *  consume + stopPropagation; false to fall through to the shell. */
+  onPromptKey?: (key: ParsedKey) => boolean
   onInterrupt: () => void
   onInterruptNotice: () => void
   onCopyLast: () => void
@@ -106,6 +109,14 @@ export function useAppKeys(o: Opts) {
     // handles Esc-to-close; tabs/composer/interrupt all sit behind the
     // overlay and shouldn't move.
     if (o.dialogOpen) return
+
+    // Inline prompt gets first refusal on nav/answer keys. It only
+    // claims the narrow set it cares about (←/→/↑/↓/Enter/Esc/1-9);
+    // everything else — including printable chars while the composer
+    // is focused — falls through so typing-to-queue still works.
+    if (o.onPromptKey && !key.ctrl && !key.meta && key.eventType !== "release") {
+      if (o.onPromptKey(key)) { key.stopPropagation(); return }
+    }
 
     if (keys.match("editor.open", key) && !o.streaming) {
       const seed = c?.value() ?? ""

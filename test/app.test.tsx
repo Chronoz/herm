@@ -274,35 +274,54 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("approval.request renders dialog; escape sends deny", async () => {
+  test("approval.request renders inline in transcript; 1 → once, Esc → deny", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
+    // Need an assistant turn for the prompt part to attach to.
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    act(() => t.gw.push({ type: "message.start" }))
     act(() => t.gw.push({
       type: "approval.request",
       payload: { command: "rm -rf /", description: "delete everything" },
     }))
-    await t.settle()
+    await until(t, () => t.frame().includes("Permission required"))
 
-    expect(t.frame()).toContain("Permission required")
+    // Card is in the transcript, not a dialog: no backdrop box.
     expect(t.frame()).toContain("$ rm -rf /")
+    expect(t.frame()).toContain("┃")
 
+    // '1' → Allow once on the wire, card collapses (cloud reopens
+    // as the agent resumes, occluding the outcome row — assert via
+    // wire + pending-gone, not frame text).
+    await act(async () => { await t.keys.typeText("1") })
+    await until(t, () => t.gw.last("approval.respond")?.params.choice === "once")
+    await until(t, () => !t.frame().includes("Permission required"))
+
+    // Second approval in the same turn → fresh card; Esc denies it.
+    act(() => t.gw.push({
+      type: "approval.request",
+      payload: { command: "cat /etc/shadow", description: "" },
+    }))
+    await until(t, () => t.frame().includes("Permission required"))
     act(() => t.keys.pressEscape())
-    await t.settle()
+    await until(t, () => t.gw.last("approval.respond")?.params.choice === "deny")
+    await until(t, () => !t.frame().includes("Permission required"))
 
-    const call = t.gw.last("approval.respond")
-    expect(call?.params.choice).toBe("deny")
-    expect(t.frame()).not.toContain("Permission required")
+    // Close the cloud; both outcome rows persist in the transcript.
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "", usage: { input: 0, output: 0, total: 0 } } }))
+    await until(t, () => t.frame().includes("✓ Allow once"))
+    expect(t.frame()).toContain("✗ Deny")
 
     t.destroy()
   })
 
-  test("dialog open gates shell keys: Esc closes only, no interrupt arm; tab-nav blocked", async () => {
+  test("inline prompt Esc does not arm interrupt; tab-nav still works (no backdrop)", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
-    // Enter streaming, then an approval dialog arrives (the real-world
-    // case where session.interrupt would have armed underneath).
+    // Enter streaming, then an approval arrives.
     await act(async () => { await t.keys.typeText("go") })
     act(() => t.keys.pressEnter())
     act(() => t.gw.push({ type: "message.start" }))
@@ -313,30 +332,76 @@ describe("app", () => {
     }))
     await until(t, () => t.frame().includes("Permission required"))
 
-    // tab.next while dialog open must NOT switch tab.
-    act(() => t.keys.pressArrow("right", { ctrl: true }))
-    await t.settle()
-    expect(t.frame()).toContain("Permission required")
-    expect(t.frame()).toContain("1 Chat")   // still on Chat; bold marker matches
+    // Unlike the old dialog, tab-nav is NOT blocked — the prompt is
+    // in the transcript, not an overlay. But it snaps back to Chat
+    // on arrival and that's where the card lives.
+    expect(t.frame()).toContain("1 Chat")
 
-    // Esc closes the dialog (deny) and does NOT arm the interrupt
-    // double-tap. Prove by RPC trace, not frame text — the notice
-    // system-line is occluded by the thought cloud (herm-mzb.11).
+    // Esc denies the prompt and does NOT arm interrupt (card.feed
+    // consumed it and stopPropagation'd).
     act(() => t.keys.pressEscape())
     await until(t, () => !t.frame().includes("Permission required"))
     expect(t.gw.last("approval.respond")?.params.choice).toBe("deny")
     expect(t.gw.last("session.interrupt")).toBeUndefined()
 
-    // Second Esc (dialog gone, still streaming) arms; third fires.
-    // Pre-gate, the first Esc would have armed and the second would
-    // have fired — so a single post-close Esc NOT firing is the
-    // regression guard.
+    // Now the prompt is gone; next two Escapes arm + fire normally.
     act(() => t.keys.pressEscape())
     await t.settle()
     expect(t.gw.last("session.interrupt")).toBeUndefined()
     act(() => t.keys.pressEscape())
     await until(t, () => t.gw.last("session.interrupt") !== undefined)
 
+    t.destroy()
+  })
+
+  test("clarify.request with choices; number-key picks; outcome persists", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "clarify.request",
+      payload: { request_id: "c1", question: "which one?", choices: ["red", "blue"] },
+    }))
+    await until(t, () => t.frame().includes("which one?"))
+    expect(t.frame()).toContain("1. red")
+    expect(t.frame()).toContain("2. blue")
+
+    await act(async () => { await t.keys.typeText("2") })
+    await until(t, () => t.gw.last("clarify.respond") !== undefined)
+    expect(t.gw.last("clarify.respond")?.params).toMatchObject({ request_id: "c1", answer: "blue" })
+    // Outcome persists after turn ends.
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "ok", usage: { input: 0, output: 0, total: 0 } } }))
+    await until(t, () => t.frame().includes("chose: blue"))
+    t.destroy()
+  })
+
+  test("secret.request defocuses composer; masked input never echoes", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "secret.request",
+      payload: { request_id: "s1", prompt: "enter key", env_var: "API_KEY" },
+    }))
+    await until(t, () => t.frame().includes("Secret: API_KEY"))
+
+    // Type a secret — it must NOT appear in the frame; bullets do.
+    for (const c of "hunter2") await act(async () => { await t.keys.typeText(c) })
+    await t.settle()
+    expect(t.frame()).not.toContain("hunter2")
+    expect(t.frame()).toContain("•••••••")
+
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("secret.respond") !== undefined)
+    expect(t.gw.last("secret.respond")?.params).toMatchObject({ request_id: "s1", value: "hunter2" })
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "", usage: { input: 0, output: 0, total: 0 } } }))
+    await until(t, () => t.frame().includes("(provided)"))
+    // Composer refocuses once the masked prompt clears.
+    expect(t.frame()).toContain("Message Hermes")
     t.destroy()
   })
 

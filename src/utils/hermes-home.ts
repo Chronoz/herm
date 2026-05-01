@@ -13,7 +13,6 @@ import { readdir, stat } from "node:fs/promises";
 import { openSync, readSync, closeSync, readdirSync } from "node:fs";
 import { homedir } from "os";
 import { parse as parseYaml } from "yaml";
-import * as perf from "./perf";
 import { count as tokenCount } from "./tokens";
 
 // ─── Path Resolution ─────────────────────────────────────────────────
@@ -115,28 +114,8 @@ export interface MemoryFileInfo {
   entryCount: number;
 }
 
-/** A row from the sessions table in state.db */
-export interface SessionRow {
-  source: Source;
-  id: string;
-  sessionSource: string; // renamed from "source" to avoid collision
-  model: string | null;
-  started_at: number;
-  ended_at: number | null;
-  end_reason: string | null;
-  message_count: number;
-  tool_call_count: number;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_write_tokens: number;
-  reasoning_tokens: number;
-  estimated_cost_usd: number | null;
-  title: string | null;
-  lastMessage: string | null;
-  last_active: number | null;
-  parent_session_id: string | null;
-}
+/** A row from the sessions table in state.db — see sessions-db.ts. */
+export type { SessionRow } from "./sessions-db"
 
 /** Live session entry from sessions/sessions.json */
 export interface LiveSession {
@@ -422,177 +401,24 @@ export async function readLiveSessions(): Promise<
   }
 }
 
-/** Query state.db for recent sessions — falls back to first user message as title */
-export function queryRecentSessions(limit: number = 30): SessionRow[] {
-  const end = perf.mark("io:queryRecentSessions")
-  const dbSource = makeSource("state.db");
-  try {
-    const db = new Database(hermesPath("state.db"), { readonly: true });
-    const rows = db
-      .query(
-        `SELECT s.id, s.source, s.model, s.started_at, s.ended_at, s.end_reason,
-                s.message_count, s.tool_call_count,
-                s.input_tokens, s.output_tokens,
-                s.cache_read_tokens, s.cache_write_tokens, s.reasoning_tokens,
-                s.estimated_cost_usd, s.parent_session_id,
-                COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title,
-                SUBSTR(ml.content, 1, 120) AS lastMessage,
-                (SELECT MAX(mx.timestamp) FROM messages mx WHERE mx.session_id = s.id) AS last_active
-         FROM sessions s
-         LEFT JOIN messages m ON m.session_id = s.id AND m.role = 'user'
-           AND m.id = (SELECT MIN(m2.id) FROM messages m2 WHERE m2.session_id = s.id AND m2.role = 'user')
-         LEFT JOIN messages ml ON ml.session_id = s.id AND ml.role = 'user'
-           AND ml.id = (SELECT MAX(m3.id) FROM messages m3 WHERE m3.session_id = s.id AND m3.role = 'user')
-         ORDER BY s.started_at DESC
-         LIMIT ?`,
-      )
-      .all(limit) as Array<{
-      id: string;
-      source: string;
-      model: string | null;
-      started_at: number;
-      ended_at: number | null;
-      end_reason: string | null;
-      message_count: number;
-      tool_call_count: number;
-      input_tokens: number;
-      output_tokens: number;
-      cache_read_tokens: number;
-      cache_write_tokens: number;
-      reasoning_tokens: number;
-      estimated_cost_usd: number | null;
-      title: string | null;
-      lastMessage: string | null;
-      last_active: number | null;
-      parent_session_id: string | null;
-    }>;
-    db.close();
-    const mapped = rows.map((row) => ({
-      source: dbSource,
-      id: row.id,
-      sessionSource: row.source,
-      model: row.model,
-      started_at: row.started_at,
-      ended_at: row.ended_at,
-      end_reason: row.end_reason,
-      message_count: row.message_count,
-      tool_call_count: row.tool_call_count,
-      input_tokens: row.input_tokens,
-      output_tokens: row.output_tokens,
-      cache_read_tokens: row.cache_read_tokens,
-      cache_write_tokens: row.cache_write_tokens,
-      reasoning_tokens: row.reasoning_tokens,
-      estimated_cost_usd: row.estimated_cost_usd,
-      title: row.title,
-      lastMessage: row.lastMessage,
-      last_active: row.last_active,
-      parent_session_id: row.parent_session_id,
-    }));
-    end()
-    return mapped
-  } catch {
-    end()
-    return [];
-  }
-}
+// ─── Session store ───────────────────────────────────────────────────
+// Everything session-shaped lives in sessions-db.ts now — one readonly
+// handle, one parent→child classification rule, shared SQL. These
+// aliases preserve the old hermes-home API for home/store.ts and
+// test/hermes-home-sessions.test.ts; new code should import from
+// sessions-db directly.
 
-// ─── Session search / delete ─────────────────────────────────────────
-//
-// Stock tui_gateway has no session.search / session.delete RPCs (see
-// UPSTREAM.md). Herm hits state.db's FTS5 index directly — same table
-// and triggers SessionDB.search_messages() uses, so results match the
-// CLI's `hermes sessions search` and the session_search tool.
-
-export interface SessionHit {
-  session_id: string;
-  snippet: string;
-  role: string;
-  source: string;
-  model: string | null;
-  started_at: number;
-  title: string | null;
-}
-
-// FTS5 treats - . ( ) " etc. as syntax. Quote anything non-alnum as a
-// phrase and append * to bare words for prefix match so incremental
-// typing narrows results live.
-const fts = (q: string): string =>
-  q.trim().split(/\s+/)
-    .map(w => /^\w+$/.test(w) ? `${w}*` : `"${w.replace(/"/g, '""')}"`)
-    .join(" ");
-
-/** FTS5 search over all message content, collapsed to one hit per session. */
-export function searchSessions(query: string, limit = 30): SessionHit[] {
-  const q = fts(query);
-  if (!q) return [];
-  const end = perf.mark("io:searchSessions");
-  try {
-    const db = new Database(hermesPath("state.db"), { readonly: true });
-    const rows = db.query(
-      `SELECT m.session_id, m.role,
-              snippet(messages_fts, 0, '>>>', '<<<', '...', 40) AS snippet,
-              s.source, s.model, s.started_at AS started,
-              COALESCE(s.title, SUBSTR(m.content, 1, 120)) AS title
-       FROM messages_fts
-       JOIN messages m ON m.id = messages_fts.rowid
-       JOIN sessions s ON s.id = m.session_id
-       WHERE messages_fts MATCH ? AND s.source IN ('tui', 'cli')
-       ORDER BY rank
-       LIMIT ?`,
-    ).all(q, limit * 4) as Array<{
-      session_id: string; role: string; snippet: string; source: string;
-      model: string | null; started: number; title: string | null;
-    }>;
-    db.close();
-    const seen = new Set<string>();
-    const out: SessionHit[] = [];
-    for (const r of rows) {
-      if (seen.has(r.session_id)) continue;
-      seen.add(r.session_id);
-      out.push({
-        session_id: r.session_id, snippet: r.snippet, role: r.role,
-        source: r.source, model: r.model, started_at: r.started, title: r.title,
-      });
-      if (out.length >= limit) break;
-    }
-    end();
-    return out;
-  } catch {
-    end();
-    return [];
-  }
-}
-
-/** Delete a session and its messages. Children are orphaned, not cascaded. */
-export function deleteSession(sid: string): boolean {
-  const db = new Database(hermesPath("state.db"));
-  try {
-    const hit = db.query("SELECT 1 FROM sessions WHERE id = ?").get(sid);
-    if (!hit) return false;
-    db.run("UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?", [sid]);
-    db.run("DELETE FROM messages WHERE session_id = ?", [sid]);
-    db.run("DELETE FROM sessions WHERE id = ?", [sid]);
-    return true;
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * Rename a session. Direct state.db write — `session.title` RPC is
- * bound to the gateway's *current* session, so it can't retitle an
- * arbitrary row from the list. UPSTREAM.md tracks wanting a
- * `{session_id, title}` variant.
- */
-export function renameSession(sid: string, title: string): boolean {
-  const db = new Database(hermesPath("state.db"));
-  try {
-    db.run("UPDATE sessions SET title = ? WHERE id = ?", [title, sid]);
-    return (db.query("SELECT changes() AS c").get() as { c: number }).c > 0;
-  } finally {
-    db.close();
-  }
-}
+import {
+  roots as _roots, children as _children, lineage as _lineage,
+  search as _search, remove as _remove, rename as _rename,
+} from "./sessions-db"
+export type { LineageInfo, SessionHit } from "./sessions-db"
+export const queryRecentSessions = _roots
+export const querySubagents = _children
+export const queryLineage = _lineage
+export const searchSessions = _search
+export const deleteSession = _remove
+export const renameSession = _rename
 
 /** Memory provider info — what's configured and available */
 export interface MemoryProviderInfo {

@@ -29,5 +29,23 @@ export const openStateDb = (): Database => {
     session_id TEXT, role TEXT, content TEXT,
     tool_calls TEXT, tool_name TEXT, timestamp REAL
   )`)
+  // FTS5 mirror of messages.content + tool_name + tool_calls — mirrors
+  // the index + triggers hermes-agent's SessionDB builds. Needed so
+  // searchSessions() tests exercise the real FTS code path. Uses a
+  // default (non-contentless) index so DELETE works, matching
+  // hermes_state.py's own declaration.
+  db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts
+    USING fts5(content, tokenize='porter')`)
+  db.run(`CREATE TRIGGER IF NOT EXISTS messages_fts_insert
+    AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, content) VALUES (
+        new.id,
+        COALESCE(new.content, '') || ' ' || COALESCE(new.tool_name, '') || ' ' || COALESCE(new.tool_calls, '')
+      );
+    END`)
+  db.run(`CREATE TRIGGER IF NOT EXISTS messages_fts_delete
+    AFTER DELETE ON messages BEGIN
+      DELETE FROM messages_fts WHERE rowid = old.id;
+    END`)
   return db
 }
