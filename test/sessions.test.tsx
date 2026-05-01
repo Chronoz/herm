@@ -1,15 +1,16 @@
 import { describe, test, expect } from "bun:test"
 import { act } from "react"
 import { mountNode, until, MockGateway } from "./harness"
-import { Sessions } from "../src/tabs/Sessions"
+import { Sessions, fold } from "../src/tabs/Sessions"
 import type { SessionHit } from "../src/utils/hermes-home"
+import type { PeekMsg } from "../src/utils/sessions-db"
 
 const ROWS = [
   { id: "sid-a", title: "First session", preview: "hey", message_count: 4, started_at: 1700000000, source: "tui" },
   { id: "sid-b", title: "Second session", preview: "", message_count: 12, started_at: 1699999000, source: "cli" },
 ]
 
-const NOIO = { list: () => [], search: () => [], remove: () => true, rename: () => true, subagents: () => [] }
+const NOIO = { list: () => [], search: () => [], remove: () => true, rename: () => true, subagents: () => [], peek: () => [] }
 
 describe("Sessions tab", () => {
   test("lists from session.list RPC and switches on Enter", async () => {
@@ -392,16 +393,16 @@ describe("Sessions tab", () => {
     t.destroy()
   })
 
-  test("detail panel scrolls instead of overflowing at short height", async () => {
+  test("detail panel clips (does not overflow) at short height", async () => {
     const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
     const t = await mountNode(<Sessions focused io={NOIO} />, { gw, width: 180, height: 12 })
     await until(t, () => t.frame().includes("Sessions (2)"))
 
     const f = t.frame()
     expect(f).toContain("Session Detail")
-    // Bottom rows clipped by scrollbox, not painted onto/past the border.
-    expect(f).not.toContain("First msg")
-    expect(f).not.toContain("Last msg")
+    // Transcript section doesn't fit at h=12 with the metadata block
+    // above it; it's clipped rather than painted past the border.
+    expect(f).not.toContain("Transcript")
     // Bottom border intact (no content bleeding through it).
     const last = f.split("\n").filter(l => l.trim()).at(-1)!
     expect(last).toMatch(/└─+┘└─+┘$/)
@@ -702,6 +703,124 @@ describe("Sessions tab — lineage block", () => {
     await act(async () => { await t.keys.typeText("y") })
     await t.settle()
     expect(switched).toBe("rid")
+    t.destroy()
+  })
+})
+
+// ─── Transcript peek (herm-5r2) ──────────────────────────────────────
+
+const pm = (role: PeekMsg["role"], content: string | null, extra: Partial<PeekMsg> = {}): PeekMsg =>
+  ({ role, content, tool_name: null, tool_calls: null, at: 0, ...extra })
+
+describe("fold() — collapse raw message rows for peek", () => {
+  test("user/assistant text pass through", () => {
+    const out = fold([pm("user", "hi"), pm("assistant", "hello")])
+    expect(out).toEqual([
+      { role: "user", text: "hi" },
+      { role: "assistant", text: "hello" },
+    ])
+  })
+
+  test("tool-call assistant + tool results collapse to one tools row", () => {
+    const out = fold([
+      pm("user", "run it"),
+      pm("assistant", null, { tool_calls: '[{"name":"terminal"},{"name":"read_file"}]' }),
+      pm("tool", "out1", { tool_name: "terminal" }),
+      pm("tool", "out2", { tool_name: "read_file" }),
+      pm("assistant", "done"),
+    ])
+    expect(out).toEqual([
+      { role: "user", text: "run it" },
+      { role: "tools", text: "terminal · read_file", n: 2 },
+      { role: "assistant", text: "done" },
+    ])
+  })
+
+  test("consecutive tool-call loops collapse into one run with dedup'd names", () => {
+    const out = fold([
+      pm("assistant", null, { tool_calls: '[{"name":"terminal"}]' }),
+      pm("tool", "a", { tool_name: "terminal" }),
+      pm("assistant", null, { tool_calls: '[{"name":"terminal"}]' }),
+      pm("tool", "b", { tool_name: "terminal" }),
+      pm("assistant", null, { tool_calls: '[{"name":"patch"}]' }),
+      pm("tool", "c", { tool_name: "patch" }),
+    ])
+    expect(out).toEqual([{ role: "tools", text: "terminal · patch", n: 3 }])
+  })
+
+  test("assistant with BOTH content and tool_calls emits text row then starts a run", () => {
+    const out = fold([
+      pm("assistant", "thinking…", { tool_calls: '[{"name":"search"}]' }),
+      pm("tool", "hit", { tool_name: "search" }),
+      pm("assistant", "found it"),
+    ])
+    expect(out).toEqual([
+      { role: "assistant", text: "thinking…" },
+      { role: "tools", text: "search", n: 1 },
+      { role: "assistant", text: "found it" },
+    ])
+  })
+
+  test("system rows dropped; whitespace collapsed", () => {
+    const out = fold([
+      pm("system", "memory flush"),
+      pm("user", "line1\n\n  line2"),
+    ])
+    expect(out).toEqual([{ role: "user", text: "line1 line2" }])
+  })
+
+  test("truncated tool_calls JSON still yields names via regex", () => {
+    const out = fold([
+      pm("assistant", null, { tool_calls: '[{"id":"x","name":"write_file","args":{"path":"/very/long/pa' }),
+      pm("tool", "", { tool_name: "write_file" }),
+    ])
+    expect(out[0]).toEqual({ role: "tools", text: "write_file", n: 1 })
+  })
+
+  test("orphan tool result (no preceding assistant tool_calls) starts a run from tool_name", () => {
+    const out = fold([pm("tool", "x", { tool_name: "terminal" })])
+    expect(out).toEqual([{ role: "tools", text: "terminal", n: 1 }])
+  })
+})
+
+describe("Sessions tab — transcript peek", () => {
+  test("detail panel renders folded transcript tail", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    const peek = (sid: string): PeekMsg[] => sid === "sid-a" ? [
+      pm("user", "please fix the parser"),
+      pm("assistant", null, { tool_calls: '[{"name":"read_file"}]' }),
+      pm("tool", "file content", { tool_name: "read_file" }),
+      pm("assistant", "Found it — missing brace on line 42."),
+    ] : []
+    const t = await mountNode(<Sessions focused io={{ ...NOIO, peek }} />, { gw, width: 200, height: 50 })
+    await until(t, () => t.frame().includes("Transcript"))
+
+    const f = t.frame()
+    expect(f).toContain("Transcript")
+    expect(f).toContain("▸")
+    expect(f).toContain("please fix the parser")
+    expect(f).toContain("⚙")
+    expect(f).toContain("read_file  (1)")
+    expect(f).toContain("◂")
+    expect(f).toContain("missing brace on line 42")
+    t.destroy()
+  })
+
+  test("peek re-queries when selection changes; empty → '(no local transcript)'", async () => {
+    const gw = new MockGateway({ "session.list": () => ({ sessions: ROWS }) })
+    const calls: string[] = []
+    const peek = (sid: string): PeekMsg[] => {
+      calls.push(sid)
+      return sid === "sid-a" ? [pm("user", "alpha content here")] : []
+    }
+    const t = await mountNode(<Sessions focused io={{ ...NOIO, peek }} />, { gw, width: 200, height: 50 })
+    await until(t, () => t.frame().includes("alpha content here"))
+    expect(calls).toContain("sid-a")
+
+    act(() => t.keys.pressArrow("down"))
+    await until(t, () => t.frame().includes("(no local transcript)"))
+    expect(calls).toContain("sid-b")
+    expect(t.frame()).not.toContain("alpha content here")
     t.destroy()
   })
 })

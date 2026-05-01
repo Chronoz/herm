@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterAll } from "bun:test"
 import { openStateDb } from "./fixtures/state-db"
 import { searchSessions, queryRecentSessions, querySubagents, queryLineage } from "../src/utils/hermes-home"
-import { kind, resetDb } from "../src/utils/sessions-db"
+import { kind, resetDb, peek } from "../src/utils/sessions-db"
 
 // Seeds a clean state.db and exercises the real SQL paths in
 // sessions-db.ts via the hermes-home re-exports.
@@ -357,3 +357,36 @@ describe("kind() — pure classifier (single source of truth for parent→child 
 })
 
 afterAll(() => { wipe(); resetDb() })
+
+describe("peek() — tail N messages for a session", () => {
+  afterAll(wipe)
+
+  test("returns last N rows chronological, content SUBSTR'd", () => {
+    const db = seed()
+    sess(db, "px", "tui", 1700000000)
+    for (let i = 0; i < 8; i++) msg(db, "px", "user", `m${i}`, 1000 + i)
+    db.close()
+
+    const rows = peek("px", 3)
+    expect(rows.map(r => r.content)).toEqual(["m5", "m6", "m7"])
+    expect(rows[0].role).toBe("user")
+  })
+
+  test("includes tool_name and tool_calls columns", () => {
+    const db = seed()
+    sess(db, "px", "tui", 1700000000)
+    db.prepare("INSERT INTO messages (session_id, role, content, tool_calls, timestamp) VALUES (?,?,?,?,?)")
+      .run("px", "assistant", null, '[{"name":"terminal"}]', 1000)
+    db.prepare("INSERT INTO messages (session_id, role, content, tool_name, timestamp) VALUES (?,?,?,?,?)")
+      .run("px", "tool", "output", "terminal", 1001)
+    db.close()
+
+    const rows = peek("px", 10)
+    expect(rows[0].tool_calls).toContain("terminal")
+    expect(rows[1].tool_name).toBe("terminal")
+  })
+
+  test("unknown session → empty", () => {
+    expect(peek("nope", 10)).toEqual([])
+  })
+})

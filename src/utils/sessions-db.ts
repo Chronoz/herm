@@ -109,6 +109,18 @@ export interface SessionHit {
   title: string | null
 }
 
+/** One raw message row for transcript peek. content is SUBSTR-capped
+ *  in SQL so multi-MB tool outputs don't allocate on read. */
+export interface PeekMsg {
+  role: "user" | "assistant" | "tool" | "system"
+  content: string | null
+  tool_name: string | null
+  /** JSON string of tool_calls when role='assistant' and the model
+   *  invoked tools instead of / as well as emitting content. */
+  tool_calls: string | null
+  at: number
+}
+
 // ─── parent→child classification ─────────────────────────────────────
 //
 // parent_session_id is overloaded across three unrelated relationships
@@ -293,6 +305,23 @@ export function tip(sid: string): string {
     cur = next.id
   }
   return cur
+}
+
+/** Last `n` raw message rows for a session, chronological. Content
+ *  is SUBSTR(…,400)'d in SQL — the peek view renders one line per
+ *  row, so anything past the first ~200 chars is wasted. Uses the
+ *  (session_id, timestamp) index; sub-ms for any realistic n. */
+export function peek(sid: string, n = 60): PeekMsg[] {
+  const end = perf.mark("io:sessions.peek")
+  try {
+    return ((q(
+      `SELECT role, SUBSTR(content,1,400) AS content, tool_name,
+              SUBSTR(tool_calls,1,400) AS tool_calls, timestamp AS at
+       FROM (SELECT * FROM messages WHERE session_id = ?
+             ORDER BY id DESC LIMIT ?)
+       ORDER BY id ASC`,
+    )?.all(sid, n) ?? []) as PeekMsg[])
+  } finally { end() }
 }
 
 // ─── Search ──────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
 import * as sdb from "../utils/sessions-db"
-import type { SessionRow, SessionHit, LineageInfo } from "../utils/sessions-db"
+import type { SessionRow, SessionHit, LineageInfo, PeekMsg } from "../utils/sessions-db"
 import type {
   SessionListItem, SessionListResponse,
 } from "../utils/gateway-types"
@@ -12,7 +12,7 @@ import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
-import { KV, KVBlock } from "../ui/kv"
+import { KVBlock } from "../ui/kv"
 import { Col, Hdr, Marquee } from "../ui/table"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
@@ -47,6 +47,119 @@ const stamp = (ts: number): string => {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
+// ─── Transcript Peek ─────────────────────────────────────────────────
+//
+// Raw message rows are dense (every assistant tool_call is a row;
+// every tool result is a row). Fold them so the peek answers "what
+// was this session about?" without loading it:
+//   user              → one row, content
+//   assistant+content → one row, content
+//   assistant+tool_calls (no content) + trailing tool results
+//                     → ONE row: "⚙ name₁ · name₂ · … (N results)"
+// System rows are dropped — they're boilerplate (memory flush markers,
+// slash-command echoes) and never what you're scanning for.
+
+type Folded = { role: "user" | "assistant" | "tools"; text: string; n?: number }
+
+// Pull tool names out of the SUBSTR'd tool_calls JSON. The string may
+// be truncated mid-object, so JSON.parse isn't an option; regex over
+// `"name":"…"` is enough for a one-line label.
+const names = (tc: string | null): string[] =>
+  tc ? [...tc.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map(m => m[1]) : []
+
+const line = (s: string | null) =>
+  (s ?? "").replace(/\s+/g, " ").trim()
+
+/** Collapse raw PeekMsg[] into display rows. Exported for tests. */
+export const fold = (msgs: PeekMsg[]): Folded[] => {
+  const out: Folded[] = []
+  let run: { calls: string[]; n: number } | null = null
+  const flush = () => {
+    if (!run) return
+    out.push({ role: "tools", text: run.calls.join(" · ") || "tool", n: run.n })
+    run = null
+  }
+  for (const m of msgs) {
+    if (m.role === "user") {
+      flush()
+      out.push({ role: "user", text: line(m.content) })
+      continue
+    }
+    if (m.role === "assistant") {
+      const body = line(m.content)
+      const called = names(m.tool_calls)
+      // Speaking assistant turn ends any tool run.
+      if (body) { flush(); out.push({ role: "assistant", text: body }) }
+      // Tool invocations start/extend a run.
+      if (called.length) {
+        run = run ?? { calls: [], n: 0 }
+        for (const c of called) if (!run.calls.includes(c)) run.calls.push(c)
+      }
+      continue
+    }
+    if (m.role === "tool") {
+      run = run ?? { calls: m.tool_name ? [m.tool_name] : [], n: 0 }
+      run.n++
+      if (m.tool_name && !run.calls.includes(m.tool_name)) run.calls.push(m.tool_name)
+    }
+    // system → dropped
+  }
+  flush()
+  return out
+}
+
+const Peek = memo((props: { sid: string; total: number; peek: typeof sdb.peek }) => {
+  const theme = useTheme().theme
+  const [rows, setRows] = useState<Folded[] | null>(null)
+  const sb = useRef<ScrollBoxRenderable | null>(null)
+
+  useEffect(() => {
+    setRows(fold(props.peek(props.sid, 60)))
+  }, [props.sid, props.peek])
+  // Pin to bottom on load — the question is "where did this end up",
+  // not "how did it start". Fires once per sid.
+  useEffect(() => {
+    if (rows && sb.current) sb.current.scrollTop = sb.current.scrollHeight
+  }, [rows])
+
+  if (rows === null) return null
+  if (rows.length === 0) return (
+    <box height={1}><text fg={theme.textMuted}>(no local transcript)</text></box>
+  )
+  const more = Math.max(0, props.total - 60)
+  const tag = (f: Folded) =>
+    f.role === "user" ? { g: "▸", fg: theme.info }
+    : f.role === "assistant" ? { g: "◂", fg: theme.success }
+    : { g: "⚙", fg: theme.warning }
+
+  return (
+    <box flexDirection="column" flexGrow={1} minHeight={4}>
+      <box height={1}>
+        <text fg={theme.textMuted}>
+          {`Transcript  ·  last ${rows.length} turns${more > 0 ? `  ·  ${more} earlier` : ""}`}
+        </text>
+      </box>
+      <scrollbox ref={sb} scrollY flexGrow={1} minHeight={3}>
+        <box flexDirection="column" width="100%">
+          {rows.map((f, i) => {
+            const t = tag(f)
+            return (
+              <box key={i} height={1} flexDirection="row">
+                <box width={2} flexShrink={0}><text fg={t.fg}>{t.g}</text></box>
+                <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
+                  <text fg={f.role === "tools" ? theme.textMuted : theme.text}>
+                    {f.role === "tools" && f.n ? `${f.text}  (${f.n})` : f.text}
+                  </text>
+                </box>
+              </box>
+            )
+          })}
+        </box>
+      </scrollbox>
+    </box>
+  )
+})
+
 // ─── Detail Panel ────────────────────────────────────────────────────
 //
 // Data provenance:
@@ -66,6 +179,7 @@ const Detail = memo((props: {
   row: Row
   onSwitch?: (sid: string) => void
   lineage?: (sid: string) => LineageInfo
+  peek: (sid: string, n?: number) => PeekMsg[]
 }) => {
   const theme = useTheme().theme
   const r = props.row
@@ -83,8 +197,8 @@ const Detail = memo((props: {
 
   return (
     <TabShell title="Session Detail" hint="" grow={2}>
-      <scrollbox scrollY flexGrow={1}>
-        <box flexDirection="column" width="100%">
+      <box flexDirection="column" width="100%" flexGrow={1} overflow="hidden">
+        <box flexDirection="column" flexShrink={0}>
           <box minHeight={1}>
             <text wrapMode="word"><span fg={theme.accent}><strong>{r.title || "Untitled"}</strong></span></text>
           </box>
@@ -137,15 +251,14 @@ const Detail = memo((props: {
               </box>
             ) : null}
           </> : null}
-          <box height={1} />
-          <KV label="First msg" value={r.preview || "—"} fg={theme.textMuted} wrap />
-          <KV label="Last msg" value={d?.lastMessage || "—"} fg={theme.textMuted} wrap />
           {!d ? <>
             <box height={1} />
             <box height={1}><text fg={theme.textMuted}>(no local detail — state.db mismatch)</text></box>
           </> : null}
+          <box height={1} />
         </box>
-      </scrollbox>
+        <Peek sid={r.id} total={r.message_count} peek={props.peek} />
+      </box>
     </TabShell>
   )
 })
@@ -310,6 +423,7 @@ type IO = {
   rename: typeof sdb.rename
   subagents: typeof sdb.children
   lineage: typeof sdb.lineage
+  peek: typeof sdb.peek
 }
 
 type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
@@ -328,6 +442,7 @@ export const Sessions = memo((props: Props) => {
     rename: props.io?.rename ?? sdb.rename,
     subagents: props.io?.subagents ?? sdb.children,
     lineage: props.io?.lineage ?? sdb.lineage,
+    peek: props.io?.peek ?? sdb.peek,
   }
 
   const [rows, setRows] = useState<Row[]>([])
@@ -650,7 +765,7 @@ export const Sessions = memo((props: Props) => {
       {showDetailPanel && searching && results[searchSel]
         ? <SearchDetail result={results[searchSel]} />
         : showDetailPanel && !searching && visible[sel]?.row
-          ? <Detail row={visible[sel].row} lineage={io.lineage} onSwitch={lineageSwitch} />
+          ? <Detail row={visible[sel].row} lineage={io.lineage} peek={io.peek} onSwitch={lineageSwitch} />
           : null}
     </box>
   )
