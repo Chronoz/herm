@@ -779,3 +779,40 @@ export function texToUnicode(input: string): string {
 
   return s
 }
+
+// Inline-code spans: 1–2 backticks, non-greedy body, same-length closer.
+// Captured so mathify can step over them without a placeholder dance.
+const CODE_SPAN_RE = /(`{1,2})[^`\n]+?\1/g
+
+// Math delimiters, tightest-to-loosest. `$$…$$` before `$…$` so the
+// single-dollar branch never eats a display-math opener. `$…$` uses the
+// same no-space-adjacent rule upstream uses to dodge `$5 to $10` prose.
+const MATH_SPAN_RE = new RegExp(
+  [
+    String.raw`\$\$([^$]+?)\$\$`,
+    String.raw`\\\[([\s\S]+?)\\\]`,
+    String.raw`\\\(([^\n]+?)\\\)`,
+    String.raw`(?<!\$)\$([^\s$](?:[^$\n]*?[^\s$])?)\$(?!\$)`,
+  ].join('|'),
+  'g',
+)
+
+// Apply texToUnicode only inside math delimiters. texToUnicode is a
+// whole-string transform (it will turn prose `_n` into `ₙ`), so it must
+// never see non-math text. Walk the string, skip inline-code spans
+// verbatim, and rewrite math spans in the gaps.
+export function mathify(md: string): string {
+  if (!/[$\\]/.test(md)) return md
+  let out = ''
+  let i = 0
+  CODE_SPAN_RE.lastIndex = 0
+  for (const m of md.matchAll(CODE_SPAN_RE)) {
+    out += md.slice(i, m.index).replace(MATH_SPAN_RE,
+      (_, a, b, c, d) => texToUnicode(a ?? b ?? c ?? d))
+    out += m[0]
+    i = m.index + m[0].length
+  }
+  out += md.slice(i).replace(MATH_SPAN_RE,
+    (_, a, b, c, d) => texToUnicode(a ?? b ?? c ?? d))
+  return out
+}

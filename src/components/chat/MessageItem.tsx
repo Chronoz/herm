@@ -9,7 +9,7 @@ import { PromptCard, type PromptCardHandle } from "./PromptCard"
 import { ChafaImage } from "../../ui/ChafaImage"
 import { useTheme } from "../../theme"
 import { useSkin } from "../../app/skin"
-import { texToUnicode } from "../../utils/math-unicode"
+import { mathify } from "../../utils/math-unicode"
 
 export type { Message }
 
@@ -243,15 +243,15 @@ const AssistantMessage = memo(({ message, streaming, prompt, onPick }: {
       if ("code" in s) return (
         <CodeBlock key={`${k}-c${j}`} code={s.code} lang={s.lang} streaming={tail} />
       )
-      // LaTeX → Unicode. Assistant text routinely carries math (\frac,
-      // \alpha, ^2, \sum, …) that OpenTUI's markdown renderable would
-      // print verbatim. texToUnicode rewrites the recognised subset in
-      // place; unknown commands pass through unchanged, so partial
-      // streaming deltas (e.g. "\al" before "\alpha" arrives) are
-      // safe — they simply don't substitute yet.
+      // LaTeX → Unicode. mathify scans for $…$ / \(…\) / $$…$$ / \[…\]
+      // spans and rewrites only their interiors via texToUnicode; prose
+      // like `browser_navigate` is never touched. Inline-code spans are
+      // skipped. Unknown commands inside a span pass through, so partial
+      // streaming deltas (e.g. "\al" before "\alpha" arrives) are safe —
+      // they simply don't substitute yet.
       return (
         <box key={`${k}-${j}`}>
-          <markdown content={texToUnicode(s.md)} fg={theme.markdownText}
+          <markdown content={mathify(s.md)} fg={theme.markdownText}
             syntaxStyle={ctx.syntaxStyle} streaming={tail} />
         </box>
       )

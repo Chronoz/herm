@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { texToUnicode } from "../src/utils/math-unicode"
+import { mathify, texToUnicode } from "../src/utils/math-unicode"
 
 // Ported from hermes-agent ui-tui/src/__tests__/mathUnicode.test.ts.
 // Single divergence from upstream: `\boxed` / `\fbox` now emit
@@ -272,5 +272,53 @@ describe("texToUnicode — round-trip realism", () => {
   test("leaves plain text alone", () => {
     expect(texToUnicode("hello world")).toBe("hello world")
     expect(texToUnicode("")).toBe("")
+  })
+})
+
+describe("mathify — delimiter-gated transform", () => {
+  test("leaves snake_case identifiers alone", () => {
+    expect(mathify("browser_navigate, browser_snapshot, browser_type")).toBe(
+      "browser_navigate, browser_snapshot, browser_type",
+    )
+  })
+
+  test("leaves bare caret exponents in prose alone", () => {
+    expect(mathify("run 2^32 iterations")).toBe("run 2^32 iterations")
+  })
+
+  test("rewrites $…$ span and drops delimiters", () => {
+    expect(mathify("let $x_i \\in \\mathbb{R}$ hold")).toBe("let xᵢ ∈ ℝ hold")
+  })
+
+  test("rewrites \\(…\\) span", () => {
+    expect(mathify("so \\(\\alpha + \\beta\\).")).toBe("so α + β.")
+  })
+
+  test("rewrites $$…$$ and \\[…\\] display blocks", () => {
+    expect(mathify("$$\\sum_{i=1}^{n} a_i$$")).toBe("∑ᵢ₌₁ⁿ aᵢ")
+    expect(mathify("\\[\\frac{a}{b}\\]")).toBe("a/b")
+  })
+
+  test("snake_case adjacent to math span", () => {
+    expect(mathify("call foo_bar with $x_1$")).toBe("call foo_bar with x₁")
+  })
+
+  test("ignores $…$ inside inline code", () => {
+    expect(mathify("use `$HOME` and $\\alpha$")).toBe("use `$HOME` and α")
+    expect(mathify("``price is $5`` then $n_i$")).toBe("``price is $5`` then nᵢ")
+  })
+
+  test("currency prose survives single-dollar rule", () => {
+    expect(mathify("costs $5 to $10 each")).toBe("costs $5 to $10 each")
+  })
+
+  test("unclosed $ is left verbatim", () => {
+    expect(mathify("price is $5")).toBe("price is $5")
+    expect(mathify("partial \\(\\alp")).toBe("partial \\(\\alp")
+  })
+
+  test("no-delimiter fast path returns input identity", () => {
+    const s = "no math here, snake_case only"
+    expect(mathify(s)).toBe(s)
   })
 })
