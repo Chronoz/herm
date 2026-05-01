@@ -66,6 +66,12 @@ describe.skipIf(!have())("chafa → OpenTUI integration", () => {
 
     console.log(`image: ${rows.length} rows × ~${rows[0]?.length} cols`)
     console.log(`first row sample: ${rows[0]?.slice(0, 6).map(c => `${c.ch}[${c.fg?.r ?? "-"}]`).join(" ")}`)
+    if (process.env.DUMP_FRAME) {
+      console.log("=== rendered frame (raw chafa output for comparison) ===")
+      console.log(raw)
+      console.log("=== opentui frame (plain chars only — SGR stripped by testRender) ===")
+      console.log(frame)
+    }
     t.destroy()
   })
 
