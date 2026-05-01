@@ -162,6 +162,7 @@ const AppInner = () => {
   }, [cloud])
   const closeCloud = useCallback(() => { setForce(false); setPick(undefined) }, [])
   const onEnqueue = useCallback((t: string) => setQueue(q => [...q, t]), [])
+  const onAttach = useCallback((r: ImageAttachResponse) => setAttachments(a => [...a, r]), [])
 
   // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
@@ -714,6 +715,7 @@ const AppInner = () => {
                 attachments={attachments}
                 cmds={cmds}
                 onSend={send} onSlash={slash}
+                onAttach={onAttach}
                 onEnqueue={onEnqueue}
                 onDequeue={dequeue}
               />

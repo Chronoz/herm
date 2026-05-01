@@ -258,3 +258,8 @@ export type ImageAttachResponse = {
   token_estimate?: number
   message?: string
 }
+
+export type DropDetectResponse =
+  | { matched: false }
+  | ({ matched: true; is_image: true; text: string } & Omit<ImageAttachResponse, "attached" | "message">)
+  | { matched: true; is_image: false; path: string; name: string; text: string }
