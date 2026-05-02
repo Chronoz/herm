@@ -19,7 +19,7 @@ import { Spinner } from "../ui/spinner"
 import { Ticker, inline } from "../ui/ticker"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
-import { fmt, cost, trunc, ago, when, span } from "../ui/fmt"
+import { fmt, cost, trunc, ago, when, span, stamp } from "../ui/fmt"
 import { home } from "../home"
 
 // Architecture: herm's Sessions tab is a **local state.db reader**.
@@ -40,15 +40,6 @@ const badge = (src: string): string => ({
   cli: "CLI", tui: "TUI", api_server: "API", discord: "Discord",
   telegram: "Telegram", slack: "Slack", whatsapp: "WhatsApp", signal: "Signal",
 } as Record<string, string>)[src] ?? src
-
-// Today → 24h HH:MM; otherwise short date.
-const stamp = (ts: number): string => {
-  const d = new Date(ts * 1000)
-  const now = new Date()
-  return d.toDateString() === now.toDateString()
-    ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
-    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-}
 
 // ─── Transcript Peek ─────────────────────────────────────────────────
 //

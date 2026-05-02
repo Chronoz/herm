@@ -1,5 +1,6 @@
 import { describe, expect, it, setSystemTime, afterEach } from "bun:test"
-import { trunc, fmt, cost, span, dur, until, ago } from "../src/ui/fmt"
+import { trunc, fmt, cost, span, dur, until, ago, stamp, when } from "../src/ui/fmt"
+import * as prefs from "../src/utils/preferences"
 
 describe("fmt", () => {
   afterEach(() => setSystemTime())
@@ -46,5 +47,28 @@ describe("fmt", () => {
     expect(ago(now - 120)).toBe("2m ago")
     expect(ago(now - 7200)).toBe("2h ago")
     expect(ago(now - 172800)).toBe("2d ago")
+  })
+  it("timeFormat pref: stamp/when honor 12h/24h", () => {
+    setSystemTime(new Date("2026-04-27T14:32:00"))
+    const now = Date.now() / 1000
+    expect(stamp(now)).toMatch(/^14:32$/)
+    expect(when(now)).toContain("14:32")
+    prefs.set("timeFormat", "12h")
+    expect(stamp(now)).toMatch(/2:32/)
+    expect(stamp(now)).toMatch(/PM/i)
+    // Column budget: ≤8 chars so Sessions Start (w=8) doesn't clip.
+    expect(stamp(now).length).toBeLessThanOrEqual(8)
+    expect(stamp(now - 172800)).toMatch(/^Apr 25$/)
+  })
+  it("timeStyle pref: ago/until flip to absolute stamps", () => {
+    setSystemTime(new Date("2026-04-27T14:32:00"))
+    const now = Date.now() / 1000
+    expect(ago(now - 7200)).toBe("2h ago")
+    expect(until(now + 7200)).toBe("in 2h")
+    prefs.set("timeStyle", "absolute")
+    expect(ago(now - 7200)).toMatch(/^12:32$/)
+    expect(ago(now - 172800)).toMatch(/^Apr 25$/)
+    expect(until(now + 7200)).toMatch(/^16:32$/)
+    expect(until(now - 60)).toBe("due")
   })
 })

@@ -40,6 +40,10 @@ interface TuiPreferences {
   toolDetails?: DetailMode
   /** User keybinding overrides (ActionId → chord string) */
   keys?: Record<string, string>
+  /** Clock style for time-of-day formatters */
+  timeFormat?: "12h" | "24h"
+  /** List-column timestamps: "2h ago" vs "14:32" / "May 1" */
+  timeStyle?: "relative" | "absolute"
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {
