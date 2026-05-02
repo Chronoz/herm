@@ -667,6 +667,14 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,
+    // Client-side drop only. Gateway's session["attached_images"] still
+    // has the orphaned path until the next prompt.submit drains it, or
+    // session reset clears it — the side channel is write-only from here.
+    onDetachLast: () => {
+      if (attachments.length === 0) return false
+      setAttachments(a => a.slice(0, -1))
+      return true
+    },
     onNotice: (text) => dispatch({ kind: "system", text }),
     onToggleSidebar: () => setHideSidebar(v => !v),
   })

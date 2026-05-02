@@ -16,6 +16,7 @@ import { useAtRefPopover } from "../../app/useAtRefPopover"
 import { useInputHistory } from "../../app/useInputHistory"
 import { SlashPopover } from "./SlashPopover"
 import { AtRefPopover } from "./AtRefPopover"
+import { ChafaImage } from "../../ui/ChafaImage"
 import { trunc } from "../../ui/fmt"
 
 export type ComposerHandle = {
@@ -25,6 +26,8 @@ export type ComposerHandle = {
   insert: (text: string) => void
   /** Logical line count of the current buffer. */
   lines: () => number
+  /** True iff the buffer is empty (no text, no whitespace-only). */
+  isEmpty: () => boolean
   popOpen: () => boolean
   popNav: (d: -1 | 1) => void
   popAccept: () => void
@@ -186,9 +189,10 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       return
     }
     const text = live.current.input.trim()
-    if (!text) { live.current.props.onEmptyEnter?.(); return }
+    const hasAtt = (live.current.props.attachments?.length ?? 0) > 0
+    if (!text && !hasAtt) { live.current.props.onEmptyEnter?.(); return }
     if (!live.current.props.ready) return
-    hist.push(text)
+    if (text) hist.push(text)
     write("")
     live.current.props.onSend(text)
   }
@@ -200,6 +204,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     set: write,
     insert: (text) => ta.current?.insertText(text),
     lines: () => (ta.current?.lineCount ?? 1),
+    isEmpty: () => live.current.input.trim().length === 0,
     popOpen: () => live.current.pop.open || live.current.at.open,
     popNav: (d) => {
       const a = live.current.at
@@ -270,6 +275,14 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       ) : null}
 
       {(props.attachments?.length ?? 0) > 0 ? (
+        <box flexDirection="column" paddingX={1} paddingBottom={1} gap={1}>
+          {props.attachments!.map((a, i) => a.path
+            ? <ChafaImage key={`p-${a.path}`} path={a.path} width={60} />
+            : null)}
+        </box>
+      ) : null}
+
+      {(props.attachments?.length ?? 0) > 0 ? (
         <box flexDirection="row" flexWrap="wrap" gap={1} paddingX={1} paddingBottom={1}>
           {props.attachments!.map((a, i) => (
             <text key={a.path ?? i}>
@@ -281,6 +294,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
               {a.token_estimate
                 ? <span bg={theme.backgroundElement} fg={theme.textMuted}>~{fmt(a.token_estimate)}t </span>
                 : null}
+              <span fg={theme.textMuted}>  </span>
+              <span fg={theme.textMuted}>⌫ to detach</span>
             </text>
           ))}
         </box>

@@ -35,6 +35,8 @@ type Opts = {
   onInterruptNotice: () => void
   onCopyLast: () => void
   onAttachClipboard: () => void
+  /** Remove the last pending attachment (backspace on empty composer). */
+  onDetachLast: () => boolean
   onNotice: (text: string) => void
   onToggleSidebar: () => void
 }
@@ -224,6 +226,14 @@ export function useAppKeys(o: Opts) {
     if (o.focusRegion === "input" && !o.streaming) {
       if (key.name === "up") return void c?.historyUp()
       if (key.name === "down") return void c?.historyDown()
+      // Backspace on an empty buffer with attachments → detach the last.
+      // Swallow before the textarea sees it so a subsequent backspace on
+      // a still-empty buffer keeps peeling attachments off, not chars.
+      if (key.name === "backspace" && !key.ctrl && !key.meta
+          && c?.isEmpty() && o.onDetachLast()) {
+        key.stopPropagation()
+        return
+      }
     }
 
     // Printable char while Chat transcript has focus → bounce to composer

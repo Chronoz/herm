@@ -80,4 +80,84 @@ describe("composer: image attachments (D4+D7)", () => {
     expect(t.frame()).toContain("i2.png")
     t.destroy()
   })
+
+  test("backspace on empty composer detaches last attachment (LIFO)", async () => {
+    let n = 0
+    const t = await mount({
+      handlers: {
+        "clipboard.paste": () => {
+          n++
+          return { attached: true, path: `/tmp/i${n}.png`, name: `i${n}.png`, count: n }
+        },
+      },
+    })
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.keys.pressKey("v", { meta: true }))
+    await until(t, () => t.frame().includes("i1.png"))
+    act(() => t.keys.pressKey("v", { meta: true }))
+    await until(t, () => t.frame().includes("i2.png"))
+
+    // First backspace peels i2 (last attached).
+    act(() => t.keys.pressBackspace())
+    await until(t, () => !t.frame().includes("i2.png"))
+    expect(t.frame()).toContain("i1.png")
+    // Second backspace peels i1.
+    act(() => t.keys.pressBackspace())
+    await until(t, () => !t.frame().includes("i1.png"))
+    // Third backspace on empty composer + empty tray → no-op (not a crash).
+    act(() => t.keys.pressBackspace())
+    await t.settle()
+    t.destroy()
+  })
+
+  test("backspace with text in buffer edits text, doesn't detach", async () => {
+    const t = await mount({
+      handlers: {
+        "clipboard.paste": () => ({
+          attached: true, path: "/tmp/clip_1.png", name: "clip_1.png", count: 1,
+        }),
+      },
+    })
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.keys.pressKey("v", { meta: true }))
+    await until(t, () => t.frame().includes("clip_1.png"))
+    await act(async () => { await t.keys.typeText("hi") })
+    // Backspace with "hi" in buffer → textarea eats it (now "h").
+    act(() => t.keys.pressBackspace())
+    await t.settle()
+    // Chip still there.
+    expect(t.frame()).toContain("clip_1.png")
+    t.destroy()
+  })
+
+  test("Enter with empty buffer + attachment → sends empty prompt with image", async () => {
+    const t = await mount({
+      handlers: {
+        "clipboard.paste": () => ({
+          attached: true, path: "/tmp/clip_1.png", name: "clip_1.png", count: 1,
+          width: 800, height: 600, token_estimate: 1105,
+        }),
+      },
+    })
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.keys.pressKey("v", { meta: true }))
+    await until(t, () => t.frame().includes("⌫ to detach"))
+    // Enter with no typed text — should still submit (gateway has the image).
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("prompt.submit") !== undefined)
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("")
+    // Pre-send tray is gone (detach hint disappears; chip still appears in
+    // the transcript MEDIA echo, which is expected).
+    await until(t, () => !t.frame().includes("⌫ to detach"))
+    t.destroy()
+  })
+
+  test("Enter with empty buffer AND no attachments → no submit (still a no-op)", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.gw.last("prompt.submit")).toBeUndefined()
+    t.destroy()
+  })
 })
