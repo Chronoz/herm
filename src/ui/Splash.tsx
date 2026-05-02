@@ -3,7 +3,7 @@
 // Presentational only: dismissal + Enter-to-continue live in app.tsx.
 
 import { useRef, useState, useEffect, useMemo } from "react"
-import { useTerminalDimensions } from "@opentui/react"
+import { useRenderer } from "@opentui/react"
 import { measureText, type ASCIIFontName } from "@opentui/core"
 import type { BoxRenderable } from "@opentui/core"
 import { useTheme } from "../theme"
@@ -34,25 +34,24 @@ const clip = (s: string, w: number) =>
   [...s].length <= w ? s : [...s].slice(0, Math.max(1, w - 1)).join("") + "…"
 
 export function Splash(p: SplashProps) {
-  const dims = useTerminalDimensions()
   const theme = useTheme().theme
   const ref = useRef<BoxRenderable | null>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
 
-  // OpenTUI lacks a post-layout callback; short-poll the renderable
-  // once layout settles (and once per terminal resize). Same pattern
-  // as the demo and ui/table marquee.
+  // Measure after yoga has laid out. frameCallbacks run once per render
+  // tick (before the next layout pass), so this reads the previous
+  // frame's computed size — same one-frame latency the old 50ms poll
+  // had, but synced to the render loop instead of a free-running timer.
+  const renderer = useRenderer()
   useEffect(() => {
-    const tick = () => {
+    const cb = async () => {
       const r = ref.current
       if (!r) return
       setBox(b => (b.w === r.width && b.h === r.height) ? b : { w: r.width, h: r.height })
     }
-    tick()
-    const id = setInterval(tick, 50)
-    const stop = setTimeout(() => clearInterval(id), 400)
-    return () => { clearInterval(id); clearTimeout(stop) }
-  }, [dims.width, dims.height])
+    renderer.setFrameCallback(cb)
+    return () => renderer.removeFrameCallback(cb)
+  }, [renderer])
 
   const { lines, inner } = useMemo(() => frame(box.w, box.h), [box.w, box.h])
   const font = useMemo(() => pickFont(inner.w), [inner.w])
