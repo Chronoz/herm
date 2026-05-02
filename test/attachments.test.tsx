@@ -33,6 +33,10 @@ describe("composer: image attachments (D4+D7)", () => {
     await act(async () => { await t.keys.typeText("describe this") })
     act(() => t.keys.pressEnter())
     await until(t, () => t.gw.last("prompt.submit") !== undefined)
+    // Wire carries the raw user text; MEDIA: echo is client-only so the
+    // gateway's text-mode image routing owns the analysis-block prefix
+    // without duplicating the path. See app.tsx:send for rationale.
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("describe this")
     // Pre-send tray chip — the one with 800×600 dims — is gone.
     await until(t, () => !t.frame().includes("800×600"))
     // But the transcript MEDIA echo is visible: basename in the user turn.

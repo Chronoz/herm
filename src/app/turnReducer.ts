@@ -190,13 +190,33 @@ function systemMessage(text: string): Message {
   }
 }
 
+// Flatten a transcript row's `text` to a plain string for the reducer.
+// Native-mode image routing stores user turns as an OpenAI content-parts
+// list (`[{type:"text",text:…}, {type:"image_url",image_url:{url:…}}, …]`)
+// instead of a plain string. ChafaImage needs a path, so a `data:` URL
+// can't be reconstructed into a MEDIA: line — but we emit the `withMedia`
+// prefix on the wire now (app.tsx:send), so the path sits inside the
+// leading {type:"text"} fragment and survives.
+function flatten(text: TranscriptMessage["text"]): string {
+  if (typeof text === "string") return text
+  if (!Array.isArray(text)) return ""
+  const out: string[] = []
+  for (const p of text) {
+    if (p && typeof p === "object" && "type" in p && p.type === "text"
+        && "text" in p && typeof p.text === "string") out.push(p.text)
+  }
+  return out.join("\n")
+}
+
 export function transcriptToMessages(rows: TranscriptMessage[]): Message[] {
   return rows
-    .filter(r => r.text && (r.role === "user" || r.role === "assistant"))
+    .filter(r => r.role === "user" || r.role === "assistant")
+    .map(r => ({ role: r.role, content: flatten(r.text) }))
+    .filter(r => r.content)
     .map(r => ({
       id: mid(),
       role: r.role as "user" | "assistant",
-      parts: [{ type: "text" as const, content: r.text ?? "", streaming: false }],
+      parts: [{ type: "text" as const, content: r.content, streaming: false }],
       timestamp: Date.now() / 1000,
     }))
 }

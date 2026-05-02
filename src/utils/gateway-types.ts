@@ -219,9 +219,19 @@ export type SessionUsageResponse = {
   compressions?: number
 }
 
+/** Content part inside a multimodal user turn — upstream stores the raw
+ *  OpenAI content list for native-mode image routing. We only care about
+ *  flattening the text fragments back into a string for render. */
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: string }
+
 export type TranscriptMessage = {
   role: "user" | "assistant" | "system" | "tool"
-  text?: string
+  /** Either a plain string (text-mode, assistant, system) or a list of
+   *  OpenAI content parts (native-mode user turns with attached images). */
+  text?: string | ContentPart[]
   name?: string
   context?: string
 }

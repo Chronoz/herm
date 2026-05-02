@@ -22,8 +22,19 @@ const tag = (m: TranscriptMessage, theme: Theme) =>
   : m.role === "tool" ? { label: `⚙ ${m.name ?? "tool"}`, fg: theme.warning }
   : { label: "· system", fg: theme.textMuted }
 
+// Flatten native-mode parts-lists to the first text fragment so the
+// history preview renders something meaningful instead of [object Object].
+const flatten = (t: TranscriptMessage["text"]): string => {
+  if (typeof t === "string") return t
+  if (!Array.isArray(t)) return ""
+  for (const p of t)
+    if (p && typeof p === "object" && "type" in p && p.type === "text"
+        && "text" in p && typeof p.text === "string") return p.text
+  return ""
+}
+
 const body = (m: TranscriptMessage) =>
-  (m.role === "tool" ? m.context : m.text) ?? ""
+  m.role === "tool" ? (m.context ?? "") : flatten(m.text)
 
 const HistoryDialog = (props: { gw: Gateway }) => {
   const theme = useTheme().theme

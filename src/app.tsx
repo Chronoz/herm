@@ -448,6 +448,11 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     // so ChafaImage renders them inline. Gateway also tracks them in
     // session["attached_images"] for the agent-side enrichment — these
     // are display only, the path in the chip is what the agent sees.
+    // The wire stays `text` (not `withMedia`) so the gateway's text-mode
+    // image routing doesn't collide with an explicit MEDIA: duplicate
+    // and so the persisted user row doesn't drag the analysis block
+    // into view on resume. Parity with Ink: live preview is ours, the
+    // resume view falls back to whatever upstream persisted.
     const withMedia = attachments.length
       ? [...attachments.flatMap(a => a.path ? [`MEDIA:${a.path}`] : []), text].filter(Boolean).join("\n")
       : text
