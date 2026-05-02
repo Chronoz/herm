@@ -4,6 +4,7 @@
 // reads as "a block in the trail that happens to be red."
 
 import { memo, useEffect, useState } from "react"
+import { LEFT_BAR } from "../../ui/borders"
 import { useTheme } from "../../theme"
 import { copy } from "../../utils/clipboard"
 
@@ -35,10 +36,7 @@ export const ErrorBlock = memo(({ text }: { text: string }) => {
     <box
       border={["left"]}
       borderColor={theme.error}
-      customBorderChars={{
-        topLeft: "", bottomLeft: "", topRight: "", bottomRight: "",
-        horizontal: "", vertical: "┃", topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
-      }}
+      customBorderChars={LEFT_BAR}
       backgroundColor={theme.backgroundPanel}
       paddingLeft={2}
       paddingTop={1}

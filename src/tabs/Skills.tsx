@@ -12,7 +12,7 @@ import { useHome } from "../home";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
 import { KVLink } from "../components/ui/FileLink";
-import { Col, Hdr, Marquee } from "../ui/table";
+import { Col, Hdr, Marquee, VBAR } from "../ui/table";
 import { ago } from "../ui/fmt";
 import { openConfirm } from "../dialogs/confirm";
 import { openCurator } from "../dialogs/curator";
@@ -416,7 +416,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
             </box>
           </scrollbox>
         ) : (
-          <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+          <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={VBAR}>
             {flat.map((row, i) => {
               if (row.type === "header") {
                 return (

@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState, useRef, useMemo, memo, type Dispatch, type SetStateAction } from "react"
+import { CORNERS } from "../ui/borders"
 import { useKeyboard } from "@opentui/react"
 
 import type { Message } from "../types/message"
@@ -558,8 +559,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
             </box>
           ) : null}
           <box border
-               customBorderChars={{ topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘",
-                 horizontal: " ", vertical: " ", topT: " ", bottomT: " ", leftT: " ", rightT: " ", cross: " " }}
+               customBorderChars={CORNERS}
                borderColor={theme.border}>
             {[...Array(COLS)].map((_, row) => (
               <box key={row} flexDirection="row" height={1}>

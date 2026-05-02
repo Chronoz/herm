@@ -6,6 +6,7 @@
 // first and act on it). 'r' resets the selected row to its default.
 
 import { useState, useMemo } from "react"
+import { VBAR } from "../ui/table"
 import { useKeyboard } from "@opentui/react"
 import { useTheme } from "../theme"
 import * as prefs from "../utils/preferences"
@@ -93,7 +94,7 @@ const KeysDialog = (props: { dialog: DialogContext }) => {
         <text fg={theme.textMuted}>{`leader = ${keys.print("leader")}`}</text>
       </box>
       <box height={1} />
-      <scrollbox scrollY maxHeight={22} verticalScrollbarOptions={{ visible: true }}>
+      <scrollbox scrollY maxHeight={22} verticalScrollbarOptions={VBAR}>
         <box flexDirection="column" width="100%">
           {rows.map((r, i) => {
             if (r.type === "header") return (

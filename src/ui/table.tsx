@@ -17,6 +17,12 @@ import * as prefs from "../utils/preferences"
 // feedback loop).
 export const VBAR_W = 1
 
+// Stable prop for list scrollboxes so `updateProperties`' `!==`
+// check doesn't re-set the scrollbar config on every host reconcile.
+// Inline `{{ visible: true }}` is a new object each render → every
+// reconcile triggers `setProperty → requestRender()` for nothing.
+export const VBAR = { visible: true } as const
+
 export const Col = (p: {
   /** Fixed width in cells. Mutually exclusive with `grow`. */
   w?: number

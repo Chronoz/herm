@@ -6,7 +6,7 @@ import { useDialog } from "../ui/dialog";
 import { useToast } from "../ui/toast";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
-import { Col, Hdr } from "../ui/table";
+import { Col, Hdr, VBAR } from "../ui/table";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -233,7 +233,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
           </box>
         ) : (
           <scrollbox ref={follow.ref} key="list" scrollY flexGrow={1}
-                     verticalScrollbarOptions={{ visible: true }}>
+                     verticalScrollbarOptions={VBAR}>
             {secs.reduce<{ base: number; out: ReactNode[] }>((acc, s) => {
               acc.out.push(
                 <box key={`§${s.kind}`} height={1} marginTop={acc.base > 0 ? 1 : 0}>

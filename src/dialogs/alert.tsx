@@ -1,6 +1,7 @@
 // Scrollable read-only text dialog — oc ui/dialog-alert equivalent.
 
 import { useState } from "react"
+import { LEFT_BAR } from "../ui/borders"
 import { useKeyboard } from "@opentui/react"
 import { useKeys } from "../keys"
 import { useTheme } from "../theme"
@@ -29,8 +30,7 @@ const Alert = (props: { title: string; body: string; onClose: () => void }) => {
   return (
     <box flexDirection="column" width={84} maxHeight={28}
          border={["left"]} borderColor={theme.info}
-         customBorderChars={{ topLeft: "", bottomLeft: "", topRight: "", bottomRight: "",
-           horizontal: "", vertical: "┃", topT: "", bottomT: "", leftT: "", rightT: "", cross: "" }}
+         customBorderChars={LEFT_BAR}
          backgroundColor={theme.backgroundPanel}
          paddingLeft={2} paddingRight={2} paddingY={1} gap={1}>
       <box height={1}>

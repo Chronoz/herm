@@ -7,7 +7,7 @@ import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
-import { Col, Hdr } from "../ui/table"
+import { Col, Hdr, VBAR } from "../ui/table"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { openConfirm } from "../dialogs/confirm"
 
@@ -192,7 +192,7 @@ export const Env = memo((props: { focused?: boolean }) => {
         </box>
       ) : (
         <scrollbox ref={follow.ref} key="list" scrollY flexGrow={1}
-                   verticalScrollbarOptions={{ visible: true }}>
+                   verticalScrollbarOptions={VBAR}>
           <box flexDirection="column" width="100%">
             {rows.map((row, i) => row.type === "header" ? (
               <box

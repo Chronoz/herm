@@ -15,6 +15,7 @@
 import {
   memo, useRef, useState, forwardRef, useImperativeHandle,
 } from "react"
+import { LEFT_BAR } from "../../ui/borders"
 import type { ParsedKey, SubmitEvent } from "@opentui/core"
 import { useTheme } from "../../theme"
 import { useGateway } from "../../app/gateway"
@@ -45,10 +46,7 @@ const Frame = (p: { tint: import("@opentui/core").RGBA; children: React.ReactNod
       flexDirection="column"
       border={["left"]}
       borderColor={p.tint}
-      customBorderChars={{
-        topLeft: "", bottomLeft: "", topRight: "", bottomRight: "",
-        horizontal: "", vertical: "┃", topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
-      }}
+      customBorderChars={LEFT_BAR}
       backgroundColor={theme.backgroundPanel}
       marginBottom={1}
     >

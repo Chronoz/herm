@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
+import { SIDE_PIPE } from "../ui/borders"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
@@ -13,7 +14,7 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
-import { Col, Hdr, Marquee } from "../ui/table"
+import { Col, Hdr, Marquee, VBAR } from "../ui/table"
 import { Ticker, inline } from "../ui/ticker"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
@@ -92,11 +93,7 @@ const PeekRow = memo((props: { row: Folded }) => {
   const bar = (side: "left" | "right") => (
     <box width={2} flexShrink={0} height={1}
          border={[side]} borderColor={color}
-         customBorderChars={{
-           topLeft: "│", bottomLeft: "│", vertical: "│",
-           topRight: "│", bottomRight: "│", horizontal: "",
-           topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
-         }} />
+         customBorderChars={SIDE_PIPE} />
   )
   return (
     <box height={1} flexDirection="row"
@@ -758,7 +755,7 @@ export const Sessions = memo((props: Props) => {
             {searching ? <SearchHeaderRow /> : <HeaderRow />}
             <box height={1} />
             <scrollbox ref={vscroll} scrollY viewportCulling flexGrow={1}
-                       verticalScrollbarOptions={{ visible: true }}>
+                       verticalScrollbarOptions={VBAR}>
               {searching
                 ? results.map((r, i) => (
                     <SearchItem key={r.session_id} id={rowId(i)} idx={i}

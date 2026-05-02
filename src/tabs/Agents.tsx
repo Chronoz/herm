@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
+import { VBAR } from "../ui/table"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import { useKeys, handleListKey, useFollow } from "../keys"
 import { useGateway, useGatewayEvent } from "../app/gateway"
@@ -537,7 +538,7 @@ export const Agents = memo((props: Props) => {
         <box flexDirection="row" flexGrow={1} minWidth={0}>
           {showList ? (
           <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={14}>
-            <scrollbox ref={pFollow.ref} scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+            <scrollbox ref={pFollow.ref} scrollY flexGrow={1} verticalScrollbarOptions={VBAR}>
               {profiles.map((p, i) => (
                 <ProfileRow key={p.name} id={pFollow.id(i)} p={p} idx={i} selected={i === pSel}
                   onHover={pHover} onEnter={pEnter} onDelete={pDelete} />
@@ -580,7 +581,7 @@ export const Agents = memo((props: Props) => {
           </box>
         ) : (
           <box key="body" flexDirection="column" flexGrow={1} minHeight={0}>
-            <scrollbox ref={dFollow.ref} scrollY flexGrow={3} flexBasis={0} verticalScrollbarOptions={{ visible: true }}>
+            <scrollbox ref={dFollow.ref} scrollY flexGrow={3} flexBasis={0} verticalScrollbarOptions={VBAR}>
               {active.map((r, i) => {
                 const lv = liveMap.get(r.subagent_id)
                 const row = lv ? { ...r, tool_count: lv.tool_count } : r

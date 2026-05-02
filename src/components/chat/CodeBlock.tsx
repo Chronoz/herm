@@ -4,6 +4,7 @@
 // of pulling fences out of the markdown stream is purely to wrap them.
 
 import { memo, useState } from "react"
+import { LEFT_BAR } from "../../ui/borders"
 import { useTheme } from "../../theme"
 import { useToast } from "../../ui/toast"
 import { copy } from "../../utils/clipboard"
@@ -35,10 +36,7 @@ export const CodeBlock = memo((props: { code: string; lang?: string; streaming?:
       marginTop={1}
       border={["left"]}
       borderColor={theme.border}
-      customBorderChars={{
-        topLeft: "", bottomLeft: "", topRight: "", bottomRight: "",
-        horizontal: "", vertical: "┃", topT: "", bottomT: "", leftT: "", rightT: "", cross: "",
-      }}
+      customBorderChars={LEFT_BAR}
       backgroundColor={theme.backgroundPanel}
       paddingLeft={1}
     >

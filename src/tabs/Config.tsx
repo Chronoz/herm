@@ -7,7 +7,7 @@ import { useToast } from "../ui/toast";
 import { useDialog } from "../ui/dialog";
 import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
-import { Col, Hdr } from "../ui/table";
+import { Col, Hdr, VBAR } from "../ui/table";
 import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
 import { check as checkRule } from "../config/rules";
@@ -456,7 +456,7 @@ export const Config = memo((props: { focused?: boolean }) => {
             </box>
           ) : (
             <scrollbox ref={follow.ref} key="list" scrollY flexGrow={1}
-                       verticalScrollbarOptions={{ visible: true }}>
+                       verticalScrollbarOptions={VBAR}>
               {secs.reduce<{ base: number; out: ReactNode[] }>((acc, s) => {
                 if (s.head !== null) acc.out.push(
                   <box key={`§${s.head}`} height={1} marginTop={acc.base > 0 ? 1 : 0}>

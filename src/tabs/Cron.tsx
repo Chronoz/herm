@@ -8,7 +8,7 @@ import { useToast } from "../ui/toast";
 import { openConfirm } from "../dialogs/confirm";
 import { TabShell } from "../ui/shell";
 import { KVBlock } from "../ui/kv";
-import { Col, Hdr } from "../ui/table";
+import { Col, Hdr, VBAR } from "../ui/table";
 import { openTextPrompt } from "../dialogs/text-prompt";
 import { ago, until } from "../ui/fmt";
 import { readCronOutput, type CronOutput } from "../utils/hermes-home";
@@ -272,7 +272,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
               <Col w={16} fg={theme.textMuted} bold>Next</Col>
             </Hdr>
             <box height={1} />
-            <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={{ visible: true }}>
+            <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={VBAR}>
               {jobs.map((j, i) => (
                 <JobRow
                   key={j.id}
