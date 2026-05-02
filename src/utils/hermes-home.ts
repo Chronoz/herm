@@ -289,6 +289,48 @@ export async function readLatestCuratorReport(): Promise<CuratorReportInfo | nul
   }
 }
 
+/** One curator run — id is the YYYYMMDD-HHMMSS dir name; counts come
+ *  from run.json.counts; REPORT.md is lazy-loaded on expand. */
+export type CuratorRun = {
+  id: string
+  at: number
+  archived: number; consolidated: number; added: number
+  before: number; after: number
+}
+
+export function listCuratorRuns(): CuratorRun[] {
+  try {
+    const base = `${HERMES_HOME}/logs/curator`;
+    return readdirSync(base, { withFileTypes: true })
+      .filter(e => e.isDirectory())
+      .sort((a, b) => b.name.localeCompare(a.name))
+      .flatMap(e => {
+        try {
+          const fd = openSync(`${base}/${e.name}/run.json`, "r");
+          const buf = Buffer.alloc(8192);
+          const n = readSync(fd, buf);
+          closeSync(fd);
+          const j = JSON.parse(buf.toString("utf8", 0, n));
+          const c = j.counts ?? {};
+          return [{
+            id: e.name,
+            at: Date.parse(j.started_at ?? "") / 1000 || 0,
+            archived: c.archived_this_run ?? 0,
+            consolidated: c.consolidated_this_run ?? 0,
+            added: c.added_this_run ?? 0,
+            before: c.before ?? 0, after: c.after ?? 0,
+          }];
+        } catch { return [] }
+      });
+  } catch { return [] }
+}
+
+export async function readCuratorReport(id: string): Promise<string> {
+  try {
+    return (await Bun.file(hermesPath(`logs/curator/${id}/REPORT.md`)).text()).trim();
+  } catch { return "" }
+}
+
 /**
  * Cron-generated hermes-agent changelog digest (tji.3). The cron job
  * writes ~/.hermes/herm/changelog.md as `# hermes-agent — N new

@@ -95,4 +95,42 @@ describe("Skills tab", () => {
     expect(t.frame()).not.toContain("STALE")
     t.destroy()
   })
+
+  test("h opens curator history pane; listCuratorRuns reads run.json counts", async () => {
+    const { listCuratorRuns } = await import("../src/utils/hermes-home")
+    const base = hermesPath("logs/curator/20260430-120000")
+    mkdirSync(base, { recursive: true })
+    writeFileSync(`${base}/run.json`, JSON.stringify({
+      started_at: "2026-04-30T12:00:00Z",
+      counts: { before: 50, after: 42, archived_this_run: 8,
+        consolidated_this_run: 3, added_this_run: 1 },
+    }))
+    writeFileSync(`${base}/REPORT.md`, "# Curator run\n\nsome report body")
+
+    const runs = listCuratorRuns()
+    expect(runs[0].id).toBe("20260430-120000")
+    expect(runs[0].before).toBe(50)
+    expect(runs[0].archived).toBe(8)
+    expect(runs[0].consolidated).toBe(3)
+
+    const gw = new MockGateway({
+      "skills.manage": p => p.action === "list" ? { skills: { general: ["sk"] } } : {},
+    })
+    const t = await mountNode(<Skills focused />, { gw, width: 160, height: 40 })
+    await until(t, () => t.frame().includes("Skills (1)"))
+    expect(t.frame()).not.toContain("Curator History")
+
+    await act(async () => { await t.keys.typeText("h") })
+    await until(t, () => t.frame().includes("Curator History"))
+    expect(t.frame()).toContain("50→42")
+    expect(t.frame()).toContain("arch 8")
+    expect(t.frame()).toContain("cons 3")
+
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.frame().includes("some report body"))
+
+    await act(async () => { await t.keys.typeText("h") })
+    await until(t, () => !t.frame().includes("Curator History"))
+    t.destroy()
+  })
 })

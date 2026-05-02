@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { RGBA } from "@opentui/core";
 import { useKeys, handleListKey, useFollow } from "../keys";
-import { makeSource, readSkillFrontmatter, type SkillInfo, type SkillUsage } from "../utils/hermes-home";
+import { makeSource, readSkillFrontmatter, listCuratorRuns, readCuratorReport, type SkillInfo, type SkillUsage, type CuratorRun } from "../utils/hermes-home";
 import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
 import { useDialog } from "../ui/dialog";
@@ -139,6 +139,82 @@ const EmptyState = memo((props: { searching: boolean }) => {
   );
 });
 
+// ─── Curator History Panel ───────────────────────────────────────────
+// Right-hand pane (swaps with DetailPanel on `h`). Browsable list of
+// logs/curator/{id}/ runs with counts from run.json; Enter toggles
+// REPORT.md rendered through <markdown>. Independent selection so the
+// skills list stays on whatever row it was.
+
+const HistoryPanel = memo((props: { focused: boolean }) => {
+  const { theme, syntaxStyle } = useTheme();
+  const [runs, setRuns] = useState<CuratorRun[]>(() => listCuratorRuns());
+  const [sel, setSel] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState("");
+  const run = runs[sel];
+
+  useEffect(() => {
+    if (!open || !run) return;
+    let live = true;
+    readCuratorReport(run.id).then(t => { if (live) setBody(t) });
+    return () => { live = false };
+  }, [open, run?.id]);
+
+  useKeyboard((key) => {
+    if (!props.focused) return;
+    if (key.name === "up") { setOpen(false); return setSel(p => Math.max(0, p - 1)) }
+    if (key.name === "down") { setOpen(false); return setSel(p => Math.min(runs.length - 1, p + 1)) }
+    if (key.name === "return") return setOpen(o => !o);
+    if (key.raw === "r") return setRuns(listCuratorRuns());
+  });
+
+  return (
+    <box flexDirection="column" padding={1} border
+         borderColor={props.focused ? theme.primary : theme.border}
+         backgroundColor={theme.backgroundPanel} width="50%">
+      <box height={1}>
+        <text>
+          <span fg={theme.primary}><strong>Curator History</strong></span>
+          <span fg={theme.textMuted}>
+            {`  ${runs.length} run${runs.length === 1 ? "" : "s"}${runs[0] ? ` · last ${ago(runs[0].at)}` : ""}`}
+          </span>
+        </text>
+      </box>
+      <box height={1}><text fg={theme.textMuted}>↑↓ select · Enter expand · h close</text></box>
+      <box height={1} />
+      {runs.length === 0
+        ? <text fg={theme.textMuted}>no runs in ~/.hermes/logs/curator/</text>
+        : (
+          <scrollbox scrollY flexGrow={1}>
+            <box flexDirection="column" width="100%">
+              {runs.map((r, i) => {
+                const on = i === sel;
+                return (
+                  <box key={r.id} flexDirection="column">
+                    <box height={1} flexDirection="row"
+                         backgroundColor={on ? theme.backgroundElement : undefined}
+                         onMouseDown={() => { setSel(i); setOpen(o => i === sel ? !o : true) }}>
+                      <Col w={2} fg={on ? theme.primary : theme.textMuted}>{on ? "▸ " : "  "}</Col>
+                      <Col w={12} fg={on ? theme.accent : theme.text}>{ago(r.at)}</Col>
+                      <Col grow fg={theme.textMuted}>
+                        {`${r.before}→${r.after}  arch ${r.archived}  cons ${r.consolidated}${r.added ? `  +${r.added}` : ""}`}
+                      </Col>
+                    </box>
+                    {on && open ? (
+                      <box marginLeft={2} marginTop={1} marginBottom={1}>
+                        <markdown content={body || "…"} fg={theme.markdownText} syntaxStyle={syntaxStyle} />
+                      </box>
+                    ) : null}
+                  </box>
+                );
+              })}
+            </box>
+          </scrollbox>
+        )}
+    </box>
+  );
+});
+
 // ─── Main Component ──────────────────────────────────────────────────
 
 export const Skills = memo((props: { focused?: boolean }) => {
@@ -154,6 +230,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [sort, setSort] = useState<Sort>("name");
+  const [history, setHistory] = useState(false);
   const seq = useRef(0);
 
   const load = useCallback(() => {
@@ -278,6 +355,17 @@ export const Skills = memo((props: { focused?: boolean }) => {
       return;
     }
 
+    // `h` toggles the curator run-history pane in place of DetailPanel.
+    // When open it owns ↑↓/Enter/r; Esc or `h` returns here.
+    if (!key.ctrl && !key.meta && key.raw === "h") {
+      setHistory(h => !h);
+      return;
+    }
+    if (history) {
+      if (key.name === "escape") return setHistory(false);
+      return;   // HistoryPanel's own useKeyboard handles the rest
+    }
+
     handleListKey(keys, key, {
       count, setSel: setSelected, ...follow.opts,
       onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
@@ -294,7 +382,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
         title={searching ? `Hub Search (${hits.length})` : `Skills (${skills.length}${sort === "used" ? " · by use" : ""})`}
         hint={searching
           ? "↑↓ navigate  Enter install  Esc cancel"
-          : `↑↓ navigate  ${keys.print("list.search")} search hub  s sort  c curator  ${keys.print("list.refresh")} refresh`}
+          : `↑↓ navigate  ${keys.print("list.search")} search hub  s sort  c curator  h history  ${keys.print("list.refresh")} refresh`}
       >
         {/* Search bar */}
         {searching ? (
@@ -374,8 +462,10 @@ export const Skills = memo((props: { focused?: boolean }) => {
         ) : null}
       </TabShell>
 
-      {/* Detail panel */}
-      {current ? <DetailPanel skill={current} usage={usage[current.name]} /> : null}
+      {/* Right-hand pane: curator history when toggled, else skill detail */}
+      {history
+        ? <HistoryPanel focused={!!props.focused && !searching} />
+        : current ? <DetailPanel skill={current} usage={usage[current.name]} /> : null}
     </box>
   );
 });
