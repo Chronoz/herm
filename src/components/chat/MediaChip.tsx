@@ -4,7 +4,7 @@
 // OpenTUI has no image primitive, so this is the ceiling for now.
 
 import { memo, useState } from "react"
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { openFile } from "../../utils/open-file"
 import { useTheme } from "../../theme"
 
@@ -79,7 +79,13 @@ export function splitContent(text: string): Seg[] {
   return out
 }
 
-export const MediaChip = memo((props: { path: string }) => {
+export const MediaChip = memo((props: {
+  path: string
+  /** Override the default open-file click. Handlers stopPropagation so
+   *  the enclosing message's useClick (→ actions menu) never sees the
+   *  down event. Pass to repurpose the chip (e.g. ChafaImage collapse). */
+  onMouseDown?: (e: MouseEvent) => void
+}) => {
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)
   const kind = classify(props.path)
@@ -87,10 +93,12 @@ export const MediaChip = memo((props: { path: string }) => {
     img: theme.accent, audio: theme.warning, video: theme.info,
     url: theme.primary, file: theme.secondary,
   }[kind]
+  const click = props.onMouseDown
+    ?? ((e: MouseEvent) => { e.stopPropagation(); openFile(props.path) })
   return (
     <box
       flexDirection="row" height={1}
-      onMouseDown={() => openFile(props.path)}
+      onMouseDown={click}
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
     >

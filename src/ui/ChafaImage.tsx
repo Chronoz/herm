@@ -5,6 +5,7 @@
 // silently degrades to the plain MediaChip — no error chrome in the stream.
 
 import { memo, useMemo, useState } from "react"
+import type { MouseEvent } from "@opentui/core"
 import { useTheme } from "../theme"
 import { openFile } from "../utils/open-file"
 import { renderChafa, hex, chafaBin } from "../utils/chafa"
@@ -27,19 +28,20 @@ export const ChafaImage = memo(({ path, width }: Props) => {
   // chafa missing or render failed → stream the MediaChip, no chrome
   if (!hasChafa || "err" in result) return <MediaChip path={path} />
 
-  // Collapsed state wraps MediaChip so click re-expands. Don't reuse its
-  // onMouseDown openFile behavior here — in-chat toggle takes precedence.
+  // Collapsed → chip re-expands on click. Override MediaChip's default
+  // openFile so the click does exactly one thing; stopPropagation keeps
+  // it from reaching the message's useClick (→ actions menu).
   if (collapsed) {
     return (
-      <box onMouseDown={() => setCollapsed(false)}>
-        <MediaChip path={path} />
-      </box>
+      <MediaChip path={path}
+        onMouseDown={(e: MouseEvent) => { e.stopPropagation(); setCollapsed(false) }} />
     )
   }
 
   return (
     <box flexDirection="column" marginTop={1}>
-      <box flexDirection="column" onMouseDown={() => setCollapsed(true)}>
+      <box flexDirection="column"
+           onMouseDown={(e: MouseEvent) => { e.stopPropagation(); setCollapsed(true) }}>
         {result.rows.map((row, i) => (
           <text key={i}>
             {row.map((c, j) => (
@@ -48,7 +50,8 @@ export const ChafaImage = memo(({ path, width }: Props) => {
           </text>
         ))}
       </box>
-      <box height={1} onMouseDown={() => openFile(path)}>
+      <box height={1}
+           onMouseDown={(e: MouseEvent) => { e.stopPropagation(); openFile(path) }}>
         <text>
           <span fg={theme.textMuted}>{"  "}</span>
           <span fg={theme.accent}>◉ </span>
