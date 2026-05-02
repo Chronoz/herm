@@ -8,8 +8,17 @@
 
 import { Database } from "bun:sqlite"
 import { mkdirSync } from "node:fs"
+import { homedir } from "node:os"
 
-const HH = process.env.HERMES_HOME!
+// preload.ts points HERMES_HOME at a tmpdir, but only under `bun test`.
+// Importing this fixture from `bun -e` / `bun run` skips the preload and
+// the `!` assertion falls through to the real ~/.hermes — which this module
+// then DELETEs from. Fail closed.
+const HH = process.env.HERMES_HOME
+if (!HH || HH === `${homedir()}/.hermes`) throw new Error(
+  "state-db fixture: HERMES_HOME is unset or points at the real ~/.hermes. " +
+  "Run under `bun test` (preload sandboxes it) or set HERMES_HOME explicitly.",
+)
 
 export const openStateDb = (): Database => {
   mkdirSync(HH, { recursive: true })
