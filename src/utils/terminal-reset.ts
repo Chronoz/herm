@@ -33,7 +33,7 @@ export const TERMINAL_MODE_RESET =
   "\x1b[?2004l" +  // bracketed paste
   "\x1b[?1049l" +  // alternate screen
   "\x1b[<u" +      // kitty keyboard (pop stack)
-  "\x1b[>4m" +     // modifyOtherKeys
+  "\x1b[>4;0m" +   // modifyOtherKeys → level 0
   "\x1b[0m" +      // SGR attributes
   "\x1b[?25h"      // cursor visible
 

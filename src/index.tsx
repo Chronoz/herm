@@ -61,6 +61,21 @@ const main = async () => {
   });
   end()
 
+  // OpenTUI's setupTerminal emits CSI >4;1m (modifyOtherKeys=1), then
+  // upgrades to kitty (CSI >4;0m + CSI >{flags}u) only if the async
+  // CSI ?u probe gets a reply. Level 1 does NOT disambiguate Ctrl+digit
+  // — they arrive as legacy control bytes (Ctrl+2=NUL, Ctrl+3=ESC,
+  // Ctrl+4=FS…) so `key.ctrl` is never true and tab-jump is dead on
+  // terminals without kitty support. Level 2 encodes every modified key
+  // as CSI 27;m;c~ which parseKeypress handles. setupTerminal is awaited
+  // inside createCliRenderer, so >4;1m is already out; this lands after.
+  // If kitty detection later fires, its >4;0m overrides this — harmless.
+  // Re-asserted on focus since a suspended child may have reset modes.
+  const bump = () => renderer.capabilities?.kitty_keyboard
+    || (process.stdout.isTTY && process.stdout.write("\x1b[>4;2m"))
+  bump()
+  renderer.on("focus", bump)
+
   perf.mem("post-renderer")
 
   const root = createRoot(renderer);

@@ -28,7 +28,7 @@ describe("terminal mode reset", () => {
     expect(TERMINAL_MODE_RESET).toContain("\x1b[?1049l")
     // Kitty keyboard + modifyOtherKeys.
     expect(TERMINAL_MODE_RESET).toContain("\x1b[<u")
-    expect(TERMINAL_MODE_RESET).toContain("\x1b[>4m")
+    expect(TERMINAL_MODE_RESET).toContain("\x1b[>4;0m")
     // Attributes + cursor show.
     expect(TERMINAL_MODE_RESET).toContain("\x1b[0m")
     expect(TERMINAL_MODE_RESET).toContain("\x1b[?25h")
