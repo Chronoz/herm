@@ -13,7 +13,7 @@ type TabBarProps = {
   onTabChange: (index: number) => void
 }
 
-// 1..9, 0, - — mirrors the Ctrl+<digit> map in useAppKeys.
+// 1..9, 0, - — mirrors the <leader>+digit map in useAppKeys.
 const idx = (i: number) => i < 9 ? String(i + 1) : i === 9 ? "0" : "-"
 
 export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
@@ -40,12 +40,9 @@ export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
         <box flexGrow={1} />
         <box paddingX={1}>
           <text fg={theme.borderSubtle}>
-            {`${keys.print("tab.prev")}/${keys.print("tab.next")} or Ctrl+N`}
+            {`${keys.print("tab.prev")}/${keys.print("tab.next")} or ${keys.print("leader")} N`}
           </text>
         </box>
-      </box>
-      <box width="100%" height={1}>
-        <text fg={theme.borderSubtle}>{'─'.repeat(120)}</text>
       </box>
     </box>
   )

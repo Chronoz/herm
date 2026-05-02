@@ -116,7 +116,7 @@ export function useAppKeys(o: Opts) {
     // claims the narrow set it cares about (←/→/↑/↓/Enter/Esc/1-9);
     // everything else — including printable chars while the composer
     // is focused — falls through so typing-to-queue still works.
-    if (o.onPromptKey && !key.ctrl && !key.meta && key.eventType !== "release") {
+    if (o.onPromptKey && !keys.leader && !key.ctrl && !key.meta && key.eventType !== "release") {
       if (o.onPromptKey(key)) { key.stopPropagation(); return }
     }
 
@@ -142,9 +142,10 @@ export function useAppKeys(o: Opts) {
       o.setTab(t => { const n = Math.min(o.tabMax, t + 1); o.setFocusRegion(regionFor(n)); return n })
       return
     }
-    // Ctrl+1..0 → tab 1..10 (1-indexed), Ctrl+- → tab 11. Structural,
-    // not catalog — ten near-identical rebindable actions is noise.
-    if (key.ctrl && !key.meta && !key.shift && key.eventType !== "release") {
+    // <leader> 1..0 → tab 1..10 (1-indexed), <leader> - → tab 11.
+    // Structural, not catalog — ten near-identical rebindable actions is
+    // noise, and the leader itself is the rebindable part.
+    if (keys.leader && !key.ctrl && !key.meta && !key.shift && key.eventType !== "release") {
       const map: Record<string, number> = {
         "1": 0, "2": 1, "3": 2, "4": 3, "5": 4,
         "6": 5, "7": 6, "8": 7, "9": 8, "0": 9, "-": 10,

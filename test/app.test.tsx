@@ -38,18 +38,18 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("Ctrl+<digit> jumps directly to tab N", async () => {
+  test("<leader> <digit> jumps directly to tab N", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
     // Tab bar shows index prefixes.
     expect(t.frame()).toMatch(/1 Chat.*2 Context.*3 Sessions/)
 
-    act(() => t.keys.pressKey("3", { ctrl: true }))
+    act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("3") })
     await t.settle()
     expect(t.frame()).toContain("No sessions")
 
-    act(() => t.keys.pressKey("0", { ctrl: true }))
+    act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("0") })
     await until(t, () => t.frame().includes("Env / API Keys"))
     // Focus landed on content: arrow moves Env selection, doesn't type.
     act(() => t.keys.pressArrow("down"))
@@ -57,7 +57,7 @@ describe("app", () => {
     const sel = t.frame().split("\n").find(l => l.includes("▸"))!
     expect(sel).not.toMatch(/LLM Providers/)
 
-    act(() => t.keys.pressKey("1", { ctrl: true }))
+    act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("1") })
     await t.settle()
     expect(t.frame()).toContain("Message Hermes")
     t.destroy()
@@ -227,7 +227,7 @@ describe("app", () => {
     // Chat tab: sidebar visible at 130.
     expect(t.frame()).toMatch(/Agent\s+Hermes/)
 
-    act(() => t.keys.pressKey("3", { ctrl: true }))
+    act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("3") })
     await until(t, () => t.frame().includes("Sessions (1)"))
     // Sidebar dropped, detail pane kept.
     expect(t.frame()).not.toMatch(/Agent\s+Hermes/)
