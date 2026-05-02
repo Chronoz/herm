@@ -202,6 +202,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
 
   const switchSession = useCallback(async (target: string) => {
     reset()
+    setSplash(false)
     try {
       const res = await session.resume(target)
       setSid(res.id)
