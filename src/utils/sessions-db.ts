@@ -43,7 +43,7 @@ const SRC: Source = { file: PATH, relative: "state.db", label: "state.db" }
 let ro: Database | null = null
 
 /** Shared readonly handle. Null when state.db doesn't exist yet. */
-export const stateDb = (): Database | null => {
+const stateDb = (): Database | null => {
   if (ro) return ro
   try { return (ro = new Database(PATH, { readonly: true })) }
   catch { return null }
@@ -302,7 +302,7 @@ export function lineage(sid: string): LineageInfo {
 
 /** Walk the compression chain forward to its live tip. Bounded at 100
  *  links (upstream's defensive cap). */
-export function tip(sid: string): string {
+function tip(sid: string): string {
   const step = q(
     `SELECT c.id FROM sessions c
      JOIN sessions p ON p.id = c.parent_session_id

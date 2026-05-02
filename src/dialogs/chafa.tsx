@@ -3,7 +3,7 @@
 // 24-bit colored image rendering in OpenTUI works end-to-end. Will be
 // superseded by inline rendering in MessageItem (herm-mzb.7).
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { spawnSync } from "child_process"
 import { existsSync } from "fs"
 import { useTheme } from "../theme"

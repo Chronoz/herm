@@ -11,7 +11,6 @@
  *   - lastSessionId: resume previous session on startup
  */
 
-import { homedir } from "os"
 import { join } from "path"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { useSyncExternalStore } from "react"

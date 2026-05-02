@@ -5,7 +5,6 @@
 
 import { useEffect, useState } from "react"
 import { watch, type FSWatcher } from "node:fs"
-import { join } from "node:path"
 
 const TIMEOUT = 500
 

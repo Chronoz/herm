@@ -276,7 +276,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
 
       {(props.attachments?.length ?? 0) > 0 ? (
         <box flexDirection="column" paddingX={1} paddingBottom={1} gap={1}>
-          {props.attachments!.map((a, i) => a.path
+          {props.attachments!.map(a => a.path
             ? <ChafaImage key={`p-${a.path}`} path={a.path} width={60} />
             : null)}
         </box>

@@ -5,7 +5,7 @@ import * as spawnHistory from "./app/spawnHistory"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { hasInterp, interpolate } from "./utils/interpolate"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
-import type { GatewayEvent, SessionInfo, SessionUsageResponse, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
+import type { GatewayEvent, SessionInfo, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
 import type { Message } from "./types/message"
 import { CLOUD_MIN } from "./components/chat/ThoughtCloud"
 import type { AvatarState } from "./components/avatar/states"
@@ -97,9 +97,6 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   const [tab, setTab] = useState(CHAT_TAB)
   const [hideSidebar, setHideSidebar] = useState(false)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
-  const [cost, setCost] = useState(0)
-  const [ctxPct, setCtxPct] = useState<number | undefined>(undefined)
-  const [msgCount, setMsgCount] = useState(0)
   const [info, setInfo] = useState<SessionInfo | null>(null)
   const [title, setTitle] = useState("")
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
@@ -187,9 +184,6 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
     dispatch({ kind: "reset" })
-    setMsgCount(0)
-    setCost(0)
-    setCtxPct(undefined)
     setUsage(undefined)
     setReady(false)
     setStatus("")
@@ -211,7 +205,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
       const res = await session.resume(target)
       setSid(res.id)
       sessionStart.current = Date.now()
-      if (res.messages.length) { dispatch({ kind: "load", messages: res.messages }); setMsgCount(res.messages.length) }
+      if (res.messages.length) dispatch({ kind: "load", messages: res.messages })
     } catch (err) {
       dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
     }
@@ -237,15 +231,6 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     toast.show({ variant: "success",
       message: s.headline ?? `Compressed ${r.before_messages ?? 0}→${r.after_messages ?? 0} messages` })
   }, [session, toast, dispatch])
-
-  const pollUsage = useCallback(() => {
-    gw.request<SessionUsageResponse>("session.usage")
-      .then(r => {
-        if (r.cost_usd != null) setCost(r.cost_usd)
-        setCtxPct(r.context_percent ?? undefined)
-      })
-      .catch(() => {})
-  }, [gw])
 
   // ── Eikon avatar ──────────────────────────────────────────────────
   const loadEikon = useCallback((path: string) => {
@@ -295,7 +280,6 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     const r = await gw.request<{ messages: TranscriptMessage[] }>("session.history").catch(() => null)
     const at = turn.messages.findIndex(x => x.id === m.id)
     dispatch({ kind: "load", messages: r ? transcriptToMessages(r.messages ?? []) : turn.messages.slice(0, at) })
-    setMsgCount(c => Math.max(0, c - n))
     composer.current?.set(text)
     setFocusRegion("input")
   }, [turn.streaming, turn.messages, gw])
@@ -339,7 +323,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   const slash = useCallback((c: SlashCommand, arg = "") => {
     if (c.target === "local") {
       switch (c.name) {
-        case "clear": dispatch({ kind: "reset" }); setMsgCount(0); return
+        case "clear": dispatch({ kind: "reset" }); return
         case "new": newSession(); return
         case "theme": openThemePicker(dialog, themeCtx); return
         case "help": dialog.replace(<HelpDialog />); return
@@ -545,7 +529,6 @@ const AppInner = ({ launch }: { launch: Launch }) => {
           setSid(r.id)
           sessionStart.current = Date.now()
           if (r.messages.length) dispatch({ kind: "load", messages: r.messages })
-          setMsgCount(r.messages.length)
           if (r.note) toast.show({ variant: "info", message: r.note })
         })
       },
@@ -566,7 +549,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => {
         interrupted.current = false
-        setMsgCount(c => c + 1); setStatus(""); pollUsage()
+        setStatus("")
         spawnHistory.flush(gw, sid)
       },
       onBackground: (tid, text) => {
@@ -605,7 +588,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     }
     flush()
     dispatch(action)
-  }, [session, dialog, toast, pollUsage, gw, flush, launch])
+  }, [session, dialog, toast, gw, flush, launch])
 
   useGatewayEvent(handle)
 

@@ -60,7 +60,6 @@ export const boot = (label: string, ms: number) => {
   stages.push([label, ms])
   if (enabled) log(`🚀 boot:${label} ${ms.toFixed(1)}ms`)
 }
-export const bootStages = () => stages.slice()
 
 // ── Counters ──────────────────────────────────────────────────────────
 

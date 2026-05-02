@@ -7,7 +7,7 @@ import { useRenderer } from "@opentui/react"
 import { measureText, type ASCIIFontName } from "@opentui/core"
 import type { BoxRenderable } from "@opentui/core"
 import { useTheme } from "../theme"
-import { frame, FRAME } from "./splash-art"
+import { frame } from "./splash-art"
 import pkg from "../../package.json" with { type: "json" }
 
 export type SplashInfo = {

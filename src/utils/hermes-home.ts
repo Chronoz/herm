@@ -478,15 +478,13 @@ export async function readLiveSessions(): Promise<
 
 import {
   roots as _roots, children as _children, lineage as _lineage,
-  search as _search, remove as _remove, rename as _rename,
+  search as _search,
 } from "./sessions-db"
 export type { LineageInfo, SessionHit } from "./sessions-db"
 export const queryRecentSessions = _roots
 export const querySubagents = _children
 export const queryLineage = _lineage
 export const searchSessions = _search
-export const deleteSession = _remove
-export const renameSession = _rename
 
 /** Memory provider info — what's configured and available */
 export interface MemoryProviderInfo {

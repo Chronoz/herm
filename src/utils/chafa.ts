@@ -24,7 +24,6 @@ export type Cell = { ch: string; fg: RGB | null; bg: RGB | null }
 
 const ESC = 0x1b
 const LSQ = 0x5b // '['
-const M = 0x6d   // 'm'
 
 export function parseChafaLine(line: string): Cell[] {
   const out: Cell[] = []
