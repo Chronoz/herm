@@ -289,6 +289,32 @@ export async function readLatestCuratorReport(): Promise<CuratorReportInfo | nul
   }
 }
 
+/**
+ * Cron-generated hermes-agent changelog digest (tji.3). The cron job
+ * writes ~/.hermes/herm/changelog.md as `# hermes-agent — N new
+ * commits` + bullets. Splash shows the first bullet; the "N behind"
+ * count already comes from session.info.update_behind, so this only
+ * needs to surface the prose.
+ */
+export type Changelog = { source: Source; headline: string; body: string }
+
+export function readChangelog(): Changelog | null {
+  try {
+    const source = makeSource("herm/changelog.md");
+    // Bun.file().text() is async; splash render is sync-first-frame,
+    // so openSync/readSync to keep the hot path synchronous.
+    const fd = openSync(source.file, "r");
+    const buf = Buffer.alloc(4096);
+    const n = readSync(fd, buf);
+    closeSync(fd);
+    const body = buf.toString("utf8", 0, n).trim();
+    const line = body.split("\n").find(l => /^[-*·]/.test(l.trim()));
+    return { source, headline: line?.replace(/^[-*·]\s*/, "").trim() ?? "", body };
+  } catch {
+    return null;
+  }
+}
+
 /** SOUL.md info */
 export interface SoulInfo {
   source: Source;

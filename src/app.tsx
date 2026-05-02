@@ -43,6 +43,7 @@ import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { openChafa } from "./dialogs/chafa"
 import { Splash } from "./ui/Splash"
 import { lastReal } from "./utils/sessions-db"
+import { readChangelog } from "./utils/hermes-home"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
@@ -119,6 +120,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     () => launch.mode === "new" ? lastReal() : undefined,
     [launch.mode],
   )
+  const news = useMemo(() => readChangelog()?.headline, [])
   const [attachments, setAttachments] = useState<ImageAttachResponse[]>([])
   const [cloudH, setCloudH] = useState(CLOUD_MIN)
   const [pick, setPick] = useState<Message | undefined>(undefined)
@@ -778,6 +780,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
                   last={summoned.current ? undefined : splashLast
                     ? { id: splashLast.id, title: splashLast.title } : undefined}
                   composing={composing}
+                  news={news}
                 />
               ) : null}
             </box>

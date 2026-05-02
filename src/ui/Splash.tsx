@@ -23,6 +23,8 @@ export type SplashProps = {
   last?: { id: string; title: string | null }
   /** True once the user has typed in the composer — hides the prompt. */
   composing?: boolean
+  /** Cron-generated first-bullet from ~/.hermes/herm/changelog.md. */
+  news?: string
 }
 
 // Wordmark font tiers, widest first. `measureText` is cheap (table lookup).
@@ -86,6 +88,11 @@ export function Splash(p: SplashProps) {
           <box height={1}>
             <text fg={theme.textMuted}>{clip(sub, inner.w)}</text>
           </box>
+          {p.news ? (
+            <box height={1}>
+              <text fg={theme.textMuted}>{clip(`› ${p.news}`, inner.w)}</text>
+            </box>
+          ) : null}
           <box height={2} />
           {prompt ? (
             <>

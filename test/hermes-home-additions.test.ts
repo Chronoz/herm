@@ -73,4 +73,19 @@ describe("hermes-home readers", () => {
     expect(out!.text).not.toContain("old")
     expect(out!.path).toContain("20260102")
   })
+
+  test("readChangelog: first bullet → headline; null when missing", async () => {
+    const { readChangelog } = await import("../src/utils/hermes-home")
+    expect(readChangelog()).toBeNull()
+    mkdirSync(join(HH, "herm"), { recursive: true })
+    writeFileSync(
+      join(HH, "herm", "changelog.md"),
+      "# hermes-agent — 12 new commits\n_generated 2026-05-02_\n\n- skills: curator pins important skills\n- fix: config YAML merge\n",
+    )
+    const c = readChangelog()
+    expect(c).not.toBeNull()
+    expect(c!.headline).toBe("skills: curator pins important skills")
+    expect(c!.body).toContain("config YAML merge")
+    expect(c!.source.relative).toBe("herm/changelog.md")
+  })
 })
