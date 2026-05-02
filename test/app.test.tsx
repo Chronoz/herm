@@ -196,8 +196,8 @@ describe("app", () => {
     act(() => t.keys.pressEnter())
     await t.settle()
 
-    // First char flips focus (and is consumed); "ey" lands in the input.
-    expect(t.gw.last("prompt.submit")?.params.text).toBe("ey")
+    // First char flips focus AND lands in the buffer — nothing swallowed.
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("hey")
 
     t.destroy()
   })

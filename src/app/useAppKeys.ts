@@ -225,12 +225,17 @@ export function useAppKeys(o: Opts) {
       if (key.name === "down") return void c?.historyDown()
     }
 
-    // Printable char while Chat transcript has focus → bounce to composer.
-    // Other tabs own their printable keys (v=reveal, d=delete, etc.), so the
-    // shell must not intercept there.
-    if (o.tab === o.chatTab && o.focusRegion === "content" && !o.streaming && !key.ctrl && !key.meta) {
+    // Printable char while Chat transcript has focus → bounce to composer
+    // AND deliver the char (so the first keystroke isn't swallowed). Other
+    // tabs own their printable keys (v=reveal, d=delete, …), so the shell
+    // must not intercept there.
+    if (o.tab === o.chatTab && o.focusRegion === "content" && !o.streaming
+        && !key.ctrl && !key.meta && key.eventType !== "release") {
       if (key.name.length === 1 && key.name !== " ") {
+        const ch = key.shift && /[a-z]/.test(key.name)
+          ? key.name.toUpperCase() : key.name
         o.setFocusRegion("input")
+        c?.insert(ch)
         key.stopPropagation()
       }
     }
