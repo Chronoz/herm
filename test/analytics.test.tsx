@@ -16,57 +16,75 @@ beforeAll(() => {
   const db = openStateDb()
   const ins = db.prepare(
     `INSERT OR REPLACE INTO sessions
-       (id, model, started_at, message_count, input_tokens, output_tokens,
+       (id, source, model, started_at, message_count, tool_call_count,
+        input_tokens, output_tokens, cache_read_tokens,
         estimated_cost_usd, actual_cost_usd)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-  // 2 days ago, model-a
-  ins.run("s1", "model-a", now - 2 * 86400, 10, 1000, 500, 0.05, null)
-  // 1 day ago, model-a — has actual cost, prefer it over estimate
-  ins.run("s2", "model-a", now - 1 * 86400, 20, 2000, 1000, 0.10, 0.12)
-  // 1 day ago, model-b
-  ins.run("s3", "model-b", now - 1 * 86400, 5, 300, 200, 0.01, null)
+  // 2 days ago, model-a, tui
+  ins.run("s1", "tui", "model-a", now - 2 * 86400, 10, 3, 1000, 500, 200, 0.05, null)
+  // 1 day ago, model-a, tui — has actual cost, prefer it over estimate
+  ins.run("s2", "tui", "model-a", now - 1 * 86400, 20, 5, 2000, 1000, 0, 0.10, 0.12)
+  // 1 day ago, model-b, discord
+  ins.run("s3", "discord", "model-b", now - 1 * 86400, 5, 1, 300, 200, 0, 0.01, null)
+  // assistant tool_calls rows for byTool — json_each parses function.name
+  const msg = db.prepare(
+    `INSERT INTO messages (session_id, role, tool_calls, timestamp) VALUES (?, 'assistant', ?, ?)`,
+  )
+  const tc = (name: string) =>
+    JSON.stringify([{ type: "function", function: { name, arguments: "{}" } }])
+  msg.run("s1", tc("terminal"), now - 2 * 86400)
+  msg.run("s1", tc("terminal"), now - 2 * 86400)
+  msg.run("s2", tc("read_file"), now - 1 * 86400)
   db.close()
 })
 
 // ─── analytics() ─────────────────────────────────────────────────────
 
 describe("analytics()", () => {
-  test("aggregates totals, per-model, per-day from state.db", () => {
+  test("aggregates totals, per-model, per-day, per-tool, per-source", () => {
     const d = analytics(7)
     expect(d.total.sessions).toBe(3)
     expect(d.total.messages).toBe(35)
-    expect(d.total.tokens).toBe(5000)
+    expect(d.total.input).toBe(3300)
+    expect(d.total.output).toBe(1700)
+    expect(d.total.cache).toBe(200)
+    expect(d.total.calls).toBe(9)
     expect(d.total.cost).toBeCloseTo(0.18, 4)
 
     expect(d.byModel).toHaveLength(2)
-    // sorted by tokens desc
+    // sorted by in+out desc
     expect(d.byModel[0].model).toBe("model-a")
     expect(d.byModel[0].sessions).toBe(2)
-    expect(d.byModel[0].tokens).toBe(4500)
+    expect(d.byModel[0].input).toBe(3000)
+    expect(d.byModel[0].output).toBe(1500)
+    expect(d.byModel[0].cache).toBe(200)
     expect(d.byModel[0].cost).toBeCloseTo(0.17, 4)
     expect(d.byModel[1].model).toBe("model-b")
-    expect(d.byModel[1].tokens).toBe(500)
 
-    expect(d.byDay).toHaveLength(2)
-    expect(d.byDay[0].tokens).toBe(1500)
-    expect(d.byDay[1].tokens).toBe(3500)
+    // byDay is gap-filled to `days` entries, newest last
+    expect(d.byDay).toHaveLength(7)
+    expect(d.byDay.at(-1)?.sessions).toBe(0)          // today, no fixture rows
+    const nonzero = d.byDay.filter(x => x.sessions > 0)
+    expect(nonzero).toHaveLength(2)
+    expect(nonzero[0].sessions).toBe(1)               // 2d ago: s1
+    expect(nonzero[1].sessions).toBe(2)               // 1d ago: s2+s3
+    expect(nonzero[1].cost).toBeCloseTo(0.13, 4)
+
+    expect(d.byTool[0]).toEqual({ name: "terminal", n: 2 })
+    expect(d.byTool[1]).toEqual({ name: "read_file", n: 1 })
+
+    expect(d.bySource[0]).toEqual({ name: "tui", n: 2 })
+    expect(d.bySource[1]).toEqual({ name: "discord", n: 1 })
   })
 
   test("days window filters out older rows", () => {
-    // Only s2 + s3 (1d ago) fall inside a 1-day window; s1 (2d) excluded.
-    // `since = now - 1*86400` — strictly-greater comparison, so rows
-    // stamped at exactly now-86400 are included iff rounding favours it;
-    // use 1.5 days to avoid the boundary.
     const d = analytics(1.5)
     expect(d.total.sessions).toBe(2)
-    expect(d.total.tokens).toBe(3500)
+    expect(d.total.input + d.total.output).toBe(3500)
   })
 
   test("returns zeros on missing db", () => {
-    // readonly open on a non-existent path throws → ZERO. Can't redirect
-    // hermesPath from here; rely on the try/catch path being covered and
-    // prove the zero-window behaviour as a stand-in.
     expect(analytics(0).total.sessions).toBe(0)
   })
 })
@@ -74,22 +92,31 @@ describe("analytics()", () => {
 // ─── Analytics tab ───────────────────────────────────────────────────
 
 describe("Analytics tab", () => {
-  test("renders totals + per-model bars + sparkline; 1/7/3 switch period", async () => {
+  test("renders title totals, chart, model table, tool/source ranks; period keys", async () => {
     const t = await mountNode(<Analytics focused />)
     await until(t, () => t.frame().includes("Analytics · 7d"))
 
     const f = t.frame()
-    expect(f).toContain("Sessions")
-    expect(f).toContain("3")
-    expect(f).toContain("5.0k")        // total tokens
+    expect(f).toContain("3 sess")
+    expect(f).toContain("5.0k tok")
     expect(f).toContain("$0.18")
+    expect(f).toMatch(/Cost per day.+3\.3k in.+1\.7k out/)
+    // model table
+    expect(f).toContain("Model")
     expect(f).toContain("model-a")
     expect(f).toContain("model-b")
-    expect(f).toContain("▆")           // bar glyph
-    expect(f).toMatch(/[▁▂▃▄▅▆▇█]{2}/) // 2-day sparkline
+    // rank panes
+    expect(f).toContain("Tools")
+    expect(f).toContain("terminal")
+    expect(f).toContain("Sources")
+    expect(f).toContain("tui")
+    // chart: at least one eighth-block glyph somewhere
+    expect(f).toMatch(/[▁▂▃▄▅▆▇█]/)
 
     await act(async () => { await t.keys.typeText("3") })
     await until(t, () => t.frame().includes("Analytics · 30d"))
+    await act(async () => { await t.keys.typeText("9") })
+    await until(t, () => t.frame().includes("Analytics · 90d"))
     await act(async () => { await t.keys.typeText("1") })
     await until(t, () => t.frame().includes("Analytics · 1d"))
     t.destroy()

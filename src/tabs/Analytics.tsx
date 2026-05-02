@@ -1,24 +1,91 @@
-import { useState, useEffect, useCallback, memo } from "react"
-import { useKeyboard } from "@opentui/react"
-import { analytics, type Analytics as Data } from "../utils/hermes-analytics"
+import { useState, useEffect, useCallback, useMemo, memo } from "react"
+import { useKeyboard, useTerminalDimensions } from "@opentui/react"
+import type { RGBA } from "@opentui/core"
+import { analytics, type Analytics as Data, type NameRow } from "../utils/hermes-analytics"
 import { useKeys } from "../keys"
 import { useTheme } from "../theme"
 import { TabShell } from "../ui/shell"
-import { KVBlock } from "../ui/kv"
+import { Col, Hdr } from "../ui/table"
 import { fmt, cost, trunc } from "../ui/fmt"
 
-const SPARK = "▁▂▃▄▅▆▇█"
+// ─── Charts ──────────────────────────────────────────────────────────
 
-const bar = (val: number, max: number) =>
-  "▆".repeat(max > 0 ? Math.round(20 * val / max) : 0)
+const BLOCKS = " ▁▂▃▄▅▆▇█"
 
-const spark = (vals: number[]) => {
-  const max = Math.max(1, ...vals)
-  return vals.map(v => SPARK[Math.min(7, Math.floor(8 * v / max))]).join("")
+// Multi-row vertical bar chart. Each column is one datum; each row is
+// a vertical slice rendered bottom-up with 1/8-block glyphs, so a
+// 7-row chart has 56 intensity levels — enough to see day-over-day
+// movement that a single-row sparkline flattens.
+const rows = (vals: number[], h: number): string[] => {
+  const peak = Math.max(1, ...vals)
+  const ticks = vals.map(v => Math.round((h * 8 * v) / peak))
+  return Array.from({ length: h }, (_, r) => {
+    const floor = (h - 1 - r) * 8
+    return ticks.map(t => BLOCKS[Math.max(0, Math.min(8, t - floor))]).join("")
+  })
 }
+
+const Chart = memo((p: { data: Data; h: number }) => {
+  const theme = useTheme().theme
+  const days = p.data.byDay
+  const vals = days.map(d => d.cost)
+  const peak = Math.max(...vals, 0.01)
+  const axis = (v: number) => cost(v).padStart(7)
+  const md = (s: string) => s.slice(5)   // yyyy-mm-dd → mm-dd
+  return (
+    <box flexDirection="column">
+      {rows(vals, p.h).map((line, i) => (
+        <box key={i} height={1} flexDirection="row">
+          <box width={8} flexShrink={0}>
+            <text fg={theme.textMuted}>
+              {i === 0 ? axis(peak) : i === p.h - 1 ? axis(0) : ""}
+            </text>
+          </box>
+          <text fg={theme.primary}>{line}</text>
+        </box>
+      ))}
+      <box height={1} flexDirection="row">
+        <box width={8} flexShrink={0} />
+        <text fg={theme.textMuted}>
+          {days.length > 0
+            ? `${md(days[0].date)}${" ".repeat(Math.max(0, days.length - 10))}${md(days[days.length - 1].date)}`
+            : ""}
+        </text>
+      </box>
+    </box>
+  )
+})
+
+// Ranked name+count list with horizontal bar. Shared by Tools/Sources.
+const Rank = memo((p: { title: string; rows: NameRow[]; fg: RGBA; n?: number }) => {
+  const theme = useTheme().theme
+  const top = p.rows.slice(0, p.n ?? 10)
+  const peak = Math.max(1, ...top.map(r => r.n))
+  const total = p.rows.reduce((a, r) => a + r.n, 0)
+  return (
+    <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={0}>
+      <box height={1}><text fg={theme.textMuted}>{p.title}</text></box>
+      {top.length === 0
+        ? <box height={1}><text fg={theme.textMuted}>—</text></box>
+        : top.map(r => (
+            <box key={r.name} height={1} flexDirection="row">
+              <Col w={18}>{trunc(r.name, 17)}</Col>
+              <Col w={12} fg={p.fg}>{"▇".repeat(Math.max(1, Math.round(10 * r.n / peak)))}</Col>
+              <Col w={7} right>{fmt(r.n)}</Col>
+              <Col w={6} right fg={theme.textMuted}>
+                {total ? `${Math.round(100 * r.n / total)}%` : ""}
+              </Col>
+            </box>
+          ))}
+    </box>
+  )
+})
+
+// ─── Tab ─────────────────────────────────────────────────────────────
 
 export const Analytics = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme
+  const dims = useTerminalDimensions()
   const [days, setDays] = useState(7)
   const [data, setData] = useState<Data>(() => analytics(7))
 
@@ -32,60 +99,55 @@ export const Analytics = memo((props: { focused?: boolean }) => {
     if (key.raw === "1") return setDays(1)
     if (key.raw === "7") return setDays(7)
     if (key.raw === "3") return setDays(30)
+    if (key.raw === "9") return setDays(90)
   })
 
-  const peak = Math.max(1, ...data.byModel.map(m => m.tokens))
+  const t = data.total
+  const tok = t.input + t.output
+  const title = useMemo(() =>
+    `Analytics · ${days}d · ${t.sessions} sess · ${fmt(tok)} tok · ${cost(t.cost)}`,
+    [days, t.sessions, tok, t.cost])
+
+  const wide = dims.width >= 110
+  const chartH = dims.height >= 40 ? 8 : 6
 
   return (
-    <TabShell
-      title={`Analytics · ${days}d`}
-      hint="1/7/3 period  r reload"
-    >
-      <KVBlock rows={[
-        ["Sessions", String(data.total.sessions)],
-        ["Messages", String(data.total.messages)],
-        ["Tokens", fmt(data.total.tokens)],
-        ["Cost", cost(data.total.cost), theme.accent],
-      ]} />
+    <TabShell title={title} hint="1/7/3/9 period · r reload">
+      <box height={1}><text fg={theme.textMuted}>
+        {`Cost per day  ·  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cache)} cache · ${fmt(t.calls)} tool calls`}
+      </text></box>
+      <Chart data={data} h={chartH} />
 
       <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>By model</text></box>
-
+      <Hdr>
+        <Col grow min={18} fg={theme.textMuted}>Model</Col>
+        <Col w={6} right fg={theme.textMuted}>sess</Col>
+        <Col w={9} right fg={theme.textMuted}>in</Col>
+        <Col w={9} right fg={theme.textMuted}>out</Col>
+        <Col w={9} right fg={theme.textMuted}>cache</Col>
+        <Col w={9} right fg={theme.textMuted}>cost</Col>
+      </Hdr>
       <scrollbox scrollY flexGrow={1}>
         <box flexDirection="column" width="100%">
           {data.byModel.length === 0
-            ? <box key="none" height={1}><text fg={theme.textMuted}>no sessions in range</text></box>
+            ? <box height={1}><text fg={theme.textMuted}>no sessions in range</text></box>
             : data.byModel.map(m => (
                 <box key={m.model} height={1} flexDirection="row">
-                  <box width={28} flexShrink={0}>
-                    <text fg={theme.text}>{trunc(m.model, 27)}</text>
-                  </box>
-                  <box width={22} flexShrink={0}>
-                    <text fg={theme.primary}>{bar(m.tokens, peak)}</text>
-                  </box>
-                  <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-                    <text>
-                      <span fg={theme.text}>{fmt(m.tokens).padStart(8)}</span>
-                      <span fg={theme.accent}>{cost(m.cost).padStart(9)}</span>
-                      <span fg={theme.textMuted}>{`  ${m.sessions} sess`}</span>
-                    </text>
-                  </box>
+                  <Col grow min={18}>{trunc(m.model, 40)}</Col>
+                  <Col w={6} right fg={theme.textMuted}>{String(m.sessions)}</Col>
+                  <Col w={9} right>{fmt(m.input)}</Col>
+                  <Col w={9} right>{fmt(m.output)}</Col>
+                  <Col w={9} right fg={theme.textMuted}>{fmt(m.cache)}</Col>
+                  <Col w={9} right fg={theme.accent}>{cost(m.cost)}</Col>
                 </box>
               ))}
         </box>
       </scrollbox>
 
       <box height={1} />
-      <box height={1}><text fg={theme.textMuted}>{`By day (${data.byDay.length})`}</text></box>
-      <box height={1}>
-        <text fg={theme.success}>{spark(data.byDay.map(d => d.tokens))}</text>
-      </box>
-      <box height={1}>
-        <text fg={theme.textMuted}>
-          {data.byDay.length > 0
-            ? `${data.byDay[0].date} → ${data.byDay[data.byDay.length - 1].date}`
-            : "—"}
-        </text>
+      <box flexDirection={wide ? "row" : "column"} gap={wide ? 2 : 1}>
+        <Rank title="Tools" rows={data.byTool} fg={theme.success} />
+        <Rank title="Sources" rows={data.bySource} fg={theme.info} n={6} />
       </box>
     </TabShell>
   )
