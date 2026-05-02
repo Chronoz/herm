@@ -28,7 +28,7 @@ const SnapshotView = (props: { entry: SpawnTreeEntry; snap: SpawnTreeSnapshot })
       <text fg={theme.text}><strong>{props.entry.label || `${subs.length} subagents`}</strong></text>
       <text fg={theme.textMuted}>{when(props.entry.finished_at)} · {span} · {subs.length} agents · {fmt(tok)} tok</text>
       <box height={1} />
-      <scrollbox scrollY maxHeight={20} flexDirection="column">
+      <scrollbox scrollY maxHeight={20} contentOptions={{ flexDirection: "column" }}>
         {subs.map(s => (
           <box key={s.subagent_id} flexDirection="column" marginBottom={1}>
             <box height={1}>

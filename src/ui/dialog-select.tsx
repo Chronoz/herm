@@ -6,10 +6,10 @@
  * Grouped by category with headers.
  */
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
-import type { ParsedKey } from "@opentui/core"
+import type { ParsedKey, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../theme"
 
 export type SelectOption = {
@@ -35,6 +35,7 @@ type Props = {
 export const DialogSelect = (props: Props) => {
   const [filter, setFilter] = useState("")
   const [cursor, setCursor] = useState(0)
+  const sb = useRef<ScrollBoxRenderable | null>(null)
   const theme = useTheme().theme
 
   const filtered = useMemo(() => {
@@ -62,6 +63,14 @@ export const DialogSelect = (props: Props) => {
     if (cursor >= filtered.length) setCursor(Math.max(0, filtered.length - 1))
   }, [filtered.length, cursor])
 
+  const rowId = (i: number) => `ds-row-${i}`
+
+  const move = (n: number) => setCursor(c => {
+    const next = Math.max(0, Math.min(filtered.length - 1, c + n))
+    sb.current?.scrollChildIntoView(rowId(next))
+    return next
+  })
+
   // Notify on move
   useEffect(() => {
     const item = filtered[cursor]
@@ -69,14 +78,10 @@ export const DialogSelect = (props: Props) => {
   }, [cursor, filtered, props.onMove])
 
   useKeyboard((key) => {
-    if (key.name === "up") {
-      setCursor(c => Math.max(0, c - 1))
-      return
-    }
-    if (key.name === "down") {
-      setCursor(c => Math.min(filtered.length - 1, c + 1))
-      return
-    }
+    if (key.name === "up") return move(-1)
+    if (key.name === "down") return move(1)
+    if (key.name === "pageup") return move(-10)
+    if (key.name === "pagedown") return move(10)
     if (key.name === "return") {
       const item = filtered[cursor]
       if (item) props.onSelect(item)
@@ -106,7 +111,10 @@ export const DialogSelect = (props: Props) => {
         focusedBackgroundColor={theme.backgroundElement}
       />
       <box height={1} />
-      <scrollbox scrollY maxHeight={16} flexDirection="column">
+      {/* ScrollBox root is flex-row ([wrapper, v-scrollbar]); column stacking
+          belongs on the content box, not here. */}
+      <scrollbox ref={sb} scrollY maxHeight={16}
+        contentOptions={{ flexDirection: "column" }} paddingRight={1}>
         {filtered.length === 0 ? (
           <text fg={theme.textMuted}>{"No results found"}</text>
         ) : null}
@@ -126,9 +134,10 @@ export const DialogSelect = (props: Props) => {
             elements.push(
               <box
                 key={item.value}
+                id={rowId(i)}
                 flexDirection="row"
                 backgroundColor={active ? theme.backgroundElement : undefined}
-                onMouseOver={() => setCursor(i)}
+                onMouseMove={() => setCursor(i)}
                 onMouseDown={() => props.onSelect(item)}
                 paddingLeft={1}
                 paddingRight={1}
