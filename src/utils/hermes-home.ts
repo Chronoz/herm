@@ -10,7 +10,7 @@
 
 import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
-import { openSync, readSync, closeSync, readdirSync } from "node:fs";
+import { openSync, readSync, closeSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "os";
 import { parse as parseYaml } from "yaml";
 import { count as tokenCount } from "./tokens";
@@ -335,6 +335,63 @@ export async function readCuratorReport(id: string): Promise<string> {
   try {
     return (await Bun.file(hermesPath(`logs/curator/${id}/REPORT.md`)).text()).trim();
   } catch { return "" }
+}
+
+/** Per-skill curator event, projected out of run.json so DetailPanel
+ *  can answer "what did curator do to *this* skill, and when". */
+export type LineageEvent =
+  | { kind: "transition"; run: string; at: number; from: string; to: string }
+  | { kind: "absorbed";   run: string; at: number; sources: string[] }
+  | { kind: "merged";     run: string; at: number; into: string; reason?: string }
+  | { kind: "pruned";     run: string; at: number; reason?: string }
+  | { kind: "added";      run: string; at: number }
+
+export type LineageIndex = Map<string, LineageEvent[]>
+
+type RunJson = {
+  started_at?: string
+  archived?: string[]
+  added?: string[]
+  consolidated?: { name: string; into: string; reason?: string }[]
+  pruned?: { name: string; reason?: string }[]
+  state_transitions?: { name: string; from: string; to: string }[]
+}
+
+/** Build a skill→events index across every run.json. Runs: dozens,
+ *  payload: low-KB JSON each — call once per tab open. Newest-first. */
+export function indexCuratorLineage(): LineageIndex {
+  const out: LineageIndex = new Map()
+  const push = (name: string, ev: LineageEvent) => {
+    const a = out.get(name) ?? []
+    a.push(ev); out.set(name, a)
+  }
+  try {
+    const base = hermesPath("logs/curator")
+    for (const e of readdirSync(base, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      try {
+        const j = JSON.parse(readFileSync(`${base}/${e.name}/run.json`, "utf8")) as RunJson
+        const at = Date.parse(j.started_at ?? "") / 1000 || 0
+        const run = e.name
+        // targets absorbing 1+ sources
+        const into = new Map<string, string[]>()
+        for (const c of j.consolidated ?? []) {
+          push(c.name, { kind: "merged", run, at, into: c.into, reason: c.reason })
+          into.set(c.into, [...(into.get(c.into) ?? []), c.name])
+        }
+        for (const [tgt, srcs] of into)
+          push(tgt, { kind: "absorbed", run, at, sources: srcs })
+        for (const t of j.state_transitions ?? [])
+          push(t.name, { kind: "transition", run, at, from: t.from, to: t.to })
+        for (const p of j.pruned ?? [])
+          push(p.name, { kind: "pruned", run, at, reason: p.reason })
+        for (const n of j.added ?? [])
+          push(n, { kind: "added", run, at })
+      } catch {}
+    }
+  } catch {}
+  for (const a of out.values()) a.sort((x, y) => y.at - x.at)
+  return out
 }
 
 /**

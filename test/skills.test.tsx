@@ -133,4 +133,52 @@ describe("Skills tab", () => {
     await until(t, () => !t.frame().includes("Curator History"))
     t.destroy()
   })
+
+  test("indexCuratorLineage: per-skill events across runs; DetailPanel renders (c8w.2)", async () => {
+    const { indexCuratorLineage } = await import("../src/utils/hermes-home")
+    const a = hermesPath("logs/curator/20260420-100000")
+    const b = hermesPath("logs/curator/20260425-100000")
+    mkdirSync(a, { recursive: true }); mkdirSync(b, { recursive: true })
+    writeFileSync(`${a}/run.json`, JSON.stringify({
+      started_at: "2026-04-20T10:00:00Z",
+      consolidated: [
+        { name: "foo-v2", into: "foo", reason: "dedupe" },
+        { name: "foo-old", into: "foo" },
+      ],
+      added: ["foo"],
+    }))
+    writeFileSync(`${b}/run.json`, JSON.stringify({
+      started_at: "2026-04-25T10:00:00Z",
+      state_transitions: [{ name: "foo", from: "active", to: "stale" }],
+      pruned: [{ name: "bar", reason: "unused" }],
+    }))
+
+    const idx = indexCuratorLineage()
+    const foo = idx.get("foo")!
+    // newest-first: transition (04-25) then absorbed+added (04-20)
+    expect(foo[0]).toMatchObject({ kind: "transition", from: "active", to: "stale" })
+    expect(foo.find(e => e.kind === "absorbed")).toMatchObject({
+      kind: "absorbed", sources: ["foo-v2", "foo-old"],
+    })
+    expect(foo.find(e => e.kind === "added")).toBeDefined()
+    expect(idx.get("foo-v2")![0]).toMatchObject({ kind: "merged", into: "foo", reason: "dedupe" })
+    expect(idx.get("bar")![0]).toMatchObject({ kind: "pruned", reason: "unused" })
+    expect(idx.has("unknown")).toBe(false)
+
+    // Integration: DetailPanel shows the block for selected skill.
+    mkdirSync(hermesPath("skills/general/foo"), { recursive: true })
+    writeFileSync(hermesPath("skills/general/foo/SKILL.md"),
+      "---\nname: foo\ndescription: test\n---\n")
+    const gw = new MockGateway({
+      "skills.manage": p => p.action === "list" ? { skills: { general: ["foo"] } } : {},
+    })
+    const t = await mountNode(<Skills focused />, { gw, width: 160, height: 40 })
+    await until(t, () => t.frame().includes("Curator lineage"))
+    const f = t.frame()
+    expect(f).toContain("active → stale")
+    expect(f).toContain("absorbed")
+    expect(f).toContain("foo-v2")
+    expect(f).toContain("created by curator")
+    t.destroy()
+  })
 })

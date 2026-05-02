@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useKeyboard } from "@opentui/react";
 import type { RGBA } from "@opentui/core";
 import { useKeys, handleListKey, useFollow } from "../keys";
-import { makeSource, readSkillFrontmatter, listCuratorRuns, readCuratorReport, type SkillInfo, type SkillUsage, type CuratorRun } from "../utils/hermes-home";
+import { makeSource, readSkillFrontmatter, listCuratorRuns, readCuratorReport, indexCuratorLineage, type SkillInfo, type SkillUsage, type CuratorRun, type LineageEvent } from "../utils/hermes-home";
 import { count as tokenCount } from "../utils/tokens";
 import { useGateway } from "../app/gateway";
 import { useDialog } from "../ui/dialog";
@@ -16,6 +16,8 @@ import { Col, Hdr, Marquee, VBAR } from "../ui/table";
 import { ago } from "../ui/fmt";
 import { openConfirm } from "../dialogs/confirm";
 import { openCurator } from "../dialogs/curator";
+
+const NO_EVENTS: LineageEvent[] = []
 
 type Hit = { name: string; description?: string }
 type Sort = "name" | "used"
@@ -76,7 +78,17 @@ const HitRow = memo((props: { hit: Hit; selected: boolean; onHover: () => void }
 
 // ─── Detail Panel ────────────────────────────────────────────────────
 
-const DetailPanel = memo((props: { skill: SkillInfo; usage?: SkillUsage }) => {
+const line = (e: LineageEvent): string => {
+  switch (e.kind) {
+    case "absorbed":   return `absorbed ${e.sources.map(s => `\`${s}\``).join(", ")}`
+    case "merged":     return `merged into \`${e.into}\`${e.reason ? ` — ${e.reason}` : ""}`
+    case "transition": return `${e.from} → ${e.to}`
+    case "pruned":     return `pruned${e.reason ? ` — ${e.reason}` : ""}`
+    case "added":      return "created by curator"
+  }
+}
+
+const DetailPanel = memo((props: { skill: SkillInfo; usage?: SkillUsage; events: LineageEvent[] }) => {
   const theme = useTheme().theme;
   const s = props.skill;
   const u = props.usage;
@@ -118,6 +130,25 @@ const DetailPanel = memo((props: { skill: SkillInfo; usage?: SkillUsage }) => {
       ) : (
         <text fg={theme.textMuted}>No description</text>
       )}
+      {props.events.length > 0 ? (
+        <box flexDirection="column" marginTop={1}>
+          <box height={1}><text fg={theme.textMuted}>Curator lineage</text></box>
+          {props.events.map((e, i) => (
+            <box key={i} flexDirection="row" minHeight={1}>
+              <box width={10} flexShrink={0}>
+                <text fg={theme.textMuted}>{ago(e.at)}</text>
+              </box>
+              <box flexGrow={1} minHeight={1}>
+                <text wrapMode="word" fg={theme.text}>{line(e)}</text>
+              </box>
+            </box>
+          ))}
+        </box>
+      ) : u ? (
+        <box height={1} marginTop={1}>
+          <text fg={theme.textMuted}>No curator events for this skill</text>
+        </box>
+      ) : null}
     </box>
   );
 });
@@ -224,6 +255,10 @@ export const Skills = memo((props: { focused?: boolean }) => {
   const toast = useToast();
   const usage = useHome("skillUsage") ?? {};
   const curator = useHome("curatorState");
+  // Built once per tab-open; rebuilt when .curator_state fires (a run
+  // finished and wrote a fresh run.json).
+  const lineage = useRef(indexCuratorLineage());
+  useEffect(() => { lineage.current = indexCuratorLineage() }, [curator?.run_count]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [selected, setSelected] = useState(0);
   const [searching, setSearching] = useState(false);
@@ -465,7 +500,8 @@ export const Skills = memo((props: { focused?: boolean }) => {
       {/* Right-hand pane: curator history when toggled, else skill detail */}
       {history
         ? <HistoryPanel focused={!!props.focused && !searching} />
-        : current ? <DetailPanel skill={current} usage={usage[current.name]} /> : null}
+        : current ? <DetailPanel skill={current} usage={usage[current.name]}
+                                  events={lineage.current.get(current.name) ?? NO_EVENTS} /> : null}
     </box>
   );
 });
