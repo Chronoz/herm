@@ -16,7 +16,12 @@ describe("curator dialog", () => {
     mkdirSync(hermesPath("skills"), { recursive: true })
     writeFileSync(
       hermesPath("skills/.curator_state"),
-      JSON.stringify({ run_count: 2, last_run_at: "2026-05-01T10:00:00Z", paused: false }),
+      JSON.stringify({
+        run_count: 2,
+        last_run_at: "2026-05-01T10:00:00Z",
+        last_run_summary: "auto: 2 marked stale; llm: tightened `foo-skill`",
+        paused: false,
+      }),
     )
   })
 
@@ -34,6 +39,11 @@ describe("curator dialog", () => {
     expect(t.frame()).not.toMatch(/#\s+Curator Run/)
     expect(t.frame()).toContain("pruned")
     expect(t.frame()).toContain("2 runs")
+    // last_run_summary also goes through <markdown> — backticks concealed.
+    expect(t.frame()).toContain("foo-skill")
+    expect(t.frame()).not.toContain("`foo-skill`")
+    // Bordered scrollbox around the report body.
+    expect(t.frame()).toMatch(/│.*pruned/)
     t.destroy()
   })
 })

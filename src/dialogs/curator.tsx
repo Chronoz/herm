@@ -48,7 +48,8 @@ const CuratorDialog = () => {
 
       {state?.last_run_summary ? (
         <box minHeight={1}>
-          <text fg={theme.text} wrapMode="word">{state.last_run_summary}</text>
+          <markdown content={state.last_run_summary}
+            fg={theme.markdownText} syntaxStyle={syntaxStyle} />
         </box>
       ) : null}
       {state?.last_run_summary ? <box height={1} /> : null}
@@ -60,7 +61,8 @@ const CuratorDialog = () => {
           <box height={1}><text fg={theme.info}><strong>{`▾ Report · ${report.runId}`}</strong></text></box>
           <KVLink label="File" source={report.source} text={report.source.relative} />
           <box height={1} />
-          <scrollbox scrollY flexGrow={1}>
+          <scrollbox scrollY flexGrow={1} border borderColor={theme.border}
+            paddingLeft={1} paddingRight={1}>
             <box flexDirection="column" width="100%">
               <markdown content={report.content || "(empty)"}
                 fg={theme.markdownText} syntaxStyle={syntaxStyle} />
