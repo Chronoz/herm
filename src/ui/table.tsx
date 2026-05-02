@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from "react"
+import { useRef, useEffect, type ReactNode } from "react"
 import type { RGBA } from "@opentui/core"
 import { useTheme } from "../theme"
 import * as prefs from "../utils/preferences"
@@ -68,34 +68,43 @@ export const Marquee = (p: {
   const theme = useTheme().theme
   const fg = p.fg ?? theme.text
   const text = p.children
-  const ref = useRef<import("@opentui/core").BoxRenderable | null>(null)
-  const [off, setOff] = useState(0)
+  const box = useRef<import("@opentui/core").BoxRenderable | null>(null)
+  const node = useRef<import("@opentui/core").TextRenderable | null>(null)
 
   const animate = prefs.get("animations") !== false && p.active
   useEffect(() => {
-    if (!animate) { setOff(0); return }
+    const tn = node.current
+    if (!tn) return
+    if (!animate) { tn.scrollX = 0; return }
     // Hold static briefly before scrolling so the cell is readable at
     // rest on select; also keeps frame-snapshot tests deterministic.
+    // scrollX on the TextRenderable is a direct native paint request
+    // — zero React reconciles per tick (vs ~5/s at 180ms with the
+    // previous setState(off)).
     let id: ReturnType<typeof setInterval> | undefined
+    const period = text.length + GAP.length
     const hold = setTimeout(() => {
       id = setInterval(() => {
-        const w = ref.current?.width ?? 0
-        if (text.length <= w) { setOff(0); return }
-        setOff(o => (o + 1) % (text.length + GAP.length))
+        const w = box.current?.width ?? 0
+        if (text.length <= w) { tn.scrollX = 0; return }
+        tn.scrollX = (tn.scrollX + 1) % period
       }, p.speed ?? 180)
     }, p.hold ?? 600)
-    return () => { clearTimeout(hold); if (id) clearInterval(id); setOff(0) }
+    return () => {
+      clearTimeout(hold); if (id) clearInterval(id)
+      if (node.current) node.current.scrollX = 0
+    }
   }, [animate, text, p.speed, p.hold])
 
-  const loop = text + GAP + text
-  const shown = off > 0 ? loop.slice(off, off + text.length + GAP.length) : text
+  // `text + GAP + text` renders once; scrollX wraps at period so the
+  // visible window always has GAP-then-head following the tail.
   return (
-    <box ref={ref}
+    <box ref={box}
          width={p.w} flexGrow={p.grow ? 1 : 0} flexShrink={p.grow ? 1 : 0}
          minWidth={p.grow ? (p.min ?? 12) : p.w} height={1} overflow="hidden">
-      <text wrapMode="none">{p.bold
-        ? <span fg={fg}><strong>{shown}</strong></span>
-        : <span fg={fg}>{shown}</span>}</text>
+      <text ref={node} wrapMode="none">{p.bold
+        ? <span fg={fg}><strong>{text + GAP + text}</strong></span>
+        : <span fg={fg}>{text + GAP + text}</span>}</text>
     </box>
   )
 }

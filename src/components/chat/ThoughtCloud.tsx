@@ -36,19 +36,30 @@ const ORDER = [2, 1, 0, -1]
 
 export const Tail = memo((props: { run: boolean }) => {
   const theme = useTheme().theme
-  const [f, setF] = useState(0)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const refs = useRef<any[]>([]) // TextNodeRenderable[6]
+  // Paint a full frame (all slots when idle; one lit slot when running).
+  // Mutates span .children directly — one requestRender() per touched
+  // node, zero React reconciles per 160ms tick.
+  const paint = (lit: number | null) => {
+    SLOTS.forEach((slot, i) => slot.forEach((l, j) => {
+      const node = refs.current[i * 2 + j]
+      if (node) node.children = [lit === null || lit === i ? l : BLANK]
+    }))
+  }
   useEffect(() => {
-    if (!props.run) { setF(0); return }
-    const t = setInterval(() => setF(p => (p + 1) % ORDER.length), 160)
-    return () => clearInterval(t)
+    if (!props.run) { paint(null); return }
+    let f = 0
+    paint(ORDER[0])
+    const t = setInterval(() => { f = (f + 1) % ORDER.length; paint(ORDER[f]) }, 160)
+    return () => { clearInterval(t); paint(null) }
   }, [props.run])
-  const lit = props.run ? ORDER[f] : null
   return (
     <box flexDirection="column">
       {SLOTS.flatMap((slot, i) =>
         slot.map((l, j) => (
           <text key={`${i}-${j}`} fg={theme.hermAvatar}>
-            {lit === null || lit === i ? l : BLANK}
+            <span ref={el => { refs.current[i * 2 + j] = el }}>{l}</span>
           </text>
         )),
       )}
