@@ -93,6 +93,12 @@ export interface HermesConfig {
     skin: string;
     show_cost: boolean;
   };
+  curator: {
+    enabled: boolean;
+    interval_hours: number;
+    stale_after_days: number;
+    archive_after_days: number;
+  };
   gateway: {
     platforms: {
       api_server?: {
@@ -420,6 +426,12 @@ export async function readConfig(): Promise<HermesConfig | null> {
         personality: raw?.display?.personality ?? "default",
         skin: raw?.display?.skin ?? "default",
         show_cost: raw?.display?.show_cost ?? false,
+      },
+      curator: {
+        enabled: raw?.curator?.enabled ?? true,
+        interval_hours: raw?.curator?.interval_hours ?? 168,
+        stale_after_days: raw?.curator?.stale_after_days ?? 30,
+        archive_after_days: raw?.curator?.archive_after_days ?? 90,
       },
       gateway: {
         platforms: {

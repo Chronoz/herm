@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach } from "bun:test"
 import { useEffect } from "react"
+import { act } from "react"
 import { mkdirSync, writeFileSync } from "fs"
 import { hermesPath } from "../src/utils/hermes-home"
-import { mountNode, until } from "./harness"
+import { mountNode, until, MockGateway } from "./harness"
 import { openCurator } from "../src/dialogs/curator"
 import { useDialog } from "../src/ui/dialog"
 
@@ -44,6 +45,50 @@ describe("curator dialog", () => {
     expect(t.frame()).not.toContain("`foo-skill`")
     // Bordered scrollbox around the report body.
     expect(t.frame()).toMatch(/│.*pruned/)
+    t.destroy()
+  })
+
+  test("next-run from last+interval; r/p shell to hermes curator (c8w.3)", async () => {
+    // last_run_at = now-1d so last+168h is always ~6d out, wall-clock-safe.
+    writeFileSync(hermesPath("skills/.curator_state"), JSON.stringify({
+      run_count: 2, paused: false,
+      last_run_at: new Date(Date.now() - 86400_000).toISOString(),
+    }))
+    writeFileSync(hermesPath("config.yaml"),
+      "curator:\n  interval_hours: 168\n  stale_after_days: 30\n  archive_after_days: 90\n")
+    const calls: string[] = []
+    const gw = new MockGateway({
+      "shell.exec": (p) => { calls.push(String(p.command)); return { stdout: "ok", stderr: "", code: 0 } },
+    })
+    const t = await mountNode(<Open />, { width: 130, height: 40, gw })
+    await until(t, () => t.frame().includes("Next run"))
+    const f = t.frame()
+    expect(f).toMatch(/Next run\s+in [56]d/)
+    expect(f).toContain("Interval     168h")
+    expect(f).toContain("Stale after  30d")
+    expect(f).toContain("r run now")
+    expect(f).toContain("p pause")
+
+    await act(async () => { await t.keys.typeText("r") })
+    await until(t, () => calls.includes("hermes curator run"))
+    await act(async () => { await t.keys.typeText("p") })
+    await until(t, () => calls.includes("hermes curator pause"))
+    t.destroy()
+  })
+
+  test("paused state: next-run masked, p resumes", async () => {
+    writeFileSync(hermesPath("skills/.curator_state"),
+      JSON.stringify({ run_count: 1, last_run_at: "2026-05-01T10:00:00Z", paused: true }))
+    const calls: string[] = []
+    const gw = new MockGateway({
+      "shell.exec": (p) => { calls.push(String(p.command)); return { stdout: "", stderr: "", code: 0 } },
+    })
+    const t = await mountNode(<Open />, { width: 130, height: 40, gw })
+    await until(t, () => t.frame().includes("· paused"))
+    expect(t.frame()).toMatch(/Next run\s+— \(paused\)/)
+    expect(t.frame()).toContain("p resume")
+    await act(async () => { await t.keys.typeText("p") })
+    await until(t, () => calls.includes("hermes curator resume"))
     t.destroy()
   })
 })
