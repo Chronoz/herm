@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import {
   board, detail, assignees, tailLog, q, STATUSES,
   type Task, type Status, type Detail,
@@ -39,11 +40,11 @@ const HEAD: Record<Status, string> = {
   running: "running", blocked: "blocked", done: "done",
 }
 
-const Card = memo((p: { t: Task; on: boolean; colOn: boolean; onPick: () => void }) => {
+const Card = memo((p: { id: string; t: Task; on: boolean; colOn: boolean; onPick: () => void }) => {
   const theme = useTheme().theme
   const fg = p.on ? theme.accent : p.colOn ? theme.text : theme.textMuted
   return (
-    <box height={2} flexDirection="column"
+    <box id={p.id} height={2} flexDirection="column"
          backgroundColor={p.on ? theme.backgroundElement : undefined}
          onMouseDown={p.onPick}>
       <box height={1} overflow="hidden">
@@ -66,6 +67,14 @@ const Column = memo((p: {
   onPick: (i: number) => void
 }) => {
   const theme = useTheme().theme
+  const box = useRef<ScrollBoxRenderable | null>(null)
+  const id = (i: number) => `kb-${p.status}-${i}`
+  // Keep the selected card in view. Fires on ↑↓ and on ←→ (p.on flips
+  // true) so entering a column that was previously scrolled away snaps
+  // to row 0. No-op while this column isn't active.
+  useEffect(() => {
+    if (p.on) box.current?.scrollChildIntoView(id(p.sel))
+  }, [p.on, p.sel])
   const tint = p.status === "blocked" ? theme.warning
     : p.status === "running" ? theme.success
     : p.status === "done" ? theme.textMuted : theme.primary
@@ -78,10 +87,10 @@ const Column = memo((p: {
           <span fg={theme.textMuted}>{`  ${p.tasks.length}`}</span>
         </text>
       </box>
-      <scrollbox scrollY flexGrow={1}>
+      <scrollbox ref={box} scrollY flexGrow={1}>
         <box flexDirection="column" width="100%">
           {p.tasks.map((t, i) => (
-            <Card key={t.id} t={t} on={p.on && i === p.sel} colOn={p.on}
+            <Card key={t.id} id={id(i)} t={t} on={p.on && i === p.sel} colOn={p.on}
                   onPick={() => p.onPick(i)} />
           ))}
         </box>
