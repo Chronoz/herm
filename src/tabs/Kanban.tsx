@@ -1,16 +1,38 @@
-import { useState, useEffect, useCallback, useMemo, memo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import { board, detail, STATUSES, type Task, type Status, type Detail } from "../utils/hermes-kanban"
+import {
+  board, detail, assignees, tailLog, q, STATUSES,
+  type Task, type Status, type Detail,
+} from "../utils/hermes-kanban"
 import { useKeys } from "../keys"
 import { useTheme } from "../theme"
+import { useGateway } from "../app/gateway"
+import { useDialog } from "../ui/dialog"
+import { useToast } from "../ui/toast"
+import { DialogSelect } from "../ui/dialog-select"
+import { openConfirm } from "../dialogs/confirm"
+import { openTextPrompt } from "../dialogs/text-prompt"
+import { openCreateTask } from "../dialogs/new-task"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 import { ago, trunc } from "../ui/fmt"
 
-// Read-only board for ~/.hermes/kanban.db. Columns per status; ↑↓
-// within a column, ←→ across, Enter shows a detail pane with body /
-// result / lineage / comments. Writes go through `hermes kanban` or
-// the dashboard; this is the monitoring surface.
+// Operator board for ~/.hermes/kanban.db.
+//
+// Reads are sidecar SQLite. Every write routes through
+// `shell.exec → hermes kanban <verb>` so kanban_db.py owns the state
+// machine (recompute_ready, link-cycle guard, task_events, notify
+// subs) and herm can't drift from the CLI/dashboard.
+//
+// Verbs exposed here cover the human-operator loop from the
+// kanban-orchestrator/worker skills:
+//
+//   n  create          c  comment              a  assign
+//   N  create-child     u  unblock (+answer)    d  archive
+//   D  dispatch         r  reload               l  worker log
+//   Enter detail        ←→↑↓ nav                Esc close pane
+
+type Sh = { stdout: string; stderr: string; code: number }
 
 const HEAD: Record<Status, string> = {
   triage: "triage", todo: "todo", ready: "ready",
@@ -68,9 +90,24 @@ const Column = memo((p: {
   )
 })
 
-const DetailPane = memo((p: { d: Detail }) => {
+type Pane = { kind: "detail"; d: Detail } | { kind: "log"; id: string; text: string }
+
+const SidePane = memo((p: { pane: Pane }) => {
   const { theme, syntaxStyle } = useTheme()
-  const d = p.d
+  if (p.pane.kind === "log") return (
+    <box flexDirection="column" padding={1} border borderColor={theme.border}
+         backgroundColor={theme.backgroundPanel} width="50%">
+      <box height={1}><text>
+        <span fg={theme.primary}><strong>{p.pane.id}</strong></span>
+        <span fg={theme.textMuted}>{"  ·  worker log (tail)"}</span>
+      </text></box>
+      <box height={1} />
+      <scrollbox scrollY flexGrow={1}>
+        <text wrapMode="word" fg={theme.textMuted}>{p.pane.text || "(empty)"}</text>
+      </scrollbox>
+    </box>
+  )
+  const d = p.pane.d
   return (
     <box flexDirection="column" padding={1} border borderColor={theme.border}
          backgroundColor={theme.backgroundPanel} width="50%">
@@ -112,20 +149,39 @@ const DetailPane = memo((p: { d: Detail }) => {
           </> : null}
         </box>
       </scrollbox>
+      <box height={1}><text fg={theme.textMuted}>a assign  c comment  u unblock  d archive  l log  N child</text></box>
     </box>
   )
 })
 
 export const Kanban = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme
+  const gw = useGateway()
+  const dialog = useDialog()
+  const toast = useToast()
   const dims = useTerminalDimensions()
+  const keys = useKeys()
+
   const [data, setData] = useState(() => board())
   const [col, setCol] = useState(0)
   const [row, setRow] = useState(0)
-  const [open, setOpen] = useState<Detail | null>(null)
+  const [pane, setPane] = useState<Pane | null>(null)
 
-  const load = useCallback(() => setData(board()), [])
+  const load = useCallback(() => {
+    setData(board())
+    setPane(p => p?.kind === "detail" ? (d => d ? { kind: "detail", d } : null)(detail(p.d.id)) : p)
+  }, [])
   useEffect(load, [load])
+
+  // Cheap live-ish refresh while focused AND something is running.
+  // `running` changing length recreates the interval; back off to
+  // manual `r` when idle — no dispatcher → no row churn.
+  const running = data.get("running")?.length ?? 0
+  useEffect(() => {
+    if (!props.focused || running === 0) return
+    const t = setInterval(load, 3000)
+    return () => clearInterval(t)
+  }, [props.focused, running, load])
 
   // Drop empty columns at narrow widths but never collapse the one
   // the selection is on.
@@ -139,10 +195,113 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   const task = cur?.tasks[Math.min(row, (cur?.tasks.length ?? 1) - 1)]
   const total = [...data.values()].reduce((a, v) => a + v.length, 0)
 
-  const keys = useKeys()
+  // `shell.exec → hermes kanban <verb>`. Non-zero → toast the CLI's
+  // own stderr (cycle detected, unknown id, etc). reload on success.
+  const sh = useCallback((argv: string, ok?: string) =>
+    gw.request<Sh>("shell.exec", { command: `hermes kanban ${argv}` }).then(r => {
+      if (r.code !== 0) throw new Error((r.stderr || r.stdout || `exit ${r.code}`).trim())
+      if (ok) toast.show({ variant: "success", message: ok })
+      load()
+      return r.stdout
+    }).catch((e: Error) => void toast.show({ variant: "error", message: trunc(e.message, 120) })),
+  [gw, toast, load])
+
+  // ── Actions ────────────────────────────────────────────────────────
+
+  const live = useRef({ task })
+  live.current = { task }
+
+  const create = useCallback((parent?: Task) =>
+    openCreateTask(dialog, {
+      assignees: assignees(),
+      parent: parent ? { id: parent.id, title: parent.title } : undefined,
+    }).then(d => {
+      if (!d) return
+      const flags = [
+        d.assignee ? `--assignee ${q(d.assignee)}` : "",
+        d.body ? `--body ${q(d.body)}` : "",
+        d.priority ? `--priority ${d.priority}` : "",
+        d.parent ? `--parent ${q(d.parent)}` : "",
+      ].filter(Boolean).join(" ")
+      return sh(`create ${q(d.title)} ${flags}`.trim(),
+        `Created${d.assignee ? ` → ${d.assignee}` : ""}`)
+    }), [dialog, sh])
+
+  const assign = useCallback((t: Task) => {
+    const opts = [{ title: "(unassigned)", value: "none" },
+      ...assignees().map(n => ({ title: n, value: n }))]
+    dialog.replace(
+      <DialogSelect title={`Assign ${t.id}`} options={opts} current={t.assignee ?? "none"}
+        placeholder="Search profiles…"
+        onSelect={o => {
+          dialog.clear()
+          void sh(`assign ${q(t.id)} ${q(o.value)}`,
+            o.value === "none" ? `Unassigned ${t.id}` : `${t.id} → ${o.value}`)
+        }} />,
+    )
+  }, [dialog, sh])
+
+  const comment = useCallback((t: Task) =>
+    openTextPrompt(dialog, { title: `Comment on ${t.id}`, label: t.title })
+      .then(v => v && sh(`comment ${q(t.id)} ${q(v)} --author user`, "Comment added")),
+  [dialog, sh])
+
+  const unblock = useCallback((t: Task) => {
+    if (t.status !== "blocked")
+      return void toast.show({ variant: "info", message: `${t.id} is ${t.status}, not blocked` })
+    return openTextPrompt(dialog, {
+      title: `Unblock ${t.id}`, label: "Answer (posted as comment, then task → ready)",
+    }).then(async v => {
+      // Comment first so the respawned worker sees the answer in its
+      // context (build_worker_context reads the thread). Empty answer
+      // still unblocks — operator just wants a retry.
+      if (v) await sh(`comment ${q(t.id)} ${q(v)} --author user`)
+      return sh(`unblock ${q(t.id)}`, `Unblocked ${t.id}`)
+    })
+  }, [dialog, sh, toast])
+
+  const archive = useCallback((t: Task) =>
+    openConfirm(dialog, {
+      title: "Archive task?", danger: true, yes: "archive",
+      body: `${t.id}  ·  ${trunc(t.title, 60)}\n\nMoves to 'archived' and ends any open run. Children stay; their dependency on this task is treated as satisfied.`,
+    }).then(ok => { if (ok) void sh(`archive ${q(t.id)}`, `Archived ${t.id}`) }),
+  [dialog, sh])
+
+  const dispatch = useCallback(() => {
+    const ready = data.get("ready")?.length ?? 0
+    if (ready === 0)
+      return void toast.show({ variant: "info", message: "No tasks in 'ready'" })
+    return openConfirm(dialog, {
+      title: "Dispatch ready tasks?",
+      body: `${ready} task${ready === 1 ? "" : "s"} in 'ready'. Spawns one worker per task (one pass).`,
+      yes: "dispatch",
+    }).then(ok => { if (ok) void sh("dispatch --json", `Dispatched (${ready} ready)`) })
+  }, [dialog, sh, toast, data])
+
+  const showLog = useCallback((t: Task) => {
+    const text = tailLog(t.id)
+    if (text == null)
+      return void toast.show({ variant: "info", message: `No worker log for ${t.id}` })
+    setPane({ kind: "log", id: t.id, text })
+  }, [toast])
+
+  // Data-driven verb table. `when` gates availability; anything that
+  // needs a selected task reads through `live.current`.
+  type Act = { key: string; title: string; when: (t?: Task) => boolean; run: (t?: Task) => void }
+  const ACTS = useMemo<Act[]>(() => [
+    { key: "n", title: "New task",      when: () => true,            run: () => void create() },
+    { key: "N", title: "New child",     when: t => !!t,              run: t => void create(t) },
+    { key: "a", title: "Assign",        when: t => !!t,              run: t => assign(t!) },
+    { key: "c", title: "Comment",       when: t => !!t,              run: t => void comment(t!) },
+    { key: "u", title: "Unblock",       when: t => t?.status === "blocked", run: t => void unblock(t!) },
+    { key: "d", title: "Archive",       when: t => !!t,              run: t => void archive(t!) },
+    { key: "l", title: "Worker log",    when: t => !!t,              run: t => showLog(t!) },
+    { key: "D", title: "Dispatch",      when: () => true,            run: () => void dispatch() },
+  ], [create, assign, comment, unblock, archive, showLog, dispatch])
+
   useKeyboard((key) => {
-    if (!props.focused) return
-    if (key.name === "escape" && open) return setOpen(null)
+    if (!props.focused || dialog.stack.length > 0) return
+    if (key.name === "escape" && pane) return setPane(null)
     if (keys.match("list.refresh", key)) return load()
     if (key.name === "left")
       return setCol(c => { const n = Math.max(0, c - 1); setRow(0); return n })
@@ -153,28 +312,47 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     if (key.name === "down")
       return setRow(r => Math.min((cur?.tasks.length ?? 1) - 1, r + 1))
     if (key.name === "return" && task)
-      return setOpen(o => o?.id === task.id ? null : detail(task.id))
+      return setPane(p => p?.kind === "detail" && p.d.id === task.id
+        ? null : (d => d ? { kind: "detail", d } : null)(detail(task.id)))
+    const t = live.current.task
+    const hit = ACTS.find(a => a.key === key.raw && a.when(t))
+    if (hit) return hit.run(t)
   })
+
+  const hint = useMemo(() => {
+    const t = task
+    return ["←→↑↓ nav", "Enter detail",
+      ...ACTS.filter(a => a.when(t)).map(a => `${a.key} ${a.title.toLowerCase()}`),
+      "r reload"].join("  ")
+  }, [ACTS, task])
 
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell
-        title={`Kanban · ${total} task${total === 1 ? "" : "s"}`}
-        hint="←→ column  ↑↓ task  Enter detail  r reload"
+        title={`Kanban · ${total} task${total === 1 ? "" : "s"}${running ? ` · ${running} running` : ""}`}
+        hint={hint}
       >
         {total === 0
-          ? <text fg={theme.textMuted}>no tasks — board at ~/.hermes/kanban.db</text>
+          ? <box flexDirection="column">
+              <text fg={theme.textMuted}>no tasks — board at ~/.hermes/kanban.db</text>
+              <box height={1} />
+              <text fg={theme.textMuted}>press <span fg={theme.accent}>n</span> to create one</text>
+            </box>
           : (
             <box flexDirection="row" flexGrow={1} gap={1}>
               {cols.map((c, i) => (
                 <Column key={c.status} status={c.status} tasks={c.tasks}
                         on={i === Math.min(col, cols.length - 1)} sel={row}
-                        onPick={r => { setCol(i); setRow(r); setOpen(detail(c.tasks[r].id)) }} />
+                        onPick={r => {
+                          setCol(i); setRow(r)
+                          const d = detail(c.tasks[r].id)
+                          if (d) setPane({ kind: "detail", d })
+                        }} />
               ))}
             </box>
           )}
       </TabShell>
-      {open ? <DetailPane d={open} /> : null}
+      {pane ? <SidePane pane={pane} /> : null}
     </box>
   )
 })

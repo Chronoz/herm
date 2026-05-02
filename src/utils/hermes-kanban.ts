@@ -1,12 +1,19 @@
-// Read-only window onto the shared ~/.hermes/kanban.db.
+// Window onto the shared ~/.hermes/kanban.db.
 //
 // Kanban is deliberately profile-agnostic (the board IS the
 // coordination primitive between profiles), so this reads the
-// HERMES_HOME-relative path and shows every tenant's tasks. herm
-// takes the sidecar-read approach — no RPC, no mutation; writes go
-// through `hermes kanban …` / the kanban_* tools / the dashboard.
+// HERMES_HOME-relative path and shows every tenant's tasks.
+//
+// Reads are sidecar SQLite (WAL lets us read alongside the
+// dispatcher's IMMEDIATE write txns). Writes route through
+// `shell.exec → hermes kanban <verb>` so upstream kanban_db.py owns
+// the state machine: recompute_ready, cycle detection, event log,
+// notify subscriptions. herm is the operator surface for that CLI —
+// create/assign/comment/unblock/archive/dispatch — not a competing
+// implementation.
 
 import { Database } from "bun:sqlite"
+import { existsSync, readdirSync, statSync, openSync, readSync, closeSync } from "node:fs"
 import { hermesPath } from "./hermes-home"
 
 export const STATUSES = ["triage", "todo", "ready", "running", "blocked", "done"] as const
@@ -98,3 +105,50 @@ export function detail(id: string): Detail | null {
     return { ...toTask(row), parents, children, comments }
   } catch { return null }
 }
+
+/** Candidate assignee names for the picker — union of profiles-on-disk
+ *  and any assignee already referenced on the board (a task can be
+ *  assigned to a profile that no longer exists; still show it so the
+ *  operator can reassign *away* from it). `(unassigned)` is prepended
+ *  at the call site. */
+export function assignees(): string[] {
+  const seen = new Set<string>()
+  const dir = hermesPath("profiles")
+  if (existsSync(dir))
+    for (const e of readdirSync(dir, { withFileTypes: true }))
+      if (e.isDirectory()) seen.add(e.name)
+  const conn = db()
+  if (conn) try {
+    for (const r of conn.query(
+      "SELECT DISTINCT assignee FROM tasks WHERE assignee IS NOT NULL AND status != 'archived'",
+    ).all() as Array<{ assignee: string }>) seen.add(r.assignee)
+  } catch {}
+  return [...seen].sort()
+}
+
+/** Tail of the worker log at ~/.hermes/kanban/logs/<id>.log. Mirrors
+ *  kanban_db.read_worker_log's seek-from-end + skip-partial-line. */
+export function tailLog(id: string, bytes = 16_384): string | null {
+  const path = hermesPath(`kanban/logs/${id}.log`)
+  if (!existsSync(path)) return null
+  try {
+    const size = statSync(path).size
+    const want = Math.min(size, bytes)
+    const fd = openSync(path, "r")
+    const buf = Buffer.alloc(want)
+    readSync(fd, buf, 0, want, size - want)
+    closeSync(fd)
+    let out = buf.toString("utf-8")
+    if (size > bytes) {
+      const nl = out.indexOf("\n")
+      if (nl >= 0 && nl < out.length - 1) out = out.slice(nl + 1)
+    }
+    return out
+  } catch { return null }
+}
+
+/** POSIX single-quote for shell.exec argv building. Wraps only when
+ *  the string contains shell metacharacters (keeps test assertions
+ *  and toast messages readable for plain ids). */
+export const q = (s: string): string =>
+  /^[A-Za-z0-9._\/:+=-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
