@@ -6,24 +6,31 @@
  * tokenizer import fails at runtime (shouldn't in production, but keeps
  * tests resilient and prevents a bad dep from breaking renders).
  *
+ * Load-time: gpt-tokenizer is 55MB and costs ~170ms to import — roughly
+ * half the cold-start import graph. Nothing on the first-frame path
+ * (splash, composer, sidebar) needs real token counts, so the module is
+ * require()'d lazily on first count() call. Bun's require() is sync and
+ * cached, so the first call takes the hit and subsequent calls are free.
+ * Background warmup() lets app.tsx kick the import after first render
+ * so the first Context-tab visit doesn't stall.
+ *
  * Cached by content hash (DJB2) so repeated counts of the same text
  * are free. The grid recomputes on every snapshot refresh (10s) but
  * most content is stable across refreshes — skills, tool schemas, SOUL.
- *
- * Accuracy over chars/4:
- *   prose         — within a few percent either way
- *   JSON schemas  — trend LOWER than chars/4 (common keys like "type" /
- *                   "properties" are single-token despite their length)
- *   CJK / emoji   — MUCH higher than chars/4 (1-3 tokens per char)
- *
- * The grid cares about relative proportions, not absolute counts; any
- * single consistent tokenizer produces a more honest visual ratio than
- * chars/4 for heterogeneous content (English prompt + JSON schemas +
- * non-ASCII memory entries side-by-side). o200k_base is ~3-5% off real
- * Anthropic counts, which doesn't matter for visualization.
  */
 
-import { countTokens as gptCount } from "gpt-tokenizer"
+type Enc = { countTokens: (s: string) => number }
+let enc: Enc | null | undefined
+
+const load = (): Enc | null => {
+  if (enc !== undefined) return enc
+  try { enc = require("gpt-tokenizer") as Enc }
+  catch { enc = null }
+  return enc
+}
+
+/** Kick the lazy import off the hot path. Fire-and-forget. */
+export const warmup = () => { queueMicrotask(load) }
 
 // Simple DJB2 hash — fast, collision-tolerant for cache keys.
 const hash = (s: string): string => {
@@ -48,13 +55,9 @@ export function count(s: string): number {
   const hit = cache.get(k)
   if (hit !== undefined) return hit
   let n: number
-  try {
-    n = gptCount(s)
-  } catch {
-    n = roughCount(s)
-  }
+  try { n = load()?.countTokens(s) ?? roughCount(s) }
+  catch { n = roughCount(s) }
   if (cache.size >= CACHE_MAX) {
-    // Drop oldest entry (first in insertion order).
     const first = cache.keys().next().value
     if (first !== undefined) cache.delete(first)
   }
@@ -71,9 +74,6 @@ export function clearCache(): void {
  * Human-format a token count for compact display:
  *   999 → "999"   1_000 → "1.0K"   10_000 → "10K"
  *   258_000 → "258K"   1_000_000 → "1M"   1_250_000 → "1.2M"
- *
- * Under 10k keeps one decimal; at/above 10k integer K; at/above 1M uses
- * one decimal unless the value is a whole multiple.
  */
 export function formatTokens(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "0"

@@ -51,6 +51,17 @@ export const mark = enabled
   }
   : (_: string) => noop
 
+// ── Boot stages ───────────────────────────────────────────────────────
+// One-shot milestones measured from process start (Bun.nanoseconds()
+// origin). ESM imports hoist, so mark() can't bracket the import graph;
+// callers pass the absolute ms-since-spawn instead.
+const stages: Array<[string, number]> = []
+export const boot = (label: string, ms: number) => {
+  stages.push([label, ms])
+  if (enabled) log(`🚀 boot:${label} ${ms.toFixed(1)}ms`)
+}
+export const bootStages = () => stages.slice()
+
 // ── Counters ──────────────────────────────────────────────────────────
 
 const counters = new Map<string, number>()
@@ -187,6 +198,7 @@ export const data = () => {
   if (!enabled) return null
   const m = process.memoryUsage()
   return {
+    boot: Object.fromEntries(stages.map(([l, ms]) => [l, +ms.toFixed(1)])),
     memory: {
       rss: Math.round(m.rss / 1024 / 1024),
       heap: Math.round(m.heapUsed / 1024 / 1024),

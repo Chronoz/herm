@@ -30,6 +30,12 @@ import * as perf from "./utils/perf";
 import * as control from "./utils/control";
 import * as preferences from "./utils/preferences";
 import { resetTerminalModes, installExitResetHooks } from "./utils/terminal-reset";
+import { warmup as warmTokens } from "./utils/tokens";
+
+// Static ESM imports hoist above module-level code, so the only
+// honest import-graph measurement is process-uptime at the point
+// this line actually runs. Captured once; reported by perf.boot().
+perf.boot("import-graph", Bun.nanoseconds() / 1e6)
 
 const argv = Bun.argv.slice(2)
 if (argv.includes("--help") || argv.includes("-h")) {
@@ -83,6 +89,11 @@ const main = async () => {
   const endRender = perf.mark("first-render")
   root.render(<App initialTheme={prefs.theme} launch={launch} />);
   endRender()
+  perf.boot("first-render", Bun.nanoseconds() / 1e6)
+
+  // gpt-tokenizer is ~170ms to import and not needed for first frame;
+  // kick it off the hot path so the first count() call doesn't stall.
+  warmTokens()
 
   perf.mem("post-first-render")
 
