@@ -220,6 +220,17 @@ const toRow = (r: Raw, lineage: string | null = null): SessionRow => ({
 const one = (id: string): Raw | null =>
   (q(`SELECT ${COLS} FROM sessions s WHERE s.id = ?`)?.get(id) as Raw | undefined) ?? null
 
+/** Single session by id, or null if missing / db unavailable. */
+export const byId = (id: string): SessionRow | null => {
+  const r = one(id)
+  return r ? toRow(r) : null
+}
+
+/** Newest root TUI session that actually has messages. Target of `-c`
+ *  and source of the splash continue-prompt title. */
+export const lastReal = (): SessionRow | undefined =>
+  roots().find(r => r.message_count > 0 && r.sessionSource === "tui")
+
 // ─── Readers ─────────────────────────────────────────────────────────
 
 /** Root-level sessions, newest first, compression chains projected to

@@ -57,15 +57,18 @@ import { SkinProvider, deriveSkin, type SkinState } from "./app/skin"
 import { useAppKeys } from "./app/useAppKeys"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
+import type { Launch } from "./app/launch"
 
-export const App = (props: { initialTheme?: string; gateway?: Gateway }) => (
+type AppProps = { initialTheme?: string; gateway?: Gateway; launch?: Launch }
+
+export const App = (props: AppProps) => (
   <ThemeProvider initial={props.initialTheme}>
     <GatewayProvider client={props.gateway}>
       <ToastProvider>
         <KeysProvider>
           <DialogProvider>
             <CommandProvider>
-              <AppInner />
+              <AppInner launch={props.launch ?? { mode: "new" }} />
             </CommandProvider>
           </DialogProvider>
         </KeysProvider>
@@ -74,7 +77,7 @@ export const App = (props: { initialTheme?: string; gateway?: Gateway }) => (
   </ThemeProvider>
 )
 
-const AppInner = () => {
+const AppInner = ({ launch }: { launch: Launch }) => {
   const gw = useGateway()
   const dialog = useDialog()
   const themeCtx = useTheme()
@@ -503,11 +506,12 @@ const AppInner = () => {
     if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
     const action = mapEvent(ev, {
       onReady: () => {
-        session.boot().then((r) => {
+        session.boot(launch).then((r) => {
           setSid(r.id)
           sessionStart.current = Date.now()
           if (r.messages.length) dispatch({ kind: "load", messages: r.messages })
           setMsgCount(r.messages.length)
+          if (r.note) toast.show({ variant: "info", message: r.note })
         })
       },
       onSessionInfo: (si) => {
@@ -566,7 +570,7 @@ const AppInner = () => {
     }
     flush()
     dispatch(action)
-  }, [session, dialog, toast, pollUsage, gw, flush])
+  }, [session, dialog, toast, pollUsage, gw, flush, launch])
 
   useGatewayEvent(handle)
 

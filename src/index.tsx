@@ -25,10 +25,18 @@ if (existsSync(shim)) process.env.OTUI_TREE_SITTER_WORKER_PATH = shim
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
+import { parseLaunch, HELP } from "./app/launch";
 import * as perf from "./utils/perf";
 import * as control from "./utils/control";
 import * as preferences from "./utils/preferences";
 import { resetTerminalModes, installExitResetHooks } from "./utils/terminal-reset";
+
+const argv = Bun.argv.slice(2)
+if (argv.includes("--help") || argv.includes("-h")) {
+  process.stdout.write(HELP)
+  process.exit(0)
+}
+const launch = parseLaunch(argv)
 
 // Initialize and render
 const main = async () => {
@@ -58,7 +66,7 @@ const main = async () => {
   const root = createRoot(renderer);
 
   const endRender = perf.mark("first-render")
-  root.render(<App initialTheme={prefs.theme} />);
+  root.render(<App initialTheme={prefs.theme} launch={launch} />);
   endRender()
 
   perf.mem("post-first-render")

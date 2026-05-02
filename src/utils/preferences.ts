@@ -31,10 +31,8 @@ interface TuiPreferences {
   targetFps?: number
 
   // ─── Herm extensions ─────────────────────────────────────────────
-  /** Last active session ID — used for auto-resume on startup */
+  /** Last active session ID — stub-reuse check on fresh launch */
   lastSessionId?: string
-  /** Resume `lastSessionId` on launch; false → always fresh session */
-  resumeOnLaunch?: boolean
   /** Path to a .eikon avatar file for the sidebar */
   eikonPath?: string
   /** Spinner/avatar frame animations (off → static glyphs) */

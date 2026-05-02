@@ -2,8 +2,10 @@
 
 import { useMemo, useCallback } from "react"
 import * as preferences from "../utils/preferences"
+import * as sdb from "../utils/sessions-db"
 import { useGateway } from "./gateway"
 import { transcriptToMessages } from "./turnReducer"
+import type { Launch } from "./launch"
 import type { SessionResumeResponse, SessionCreateResponse } from "../utils/gateway-types"
 import type { Message } from "../types/message"
 
@@ -23,9 +25,11 @@ export type CompressResult = {
   }
 }
 
+type Booted = { id: string; messages: Message[]; note?: string }
+
 type SessionOps = {
-  /** Resume last session from prefs, or create a new one. */
-  boot: () => Promise<{ id: string; messages: Message[] }>
+  /** Establish the initial session per launch intent. */
+  boot: (launch: Launch) => Promise<Booted>
   create: () => Promise<string>
   resume: (sid: string) => Promise<{ id: string; messages: Message[] }>
   interrupt: () => Promise<void>
@@ -52,13 +56,23 @@ export function useSession(): SessionOps {
     return res.session_id
   }, [gw])
 
-  const boot = useCallback(async () => {
-    const last = preferences.get("resumeOnLaunch") !== false
-      ? preferences.get("lastSessionId") : undefined
-    if (last) {
+  const boot = useCallback(async (launch: Launch): Promise<Booted> => {
+    const fresh = async (note?: string) => ({ id: await create(), messages: [], note })
+
+    if (launch.mode === "resume") {
+      const target = launch.sid ?? sdb.lastReal()?.id
+      if (!target) return fresh("no prior session to resume — starting fresh")
+      try { return await resume(target) }
+      catch { return fresh(`resume ${target} failed — starting fresh`) }
+    }
+
+    // mode:"new" — reuse our own abandoned empty stub instead of
+    // creating another row every launch.
+    const last = preferences.get("lastSessionId")
+    if (last && sdb.byId(last)?.message_count === 0) {
       try { return await resume(last) } catch { /* fall through */ }
     }
-    return { id: await create(), messages: [] }
+    return fresh()
   }, [create, resume])
 
   const interrupt = useCallback(async () => {
