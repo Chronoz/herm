@@ -1,6 +1,6 @@
 # Herm - Dashboard TUI for Hermes
 
-![alt text](image.png)
+<img width="1701" height="1042" alt="image" src="https://github.com/user-attachments/assets/3ec8bdda-cf01-47e8-844f-fc70a9084079" />
 
 > **herm** /hɜːm/ _noun_ : a sculptured head of Hermes on a square stone pillar, used in ancient Greece as a boundary marker at crossroads.
 
