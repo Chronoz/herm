@@ -15,48 +15,46 @@ const INFO = {
 }
 
 describe("Sidebar", () => {
-  test("title above Agent, no Identity wrapper, no Tools row, no Stats/Memory/Recent", async () => {
+  test("Title primary, Agent row gone, no Identity wrapper, no Tools row", async () => {
     const gw = new MockGateway({ "plugins.list": () => ({ plugins: [] }) })
     const t = await mountNode(
       <Sidebar agentState="idle" info={INFO} title="my session" />,
       { gw, width: 160, height: 48 },
     )
-    await until(t, () => t.frame().includes("Hermes"))
+    await until(t, () => t.frame().includes("Title"))
 
     const f = t.frame()
 
-    // Title prepended, muted "Title" label + strong value
-    expect(f).toContain("Title")
-    expect(f).toContain("my session")
+    // Title always-on, first identity row
+    expect(f).toMatch(/Title\s+my session/)
+    expect(f.indexOf("Title")).toBeLessThan(f.indexOf("Profile"))
+
+    // Agent row removed; Profile carries lineage
+    expect(f).not.toMatch(/Agent\s+Hermes/)
+    expect(f).toContain("Profile")
 
     // Identity rows render flat (no ▾/▸ Identity wrapper)
     expect(f).not.toContain("Identity")
     expect(f).toContain("test-model-v9")
 
-    // Tools + Skills rows both removed — Skills has a dedicated tab
-    // and the context gauge replaces them as the last identity-block row.
     expect(f).not.toMatch(/^\s*Tools\s/m)
     expect(f).not.toMatch(/^\s*Skills\s/m)
-
-    // Removed sections
     expect(f).not.toContain("▸ Stats")
     expect(f).not.toContain("▸ Memory")
     expect(f).not.toContain("▸ Recent")
     expect(f).not.toContain("Est. cost")
-
-    // Operational sections still present (collapsed by default now)
     expect(f).toContain("▸ MCP")
     t.destroy()
   })
 
-  test("title omitted when not provided", async () => {
+  test("Title row shows placeholder when unset (no layout shift)", async () => {
     const gw = new MockGateway({ "plugins.list": () => ({ plugins: [] }) })
     const t = await mountNode(
       <Sidebar agentState="idle" info={INFO} />,
       { gw, width: 160, height: 48 },
     )
-    await until(t, () => t.frame().includes("Hermes"))
-    expect(t.frame()).not.toContain("Title")
+    await until(t, () => t.frame().includes("Profile"))
+    expect(t.frame()).toMatch(/Title\s+—/)
     t.destroy()
   })
 
@@ -112,7 +110,7 @@ describe("Sidebar", () => {
       <Sidebar agentState="idle" info={INFO} />,
       { gw, width: 160, height: 48 },
     )
-    await until(t, () => t.frame().includes("Hermes"))
+    await until(t, () => t.frame().includes("Profile"))
     const f = t.frame()
     // No gauge chrome: no bracketed block bar
     expect(f).not.toMatch(/\[█+░*\]/)

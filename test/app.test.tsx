@@ -205,16 +205,16 @@ describe("app", () => {
   test("sidebar hides below 120 cols", async () => {
     const t = await mount({ width: 160, height: 48 })
     await until(t, () => t.frame().includes("Ready"))
-    // Sidebar renders the Agent row as the identity header.
-    expect(t.frame()).toMatch(/Agent\s+Hermes/)
+    // Sidebar renders the Profile row as the identity header.
+    expect(t.frame()).toMatch(/Profile\s+default/)
 
     t.resize(100, 48)
     await t.settle(); await t.settle()
-    expect(t.frame()).not.toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).not.toMatch(/Profile\s+default/)
 
     t.resize(160, 48)
     await t.settle(); await t.settle()
-    expect(t.frame()).toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).toMatch(/Profile\s+default/)
     t.destroy()
   })
 
@@ -225,12 +225,12 @@ describe("app", () => {
     const t = await mount({ gw, width: 130, height: 40 })
     await until(t, () => t.frame().includes("Ready"))
     // Chat tab: sidebar visible at 130.
-    expect(t.frame()).toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).toMatch(/Profile\s+default/)
 
     act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("3") })
     await until(t, () => t.frame().includes("Sessions (1)"))
     // Sidebar dropped, detail pane kept.
-    expect(t.frame()).not.toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).not.toMatch(/Profile\s+default/)
     expect(t.frame()).toContain("Session Detail")
     t.destroy()
   })
@@ -573,21 +573,21 @@ describe("app", () => {
   test("<leader>b toggles the sidebar", async () => {
     const t = await mount({ width: 160 })
     await until(t, () => t.frame().includes("Ready"))
-    expect(t.frame()).toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).toMatch(/Profile\s+default/)
 
     // Arm leader, then 'b' → hide
     act(() => t.keys.pressKey("x", { ctrl: true }))
     await t.settle()
     await act(async () => { await t.keys.typeText("b") })
     await t.settle()
-    expect(t.frame()).not.toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).not.toMatch(/Profile\s+default/)
 
     // Again → show
     act(() => t.keys.pressKey("x", { ctrl: true }))
     await t.settle()
     await act(async () => { await t.keys.typeText("b") })
     await t.settle()
-    expect(t.frame()).toMatch(/Agent\s+Hermes/)
+    expect(t.frame()).toMatch(/Profile\s+default/)
     t.destroy()
   })
 

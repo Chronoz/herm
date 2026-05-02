@@ -100,9 +100,11 @@ export const Sidebar = memo((props: {
       <box padding={1} flexDirection="column" flexGrow={1}
            backgroundColor={theme.hermBody} overflow="hidden">
 
-        {/* Flat identity block — Title first (if set), then agent lineage. */}
-        {props.title ? <Row label="Title" value={props.title} strong /> : null}
-        <Row label="Agent" value="Hermes" strong />
+        {/* Flat identity block — Title is primary (always rendered so the
+            block doesn't reflow when `/title` fires), then Profile
+            (which IS agent lineage — each profile is an isolated
+            HERMES_HOME), then model/cwd/branch. */}
+        <Row label="Title" value={props.title || "—"} strong={!!props.title} />
         <Row label="Profile" value={props.profile ?? "default"}
              strong={!!props.profile && props.profile !== "default"} />
         <Row label="Model" value={info?.model ?? "—"} />
