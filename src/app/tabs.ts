@@ -10,6 +10,7 @@ export const TABS = [
   { name: "Config",    description: "Configuration editor" },
   { name: "Env",       description: "API keys & env variables" },
   { name: "Memory",    description: "Agent memory browser" },
+  { name: "Kanban",    description: "Multi-agent task board" },
 ] as const
 
 export const TAB_MAX = TABS.length - 1

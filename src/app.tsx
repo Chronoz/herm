@@ -22,6 +22,7 @@ import { Config } from "./tabs/Config"
 import { Cron } from "./tabs/Cron"
 import { Toolsets } from "./tabs/Toolsets"
 import { Env } from "./tabs/Env"
+import { Kanban } from "./tabs/Kanban"
 import type { Usage } from "./types/message"
 import { copySelection } from "./utils/clipboard"
 import { ThemeProvider, useTheme } from "./theme"
@@ -744,6 +745,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
         case 8: return <Config focused={contentFocused} />
         case 9: return <Env focused={contentFocused} />
         case 10: return <Memory focused={contentFocused} />
+        case 11: return <Kanban focused={contentFocused} />
         default: return null
       }
     })()

@@ -22,13 +22,14 @@ export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
 
   return (
     <box width="100%" flexDirection="column" height={1}>
-      <box flexDirection="row">
+      <box flexDirection="row" overflow="hidden">
         {tabs.map((tab, i) => (
           <box
             key={i}
             onMouseDown={() => onTabChange(i)}
             paddingX={2}
             marginRight={1}
+            flexShrink={0}
             backgroundColor={i === activeTab ? theme.backgroundElement : undefined}
           >
             <text attributes={3}>
@@ -37,8 +38,8 @@ export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
             </text>
           </box>
         ))}
-        <box flexGrow={1} />
-        <box paddingX={1}>
+        <box flexGrow={1} minWidth={0} />
+        <box paddingX={1} flexShrink={1} minWidth={0} overflow="hidden">
           <text fg={theme.borderSubtle}>
             {`${keys.print("tab.prev")}/${keys.print("tab.next")} or ${keys.print("leader")} N`}
           </text>
