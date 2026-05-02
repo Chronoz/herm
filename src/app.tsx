@@ -203,6 +203,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   const switchSession = useCallback(async (target: string) => {
     reset()
     setSplash(false)
+    goToTab(CHAT_TAB)
     try {
       const res = await session.resume(target)
       setSid(res.id)
@@ -211,7 +212,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     } catch (err) {
       dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
     }
-  }, [reset, session])
+  }, [reset, session, goToTab])
 
   // Compress wrapper — toasts on start, dispatches a transcript system
   // message carrying the headline + token line from the gateway's

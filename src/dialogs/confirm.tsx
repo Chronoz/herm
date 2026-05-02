@@ -20,7 +20,7 @@ const Confirm = (props: Props) => {
   const theme = useTheme().theme
   const keys = useKeys()
   useKeyboard((key) => {
-    if (keys.match("dialog.confirm", key)) return props.onConfirm()
+    if (keys.match("dialog.confirm", key) || keys.match("dialog.accept", key)) return props.onConfirm()
     if (keys.match("dialog.deny", key) || keys.match("dialog.cancel", key)) return props.onCancel()
   })
   return (
@@ -35,7 +35,7 @@ const Confirm = (props: Props) => {
       <box height={1} />
       <box height={1}>
         <text fg={theme.textMuted}>
-          {`[${keys.print("dialog.confirm")}] ${props.yes ?? "confirm"}   [${keys.print("dialog.deny")}] ${props.no ?? "cancel"}`}
+          {`[${keys.print("dialog.confirm")}/${keys.print("dialog.accept")}] ${props.yes ?? "confirm"}   [${keys.print("dialog.deny")}] ${props.no ?? "cancel"}`}
         </text>
       </box>
     </box>
