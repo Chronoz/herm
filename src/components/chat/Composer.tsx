@@ -2,7 +2,7 @@
 // and prompt history. The shell (app.tsx) drives keyboard routing through
 // the imperative handle so there is exactly one global useKeyboard.
 
-import { forwardRef, memo, useImperativeHandle, useRef, useState, useCallback, useMemo } from "react"
+import { forwardRef, memo, useImperativeHandle, useRef, useState, useCallback, useMemo, useEffect } from "react"
 import type { TextareaRenderable, PasteEvent } from "@opentui/core"
 import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
@@ -47,6 +47,10 @@ type Props = {
   onAttach?: (r: ImageAttachResponse) => void
   onEnqueue?: (text: string) => void
   onDequeue?: (i: number) => void
+  /** Enter pressed with an empty buffer. Return true to consume. */
+  onEmptyEnter?: () => boolean
+  /** Fires on the empty↔non-empty edge of the input buffer. */
+  onDirty?: (dirty: boolean) => void
 }
 
 const MAX_ROWS = 6
@@ -95,6 +99,16 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   // Hold latest pop/props in a ref so the imperative handle is stable.
   const live = useRef({ pop, at, props, input })
   live.current = { pop, at, props, input }
+
+  // Notify parent only on the empty↔non-empty edge so the splash
+  // continue-prompt can hide the moment typing starts.
+  const wasDirty = useRef(false)
+  useEffect(() => {
+    const dirty = input.trim().length > 0
+    if (dirty === wasDirty.current) return
+    wasDirty.current = dirty
+    live.current.props.onDirty?.(dirty)
+  }, [input])
 
   // Selecting a popover entry: subcommand synthetics (name contains a
   // space) complete the input for further typing; real commands dispatch.
@@ -172,7 +186,8 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       return
     }
     const text = live.current.input.trim()
-    if (!text || !live.current.props.ready) return
+    if (!text) { live.current.props.onEmptyEnter?.(); return }
+    if (!live.current.props.ready) return
     hist.push(text)
     write("")
     live.current.props.onSend(text)

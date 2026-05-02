@@ -29,6 +29,8 @@ type Opts = {
   /** Offer the key to a pending inline prompt card. Return true to
    *  consume + stopPropagation; false to fall through to the shell. */
   onPromptKey?: (key: ParsedKey) => boolean
+  /** Idle-mode Esc, before focus bounce. Return true to consume. */
+  onEscape?: () => boolean
   onInterrupt: () => void
   onInterruptNotice: () => void
   onCopyLast: () => void
@@ -189,6 +191,7 @@ export function useAppKeys(o: Opts) {
     }
 
     if (keys.match("session.interrupt", key)) {
+      if (!o.streaming && o.onEscape?.()) return
       if (o.streaming) {
         const now = Date.now()
         if (now - lastEsc.current < INTERRUPT_MS) {

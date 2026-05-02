@@ -10,13 +10,14 @@ import { MockGateway, mountNode } from "./harness"
 
 describe("parseLaunch", () => {
   const cases: Array<[string[], Launch]> = [
-    [[], { mode: "new" }],
+    [[], { mode: "new", splash: true }],
     [["-c"], { mode: "resume" }],
     [["--continue"], { mode: "resume" }],
     [["--resume"], { mode: "resume" }],
     [["--resume", "abc123"], { mode: "resume", sid: "abc123" }],
     [["--resume", "--foo"], { mode: "resume" }],
     [["--foo", "-c"], { mode: "resume" }],
+    [["--no-splash"], { mode: "new", splash: false }],
   ]
   for (const [argv, want] of cases) {
     test(JSON.stringify(argv), () => expect(parseLaunch(argv)).toEqual(want))

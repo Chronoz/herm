@@ -41,6 +41,8 @@ import { openRollback } from "./dialogs/rollback"
 import { openHistory } from "./dialogs/history"
 import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { openChafa } from "./dialogs/chafa"
+import { Splash } from "./ui/Splash"
+import { lastReal } from "./utils/sessions-db"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
@@ -106,6 +108,17 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   const [status, setStatus] = useState("")
   const [eikon, setEikon] = useState<ParsedEikon | undefined>(undefined)
   const [queue, setQueue] = useState<string[]>([])
+  // ── Splash ────────────────────────────────────────────────────────
+  // Welcome-state chrome over an empty transcript. Composer stays live
+  // underneath; first send dismisses. `/splash` re-summons mid-session
+  // (Esc-dismissable in that case only).
+  const [splash, setSplash] = useState(launch.mode === "new" && launch.splash !== false)
+  const summoned = useRef(false)
+  const [composing, setComposing] = useState(false)
+  const splashLast = useMemo(
+    () => launch.mode === "new" ? lastReal() : undefined,
+    [launch.mode],
+  )
   const [attachments, setAttachments] = useState<ImageAttachResponse[]>([])
   const [cloudH, setCloudH] = useState(CLOUD_MIN)
   const [pick, setPick] = useState<Message | undefined>(undefined)
@@ -338,6 +351,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
           if (!arg.trim()) { toast.show({ variant: "info", message: "usage: /chafa <path>" }); return }
           openChafa(dialog, arg.trim())
           return
+        case "splash": summoned.current = true; setSplash(true); return
         case "steer":
           openTextPrompt(dialog, { title: "Steer", label: "Note to inject on next tool result" })
             .then(text => {
@@ -442,6 +456,17 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
   }, [gw, slash, applyTitle, attachments])
+
+  // Dismiss-on-send wrapper. Also the single gate for the splash's
+  // "continue last?" prompt: empty-Enter while it's visible resumes
+  // lastReal via the existing switchSession path.
+  const onSend = useCallback((raw: string) => { setSplash(false); return send(raw) }, [send])
+  const onEmptyEnter = useCallback(() => {
+    if (!splash || summoned.current || !splashLast || composing) return false
+    setSplash(false)
+    void switchSession(splashLast.id)
+    return true
+  }, [splash, splashLast, composing, switchSession])
 
   // ── Queue drain ───────────────────────────────────────────────────
   // Purely client-side: prompts typed while streaming accumulate in
@@ -620,6 +645,11 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     // promptRef is null when no card is pending (Outcome rows don't
     // take the ref), so feed short-circuits.
     onPromptKey: (k) => promptRef.current?.feed(k) ?? false,
+    onEscape: () => {
+      if (!splash || !summoned.current) return false
+      setSplash(false); summoned.current = false
+      return true
+    },
     onInterrupt: () => {
       interrupted.current = true
       // Drop any 16ms-batched deltas that haven't hit the reducer yet —
@@ -721,7 +751,21 @@ const AppInner = ({ launch }: { launch: Launch }) => {
         <TabBar tabs={TABS} activeTab={tab} onTabChange={goToTab} />
         <box flexGrow={1} flexDirection="row">
           <box flexGrow={1} flexDirection="column">
-            {content()}
+            <box flexGrow={1} position="relative">
+              {content()}
+              {splash && tab === CHAT_TAB ? (
+                <Splash
+                  info={info ? {
+                    agentVersion: info.version,
+                    behind: info.update_behind,
+                    model: info.model,
+                  } : undefined}
+                  last={summoned.current ? undefined : splashLast
+                    ? { id: splashLast.id, title: splashLast.title } : undefined}
+                  composing={composing}
+                />
+              ) : null}
+            </box>
             <box flexShrink={0} zIndex={1}>
               <Composer
                 ref={composer}
@@ -730,10 +774,12 @@ const AppInner = ({ launch }: { launch: Launch }) => {
                 queue={queue}
                 attachments={attachments}
                 cmds={cmds}
-                onSend={send} onSlash={slash}
+                onSend={onSend} onSlash={slash}
                 onAttach={onAttach}
                 onEnqueue={onEnqueue}
                 onDequeue={dequeue}
+                onDirty={setComposing}
+                onEmptyEnter={onEmptyEnter}
               />
             </box>
           </box>
