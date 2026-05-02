@@ -79,10 +79,14 @@ export function Splash(p: SplashProps) {
         <box position="absolute" left={inner.x} top={inner.y}
              width={inner.w} height={inner.h}
              flexDirection="column" alignItems="center" justifyContent="center">
-          <ascii-font text="HERM" font={font}
-            color={[theme.accent, theme.textMuted]} selectable={false} />
-          <text fg={theme.textMuted}>{clip(sub, inner.w)}</text>
-          <box height={1} />
+          <box>
+            <ascii-font text="HERM" font={font}
+              color={[theme.accent, theme.textMuted]} selectable={false} />
+          </box>
+          <box height={1}>
+            <text fg={theme.textMuted}>{clip(sub, inner.w)}</text>
+          </box>
+          <box height={2} />
           {prompt ? (
             <>
               <text fg={theme.textMuted}>
