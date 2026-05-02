@@ -12,6 +12,8 @@ import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { writeConfig, verifyWrite, maxEffect } from "../config/lane";
 import { check as checkRule } from "../config/rules";
 import { buildFields, groupOf, sections, GROUPS, EFFECT_GLYPH, type Field, type Section } from "../config";
+import { readSlots, assign, resetAux, AUX_TASKS, type Slot } from "../config/models";
+import { openModelPicker } from "../dialogs/model-picker";
 import { managedSystem, makeSource } from "../utils/hermes-home";
 import { FileLink } from "../components/ui/FileLink";
 
@@ -126,6 +128,37 @@ const FieldRow = memo((props: {
   );
 });
 
+// ─── Model slots (synthetic `models` category) ───────────────────────
+// Main + 9 aux-task slots from config.yaml. Enter opens the same
+// provider→model picker as Ctrl+M but routed through assign(); `x`
+// resets an aux slot to auto. Writes apply immediately (not queued
+// through the FieldRow dirty/save flow) because main is an rpc-lane
+// hot-swap and aux is a 2-key atomic pair — both mirror webui
+// ModelSettingsPanel which also commits on pick.
+
+const SlotRow = memo((p: { id: string; s: Slot; on: boolean }) => {
+  const theme = useTheme().theme;
+  const main = p.s.kind === "main";
+  const val = main
+    ? `${p.s.provider || "(unset)"} · ${p.s.model || "(unset)"}`
+    : p.s.auto
+      ? "auto  (use main model)"
+      : `${p.s.provider} · ${p.s.model || "(provider default)"}`;
+  return (
+    <box id={p.id} flexDirection="row" height={1}
+         backgroundColor={p.on ? theme.backgroundElement : undefined}>
+      <Col w={2} fg={p.on ? theme.primary : theme.text}>{p.on ? "▸ " : "  "}</Col>
+      <Col w={2} fg={main ? theme.primary : theme.textMuted}>{main ? "★" : " "}</Col>
+      <Col w={16} fg={p.on ? theme.accent : theme.text}>{p.s.label}</Col>
+      <Col w={22} fg={theme.textMuted}>{p.s.hint}</Col>
+      <Col grow min={10} fg={p.s.auto ? theme.textMuted : theme.text}>{val}</Col>
+      <Col w={14} fg={theme.textMuted} right>
+        {p.on ? (main ? "[enter]" : "[enter] [x]") : ""}
+      </Col>
+    </box>
+  );
+});
+
 // ─── Main Component ──────────────────────────────────────────────────
 
 export const Config = memo((props: { focused?: boolean }) => {
@@ -174,15 +207,22 @@ export const Config = memo((props: { focused?: boolean }) => {
     map.get(g)!.push(f);
     return map;
   }, new Map<string, Field[]>(GROUPS.map(g => [g, []])));
+  // `models` is a synthetic category — it renders SlotRows over the
+  // same `raw` object, not FieldRows over schema keys. Pinned after
+  // `general` so it's where a user scanning for "where do I set the
+  // model" lands, instead of the 56-field `auxiliary` group.
   const groups = [...grouped.keys()];
+  groups.splice(1, 0, "models");
 
   const active = groups[cat] ?? groups[0];
+  const onSlots = active === "models" && !searching;
+  const slots = readSlots(raw);
   const secs: Section[] = searching && query.trim()
     ? [{ head: null, items: all.filter(f => f.key.toLowerCase().includes(query.toLowerCase())) }]
     : sections(active, grouped.get(active) ?? []);
   const fields = secs.flatMap(s => s.items);
 
-  const count = fields.length;
+  const count = onSlots ? slots.length : fields.length;
   const follow = useFollow("cfg");
   const catFollow = useFollow("cfg-cat");
 
@@ -261,6 +301,47 @@ export const Config = memo((props: { focused?: boolean }) => {
     });
   };
 
+  const pick = useCallback((s: Slot) => {
+    if (managed) return toast.show({ variant: "error", message: `Managed by ${managed}` });
+    openModelPicker(dialog, gw, {
+      title: s.kind === "main" ? "Set main model" : `Set auxiliary · ${s.label}`,
+      onApply: async (prov, model) => {
+        const r = await assign(gw, s.key, prov, model);
+        if (r.failed.length)
+          return toast.show({ variant: "error", message: r.failed.map(f => f.err).join("; ") });
+        toast.show({ variant: "success",
+          message: s.kind === "main" ? `main → ${prov} · ${model}` : `${s.key} → ${prov} · ${model}` });
+        if (r.warning) toast.show({ variant: "warning", message: r.warning });
+        load();
+      },
+    });
+  }, [gw, dialog, toast, load, managed]);
+
+  const unset = useCallback((s: Slot) => {
+    if (managed || s.kind !== "aux" || s.auto) return;
+    void resetAux(gw, s.key).then(r => {
+      if (r.failed.length)
+        return toast.show({ variant: "error", message: r.failed.map(f => f.err).join("; ") });
+      toast.show({ variant: "success", message: `${s.key} → auto` });
+      load();
+    });
+  }, [gw, toast, load, managed]);
+
+  const unsetAll = useCallback(() =>
+    openConfirm(dialog, {
+      title: "Reset all auxiliary slots to auto?",
+      body: `${AUX_TASKS.length} slots. Each falls back to the main model.`,
+      yes: "reset", danger: true,
+    }).then(ok => {
+      if (!ok) return;
+      void resetAux(gw, "all").then(r => {
+        if (r.failed.length)
+          return toast.show({ variant: "error", message: `${r.failed.length} failed` });
+        toast.show({ variant: "success", message: "All auxiliary slots → auto" });
+        load();
+      });
+    }), [gw, dialog, toast, load]);
+
   const keys = useKeys();
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return;
@@ -337,6 +418,19 @@ export const Config = memo((props: { focused?: boolean }) => {
       return;
     }
 
+    if (onSlots) {
+      const s = slots[cursor];
+      const matched = handleListKey(keys, key, {
+        count, setSel: setCursor, ...follow.opts,
+        onActivate: s ? () => pick(s) : undefined,
+        onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },
+      });
+      if (matched || !s) return;
+      if (key.raw === "x") return unset(s);
+      if (key.raw === "X") return void unsetAll();
+      return;
+    }
+
     const f = fields[cursor];
     const writable = !managed;
     const matched = handleListKey(keys, key, {
@@ -402,6 +496,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                 const sel = i === cat;
                 const hot = sel && focus === "categories";
                 const items = grouped.get(c) ?? [];
+                const n = c === "models" ? slots.length : items.length;
                 const catDirty = items.some(f => changed(f.key));
                 return (
                   <box
@@ -415,7 +510,7 @@ export const Config = memo((props: { focused?: boolean }) => {
                       <span fg={hot ? theme.accent : sel ? theme.primary : theme.text}>
                         {sel ? "▸ " : "  "}{c}
                       </span>
-                      <span fg={theme.textMuted}>{` (${items.length})`}</span>
+                      <span fg={theme.textMuted}>{` (${n})`}</span>
                     </text>
                   </box>
                 );
@@ -425,10 +520,13 @@ export const Config = memo((props: { focused?: boolean }) => {
         )}
 
         <TabShell
-          title={searching ? "Search" : nChanged > 0 ? `${active} · ${nChanged} unsaved` : active}
+          title={onSlots ? "models · applies immediately"
+            : searching ? "Search" : nChanged > 0 ? `${active} · ${nChanged} unsaved` : active}
           hint={managed
             ? `read-only · managed by ${managed}`
-            : `${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
+            : onSlots
+              ? "←→ pane  ↑↓ nav  Enter pick  x reset  X reset-all"
+              : `${dirty}Tab yaml  ←→ pane  ↑↓ nav  ${keys.print("list.search")} search  ${keys.print("config.save")} save`}
           grow={3} focus={focus === "fields" || searching}
         >
           {managed ? (
@@ -438,6 +536,20 @@ export const Config = memo((props: { focused?: boolean }) => {
               <text fg={theme.warning}>via configuration.nix</text>
             </box>
           ) : null}
+          {onSlots ? (
+            <box key="slots" flexDirection="column" flexGrow={1}>
+              <box height={1}><text fg={theme.textMuted}>
+                Auxiliary tasks handle side-jobs. 'auto' = use main model. Per-task api_key/base_url/timeout live in the 'auxiliary' category.
+              </text></box>
+              <box height={1} />
+              <scrollbox ref={follow.ref} scrollY flexGrow={1} verticalScrollbarOptions={VBAR}>
+                {slots.map((s, i) => (
+                  <SlotRow key={s.key} id={follow.id(i)} s={s}
+                           on={i === cursor && focus === "fields"} />
+                ))}
+              </scrollbox>
+            </box>
+          ) : (<>
           <Hdr>
             <Col w={4} fg={theme.textMuted}>{""}</Col>
             {searching ? <Col w={12} fg={theme.textMuted} bold>Category</Col> : null}
@@ -485,6 +597,7 @@ export const Config = memo((props: { focused?: boolean }) => {
               }, { base: 0, out: [] }).out}
             </scrollbox>
           )}
+          </>)}
         </TabShell>
       </box>
     </box>

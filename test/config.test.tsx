@@ -9,7 +9,8 @@ type H = Awaited<ReturnType<typeof mountNode>>
 /** Navigate sidebar to <group>, then fields-pane to the row for <key>. */
 const navTo = async (t: H, cfg: Record<string, unknown>, key: string) => {
   const g = groupOf(key)
-  const gi = GROUPS.indexOf(g)
+  // +1 for the synthetic 'models' entry spliced at index 1.
+  const gi = GROUPS.indexOf(g) + (GROUPS.indexOf(g) >= 1 ? 1 : 0)
   const rows = sections(g, buildFields(cfg).filter(f => groupOf(f.key) === g))
     .flatMap(s => s.items)
   const ri = rows.findIndex(f => f.key === key)
@@ -208,7 +209,7 @@ describe("Config tab", () => {
 
     // Arrow down through every category. After the last press, the
     // scrollbox must have followed the selection, revealing `last`.
-    for (let i = 0; i < GROUPS.length - 1; i++) {
+    for (let i = 0; i < GROUPS.length; i++) {
       act(() => t.keys.pressArrow("down"))
     }
     await t.settle(); await t.settle()

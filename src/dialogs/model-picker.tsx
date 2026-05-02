@@ -16,7 +16,15 @@ import type { ConfigSetResponse, ModelOptionsResponse } from "../utils/gateway-t
 
 type Step = "provider" | "model"
 
-const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
+type Props = {
+  gw: Gateway
+  /** Override the default "switch this session / global" apply. When
+   *  set, the scope toggle is hidden and the caller owns the write. */
+  onApply?: (provider: string, model: string) => Promise<void>
+  title?: string
+}
+
+const ModelPickerDialog = (props: Props) => {
   const dialog = useDialog()
   const toast = useToast()
   const theme = useTheme().theme
@@ -26,14 +34,16 @@ const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
   const [global, setGlobal] = useState(false)
 
   useEffect(() => {
-    gw.request<ModelOptionsResponse>("model.options")
+    props.gw.request<ModelOptionsResponse>("model.options")
       .then(setData)
       .catch(() => setData({ providers: [] }))
-  }, [gw])
+  }, [props.gw])
 
   const apply = useCallback((model: string, prov: string) => {
+    if (props.onApply) return void props.onApply(prov, model)
+      .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
     const value = `${model} --provider ${prov}${global ? " --global" : ""}`
-    gw.request<ConfigSetResponse>("config.set", global
+    props.gw.request<ConfigSetResponse>("config.set", global
       ? { key: "model", value, session_id: undefined }
       : { key: "model", value })
       .then(r => {
@@ -41,23 +51,25 @@ const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
         if (r.warning) toast.show({ variant: "warning", message: r.warning })
       })
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-  }, [gw, global, toast])
+  }, [props.gw, props.onApply, global, toast])
 
   const onKey = useCallback((k: { name: string }) => {
-    if (k.name === "tab") { setGlobal(g => !g); return true }
+    if (k.name === "tab" && !props.onApply) { setGlobal(g => !g); return true }
     if (k.name === "left" && step === "model") { setStep("provider"); return true }
     return false
-  }, [step])
+  }, [step, props.onApply])
 
-  const footer = (
-    <text fg={theme.textMuted}>
-      <span>Scope: </span>
-      <span fg={global ? theme.warning : theme.accent}>
-        {global ? "global (persists to config)" : "this session"}
-      </span>
-      <span> · Tab: toggle{step === "model" ? " · ←: providers" : ""}</span>
-    </text>
-  )
+  const footer = props.onApply
+    ? <text fg={theme.textMuted}>{step === "model" ? "←: providers" : " "}</text>
+    : (
+      <text fg={theme.textMuted}>
+        <span>Scope: </span>
+        <span fg={global ? theme.warning : theme.accent}>
+          {global ? "global (persists to config)" : "this session"}
+        </span>
+        <span> · Tab: toggle{step === "model" ? " · ←: providers" : ""}</span>
+      </text>
+    )
 
   if (!data) return <box width={50} padding={1}><text>Loading models…</text></box>
 
@@ -70,7 +82,7 @@ const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
     }))
     return (
       <DialogSelect
-        title="Switch Provider"
+        title={props.title ?? "Switch Provider"}
         options={options}
         current={data.provider}
         onSelect={(o) => { setProvider(o.value); setStep("model") }}
@@ -89,7 +101,7 @@ const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
 
   return (
     <DialogSelect
-      title={`Switch Model (${p?.name ?? provider})`}
+      title={props.title ? `${props.title} · ${p?.name ?? provider}` : `Switch Model (${p?.name ?? provider})`}
       options={options}
       current={data.model}
       onSelect={(o) => {
@@ -103,6 +115,9 @@ const ModelPickerDialog = ({ gw }: { gw: Gateway }) => {
   )
 }
 
-export const openModelPicker = (dialog: ReturnType<typeof useDialog>, gw: Gateway) => {
-  dialog.replace(<ModelPickerDialog gw={gw} />)
+export const openModelPicker = (
+  dialog: ReturnType<typeof useDialog>, gw: Gateway,
+  opts?: { title?: string; onApply?: (provider: string, model: string) => Promise<void> },
+) => {
+  dialog.replace(<ModelPickerDialog gw={gw} title={opts?.title} onApply={opts?.onApply} />)
 }
