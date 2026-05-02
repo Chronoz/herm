@@ -15,6 +15,7 @@ import { useToast } from "../ui/toast"
 import { TabShell } from "../ui/shell"
 import { KVBlock } from "../ui/kv"
 import { Col, Hdr, Marquee, VBAR } from "../ui/table"
+import { Spinner } from "../ui/spinner"
 import { Ticker, inline } from "../ui/ticker"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
@@ -439,6 +440,7 @@ export const Sessions = memo((props: Props) => {
 
   const [rows, setRows] = useState<Row[]>([])
   const [warn, setWarn] = useState("")
+  const [pending, setPending] = useState(true)
   // Selection is tracked by row identity so that collapsing children
   // (which changes the flat index of every row below) never lands sel
   // on the wrong row. The numeric index consumers use (handleListKey,
@@ -506,36 +508,43 @@ export const Sessions = memo((props: Props) => {
     source: d.sessionSource, detail: d,
   })
 
-  const load = useCallback(async () => {
-    const [rpc, fs] = await Promise.allSettled([
-      gw.request<SessionListResponse>("session.list", { limit: LIMIT }),
-      Promise.resolve().then(() => io.list(LIMIT)),
-    ])
-    const local = fs.status === "fulfilled"
-      ? new Map(fs.value.map(r => [r.id, r]))
-      : new Map<string, SessionRow>()
-
-    // Stock session.list doesn't drop 0-msg stubs — every abandoned
-    // connect leaves one, and they're never useful to resume.
-    const list: Row[] = rpc.status === "fulfilled" && rpc.value.sessions?.length
-      ? rpc.value.sessions
-          .filter(s => (s.message_count ?? 0) > 0)
-          .map(s => ({ ...s, detail: local.get(s.id) }))
-      : fs.status === "fulfilled"
-        ? fs.value.filter(d => d.message_count > 0).map(toRow)
-        : []
-
-    // Prefetch children for every parent with subagents so render
-    // stays pure. Shared readonly handle + prepared statement; ~3ms
-    // for 22 parents / 123 children on a 495-root state.db.
+  // Paint fs rows synchronously (io.list is an in-process sqlite read),
+  // then reconcile with the RPC result. session.list is the slow path
+  // (2000-row limit over stdio) and is what made the tab sit empty on
+  // mount. Enrichment comes from fs either way, so the optimistic paint
+  // is visually identical when state.db == gateway's state.db — which
+  // is the common local case. Remote gateways paint [] first, then RPC;
+  // `pending` covers that gap with a spinner.
+  const fill = (list: Row[]) => {
     setKids(new Map(list
       .filter(r => (r.detail?.subagent_count ?? 0) > 0)
       .map(r => [r.id, io.subagents(r.id).map(toRow)])))
     setRows(list)
-    setWarn(rpc.status === "rejected"
-      ? list.length
-        ? `gateway session.list failed (${(rpc.reason as Error).message}) — listing state.db directly; rows may not resume`
-        : (rpc.reason as Error).message
+  }
+
+  const load = useCallback(async () => {
+    const fs = Promise.resolve().then(() => io.list(LIMIT)).catch(() => [])
+    const rpc = gw.request<SessionListResponse>("session.list", { limit: LIMIT })
+      .then(r => ({ ok: true as const, v: r }))
+      .catch((e: Error) => ({ ok: false as const, e }))
+
+    const disk = await fs
+    const local = new Map(disk.map(r => [r.id, r]))
+    fill(disk.filter(d => d.message_count > 0).map(toRow))
+    setPending(true)
+
+    // Stock session.list doesn't drop 0-msg stubs — every abandoned
+    // connect leaves one, and they're never useful to resume.
+    const r = await rpc
+    if (r.ok && r.v.sessions?.length)
+      fill(r.v.sessions
+        .filter(s => (s.message_count ?? 0) > 0)
+        .map(s => ({ ...s, detail: local.get(s.id) })))
+    setPending(false)
+    setWarn(!r.ok
+      ? local.size
+        ? `gateway session.list failed (${r.e.message}) — listing state.db directly; rows may not resume`
+        : r.e.message
       : "")
   }, [gw])
 
@@ -724,7 +733,9 @@ export const Sessions = memo((props: Props) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell
-        title={searching ? `Search Results (${results.length})` : `Sessions (${rows.length})`}
+        title={searching
+          ? `Search Results (${results.length})`
+          : `Sessions (${rows.length}${pending ? "…" : ""})`}
         hint={searching
           ? "↑↓ navigate  Enter/click switch  Esc cancel"
           : `↑↓ navigate  ←→ lineage  ${keys.print("list.activate")}/click switch  ${keys.print("list.search")} search  ${keys.print("sessions.rename")} rename  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`}
@@ -746,9 +757,11 @@ export const Sessions = memo((props: Props) => {
           // table wrapper below — it doesn't unset padding when the new
           // vnode omits it, so padding={2} would leak into the table.
           <box key="empty" flexGrow={1} padding={2}>
-            <text fg={theme.textMuted}>
-              {searching ? "No matching sessions found" : "No sessions found"}
-            </text>
+            {pending && !searching
+              ? <Spinner color={theme.textMuted} label="loading sessions…" />
+              : <text fg={theme.textMuted}>
+                  {searching ? "No matching sessions found" : "No sessions found"}
+                </text>}
           </box>
         ) : (
           <box key="table" flexDirection="column" flexGrow={1} minWidth={0}>

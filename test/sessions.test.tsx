@@ -80,6 +80,42 @@ describe("Sessions tab", () => {
     t.destroy()
   })
 
+  test("paints fs rows before RPC resolves; spinner when fs empty (gsk.11)", async () => {
+    let unblock!: () => void
+    const gate = new Promise<void>(r => { unblock = r })
+    const gw = new MockGateway({
+      "session.list": async () => { await gate; return { sessions: ROWS } },
+    })
+    const disk = [{
+      id: "sid-disk", title: "From disk", lastMessage: "hey", message_count: 3,
+      started_at: 1700000000, sessionSource: "cli", subagent_count: 0,
+    }]
+    const t = await mountNode(
+      <Sessions focused io={{ ...NOIO, list: () => disk as never }} />, { gw },
+    )
+    // RPC still pending — optimistic fs paint is up.
+    await until(t, () => t.frame().includes("From disk"))
+    expect(t.frame()).toContain("Sessions (1…)")
+    unblock()
+    await until(t, () => t.frame().includes("Sessions (2)"))
+    expect(t.frame()).toContain("First session")
+    expect(t.frame()).not.toContain("…)")
+    t.destroy()
+
+    // No fs rows: spinner covers the gap, then resolves to empty-state.
+    let unblock2!: () => void
+    const gate2 = new Promise<void>(r => { unblock2 = r })
+    const gw2 = new MockGateway({
+      "session.list": async () => { await gate2; return { sessions: [] } },
+    })
+    const t2 = await mountNode(<Sessions focused io={NOIO} />, { gw: gw2 })
+    await until(t2, () => t2.frame().includes("loading sessions"))
+    expect(t2.frame()).not.toContain("No sessions found")
+    unblock2()
+    await until(t2, () => t2.frame().includes("No sessions found"))
+    t2.destroy()
+  })
+
   test("RPC failure surfaces warning and falls back", async () => {
     const gw = new MockGateway({
       "session.list": () => { throw new Error("gateway unreachable") },
