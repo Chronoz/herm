@@ -16,7 +16,7 @@ const iso = (s: string | null | undefined): number | null => {
 }
 
 const CuratorDialog = () => {
-  const theme = useTheme().theme
+  const { theme, syntaxStyle } = useTheme()
   const state = useHome("curatorState")
   const [report, setReport] = useState<CuratorReportInfo | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -62,7 +62,8 @@ const CuratorDialog = () => {
           <box height={1} />
           <scrollbox scrollY flexGrow={1}>
             <box flexDirection="column" width="100%">
-              <text fg={theme.text} wrapMode="word">{report.content || "(empty)"}</text>
+              <markdown content={report.content || "(empty)"}
+                fg={theme.markdownText} syntaxStyle={syntaxStyle} />
             </box>
           </scrollbox>
         </box>
