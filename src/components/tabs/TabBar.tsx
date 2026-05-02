@@ -21,8 +21,8 @@ export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
   const keys = useKeys()
 
   return (
-    <box width="100%" flexDirection="column" height={2}>
-      <box flexDirection="row" height={1}>
+    <box width="100%" flexDirection="column" height={1}>
+      <box flexDirection="row">
         {tabs.map((tab, i) => (
           <box
             key={i}
@@ -31,7 +31,7 @@ export const TabBar = memo(({ tabs, activeTab, onTabChange }: TabBarProps) => {
             marginRight={1}
             backgroundColor={i === activeTab ? theme.backgroundElement : undefined}
           >
-            <text>
+            <text attributes={3}>
               <span fg={theme.borderSubtle}>{idx(i)} </span>
               <span fg={i === activeTab ? theme.primary : theme.textMuted}>{tab.name}</span>
             </text>
