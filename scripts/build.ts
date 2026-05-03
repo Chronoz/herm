@@ -7,8 +7,14 @@
 //   dist/
 //     index.js                  — entry, shebang'd
 //     parser.worker.js          — tree-sitter worker (bundled, web-tree-sitter inlined)
-//     parser.worker.shim.js     — chdir wrapper (OTUI_TREE_SITTER_WORKER_PATH target)
 //     *.wasm / *.scm            — emitted by bun build's `with { type: "file" }` assets
+//
+// Bun emits `import X with {type:"file"}` assets as the literal string
+// "./name-hash.ext". Those end up in emscripten's locateFile (cwd-relative
+// fs.readFile) and opentui's resolvePath (path.resolve against cwd) — both
+// break when herm is launched from any dir that isn't dist/. Post-build we
+// rewrite each of those literals to `import.meta.dirname + "/name-hash.ext"`
+// so they're absolute at runtime regardless of cwd.
 
 import { $ } from "bun"
 import { rmSync, chmodSync } from "node:fs"
@@ -44,7 +50,6 @@ const result = await Bun.build({
   entrypoints: [
     "src/index.tsx",
     "node_modules/@opentui/core/parser.worker.js",
-    "scripts/parser-worker-shim.ts",
   ],
   outdir: "dist",
   target: "bun",
@@ -64,7 +69,15 @@ if (!result.success) {
   process.exit(1)
 }
 
-await $`mv dist/parser-worker-shim.js dist/parser.worker.shim.js`
+const assets = result.outputs
+  .filter(o => o.kind === "asset")
+  .map(o => o.path.replace(/^.*\/dist\//, ""))
+const assetRe = new RegExp(`"\\.\\/(${assets.map(a =>
+  a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})"`, "g")
+for (const out of result.outputs.filter(o => o.kind === "entry-point")) {
+  const src = await Bun.file(out.path).text()
+  await Bun.write(out.path, src.replace(assetRe, 'import.meta.dirname+"/$1"'))
+}
 chmodSync("dist/index.js", 0o755)
 
 // The published package is dist/ + this manifest. `dependencies` is

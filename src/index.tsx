@@ -5,23 +5,6 @@
 // override (MessageChannel/setImmediate = undefined) was a red herring — verified
 // via per-thread profiling that the main JS thread drives the render loop.
 
-// OpenTUI's tree-sitter worker opens its wasm at a relative path that
-// emscripten resolves against the worker's process.cwd(). In dev Bun's
-// asset loader handles that; in the bundle we redirect to a shim sibling
-// that chdirs into dist/ before loading the real worker. The shim is
-// emitted alongside index.js at build time, so import.meta.dirname of
-// THIS file is its directory.
-import { dirname } from "path"
-import { fileURLToPath } from "url"
-const here = dirname(fileURLToPath(import.meta.url))
-// Only override when the shim actually exists next to the bundle. In
-// dev runs the shim isn't emitted and we fall through to OpenTUI's
-// default node_modules-relative resolution.
-import { existsSync } from "fs"
-import { join } from "path"
-const shim = join(here, "parser.worker.shim.js")
-if (existsSync(shim)) process.env.OTUI_TREE_SITTER_WORKER_PATH = shim
-
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
