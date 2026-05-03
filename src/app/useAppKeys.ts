@@ -83,8 +83,13 @@ export function useAppKeys(o: Opts) {
 
     if (keys.match("app.exit", key)) {
       if (copySelection(renderer)) return
+      // destroy() tears down the renderer but does NOT exit the process
+      // — under `bun --watch` (or with CONTROL/PERF servers up) the
+      // event loop stays alive and the user is stranded on the main
+      // screen with no prompt. exit(0) fires the `exit` hook in
+      // terminal-reset which flushes the mode-reset blob synchronously.
       renderer.destroy()
-      return
+      process.exit(0)
     }
 
     if (keys.match("app.suspend", key)) {

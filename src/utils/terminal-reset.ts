@@ -97,15 +97,16 @@ export function installExitResetHooks(): void {
   // `exit` handler must be synchronous (node discards async work).
   process.on("exit", () => { resetTerminalModes() })
 
-  // Signals. OpenTUI's own handler also runs; order doesn't matter
-  // because both cleanups are independent (alt-screen vs our modes).
+  // Signals. Attaching a listener suppresses node's default terminate,
+  // so we must exit ourselves. OpenTUI's exitHandler was registered
+  // after ours (createCliRenderer runs later) and also listens here —
+  // but all it does is destroy(), whose terminal writes our reset blob
+  // already covers. writeSync flushes before exit() tears the fd.
+  const codes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 } as const
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(sig, () => {
       resetTerminalModes()
-      // Do NOT call process.exit — let the OpenTUI handler finish
-      // first, then node exits on unhandled signal with the right
-      // code (130 / 143 / 129). Calling exit() here races their
-      // shutdown and can skip their alt-screen leave.
+      process.exit(codes[sig])
     })
   }
 
