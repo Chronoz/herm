@@ -22,7 +22,7 @@ describe("splash (herm-tji.2)", () => {
     const t = await mount({ launch: { mode: "new", splash: true } })
     await until(t, () => t.frame().includes("HERM") || /[⠁-⣿]/.test(t.frame()))
     expect(/[⠁-⣿]/.test(t.frame())).toBe(true)       // braille frame
-    expect(t.frame()).toMatch(/v0\.\d+\.\d+/)         // sub-line
+    expect(t.frame()).toMatch(/v\d+\.\d+\.\d+/)       // sub-line
     expect(t.frame()).toContain("Ready")              // composer still live
     expect(t.frame()).not.toContain("continue \"")     // no lastReal
     t.destroy()

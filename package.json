@@ -25,7 +25,6 @@
   "files": [
     "src",
     "!src/**/*.test.*",
-    "scripts/postinstall.ts",
     "README.md",
     "LICENSE"
   ],
@@ -43,12 +42,11 @@
     "build": "bun scripts/gen-schema.ts && bun build src/index.tsx node_modules/@opentui/core/parser.worker.js scripts/parser-worker-shim.ts --target=bun --outdir=dist --minify --entry-naming='[name].[ext]' && mv dist/parser-worker-shim.js dist/parser.worker.shim.js && test -f dist/parser.worker.js && test -f dist/parser.worker.shim.js",
     "start": "bun run dist/index.js",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit",
-    "postinstall": "bun run scripts/postinstall.ts"
+    "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "@opentui/core": "0.1.99",
-    "@opentui/react": "0.1.99",
+    "@opentui/core": "0.2.2",
+    "@opentui/react": "0.2.2",
     "gpt-tokenizer": "^3.4.0",
     "open": "^11.0.0",
     "react": "^19.2.5",
@@ -62,21 +60,5 @@
     "@types/react": "^19.2.14",
     "semantic-release": "^25.0.3",
     "typescript": "^5.8.2"
-  },
-  "overrides": {
-    "three": "npm:empty-npm-package@1.0.0",
-    "planck": "npm:empty-npm-package@1.0.0",
-    "bun-webgpu": "npm:empty-npm-package@1.0.0",
-    "@dimforge/rapier2d-simd-compat": "npm:empty-npm-package@1.0.0",
-    "jimp": "npm:empty-npm-package@1.0.0",
-    "@jimp/core": "npm:empty-npm-package@1.0.0",
-    "@jimp/js-bmp": "npm:empty-npm-package@1.0.0",
-    "@jimp/js-gif": "npm:empty-npm-package@1.0.0",
-    "@jimp/js-jpeg": "npm:empty-npm-package@1.0.0",
-    "@jimp/js-png": "npm:empty-npm-package@1.0.0",
-    "@jimp/js-tiff": "npm:empty-npm-package@1.0.0",
-    "@jimp/plugin-resize": "npm:empty-npm-package@1.0.0",
-    "@jimp/types": "npm:empty-npm-package@1.0.0",
-    "@jimp/utils": "npm:empty-npm-package@1.0.0"
   }
 }

@@ -31,8 +31,11 @@ describe("categorical ramp", () => {
     const seed = RGBA.fromHex("#3b82f6")
     const bg = RGBA.fromHex("#0b0e14")
     const hs = categorical(seed, bg, N).map(c => rgbaToHsl(c)[0]).sort((a, b) => a - b)
+    // RGBA quantises to 8-bit/channel (opentui ≥0.2); round-tripping a
+    // 0.456-delta HSL through that store can drift hue by ~1° per
+    // colour. ±2° still proves the golden-angle floor (>18° > 15° JND).
     for (let i = 1; i < N; i++) {
-      expect(hs[i] - hs[i - 1]).toBeGreaterThanOrEqual(floor - 0.01)
+      expect(hs[i] - hs[i - 1]).toBeGreaterThanOrEqual(floor - 2)
     }
   })
 
