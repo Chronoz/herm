@@ -4,8 +4,9 @@ import { useEffect } from "react"
 import { Database } from "bun:sqlite"
 import { join } from "path"
 import { mkdirSync } from "fs"
-import { mountNode, until } from "./harness"
+import { mountNode, until, MockGateway } from "./harness"
 import { openCountdown } from "../src/dialogs/countdown"
+import { makeGoalHook } from "../src/app/goalHook"
 import { useDialog } from "../src/ui/dialog"
 import { goalState, resetDb } from "../src/utils/sessions-db"
 
@@ -73,5 +74,46 @@ describe("countdown dialog", () => {
     await until(t, () => out.v !== undefined)
     expect(out.v).toBe(false)
     t.destroy()
+  })
+})
+
+// ─── goalHook.cmd → shell.exec dispatch ──────────────────────────────
+
+describe("goalHook.cmd", () => {
+  const mk = () => {
+    const calls: string[] = []
+    const gw = new MockGateway({
+      "shell.exec": (p) => { calls.push(String(p.command)); return { stdout: "⊙ ok", stderr: "", code: 0 } },
+    })
+    const dialog = { replace: () => {}, clear: () => {}, stack: [] as const }
+    const toast = { show: () => {} }
+    const hook = makeGoalHook(gw, dialog, toast)
+    return { hook, calls }
+  }
+
+  test("verb routes to correct GoalManager method; sid stringified", async () => {
+    const { hook, calls } = mk()
+    await hook.cmd("sid-x", "done", "")
+    expect(calls[0]).toContain(`GoalManager("sid-x")`)
+    expect(calls[0]).toContain("m.mark_done(")
+    await hook.cmd("sid-x", "pause", "")
+    expect(calls[1]).toContain("m.pause()")
+    await hook.cmd("sid-x", "", "")
+    expect(calls[2]).toContain("m.status_line()")
+  })
+
+  test("non-verb first token = goal text → set(); shell-safe", async () => {
+    const { hook, calls } = mk()
+    await hook.cmd("s", "ship", "the thing")
+    expect(calls[0]).toContain(`m.set("ship the thing")`)
+    // $(), `, ' in goal text must survive sh -c intact into python argv.
+    await hook.cmd("s", "echo", "$(rm -rf /) `id` it's")
+    const c = calls[1]
+    expect(c.startsWith("python3 -c '")).toBe(true)
+    expect(c.endsWith("'")).toBe(true)
+    // Inside single quotes sh does NO expansion; our only escape is '\''
+    // for embedded quotes. Reconstruct what sh hands python -c:
+    const inner = c.slice("python3 -c '".length, -1).split(`'\\''`).join("'")
+    expect(inner).toContain(`m.set("echo $(rm -rf /) \`id\` it's")`)
   })
 })

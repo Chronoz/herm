@@ -33,7 +33,7 @@ export type SlashCommand = {
 export const LOCAL_NAMES = new Set([
   "clear", "new", "theme", "help", "keys", "logs", "eikon", "title",
   "rollback", "save", "history", "status", "usage", "profile", "steer",
-  "reload", "reload-mcp", "chafa", "splash",
+  "reload", "reload-mcp", "chafa", "splash", "goal",
   // parity: session-mutating commands the slash-worker can't service
   "resume", "branch", "compress", "undo", "retry", "model", "quit",
   "copy", "paste", "image", "background", "voice", "mouse", "redraw", "queue",
@@ -65,6 +65,7 @@ export const LOCAL_COMMANDS: ReadonlyArray<SlashCommand> = [
   { name: "reload", description: "Hot-reload ~/.hermes/.env (API keys)", category: "Session", aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },
   { name: "chafa",  description: "Render image via chafa (demo)",       category: "Client",  aliases: [], argsHint: "<path>", subcommands: [], source: "local", target: "local" },
   { name: "splash", description: "Show the launch splash",              category: "Client",  aliases: [], argsHint: "", subcommands: [], source: "local", target: "local" },
+  { name: "goal",   description: "Set/control the session goal",        category: "Session", aliases: [], argsHint: "[text|done|pause|resume|clear|status]", subcommands: ["done", "pause", "resume", "clear", "status"], source: "local", target: "local" },
 ]
 
 /** Filter commands by prefix (text after `/`). Searches names + aliases. */

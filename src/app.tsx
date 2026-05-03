@@ -94,6 +94,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const renderer = useRenderer()
   const session = useSession()
   const dims = useTerminalDimensions()
+  const goalHook = useMemo(() => makeGoalHook(gw, dialog, toast), [gw, dialog, toast])
 
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
   const [ready, setReady] = useState(false)
@@ -373,6 +374,17 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           openChafa(dialog, arg.trim())
           return
         case "splash": summoned.current = true; setSplash(true); return
+        case "goal": {
+          const [verb = "", ...rest] = arg.trim().split(/\s+/)
+          goalHook.cmd(sid, verb, rest.join(" "))
+            .then(line => {
+              dispatch({ kind: "system", text: line })
+              // `done` fires the hook without waiting on a turn.
+              if (verb === "done") goalHook.check(sid)
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        }
         // ── parity: session-mutating (slash-worker can't service these) ──
         case "resume":
           if (arg) { void switchSession(arg); return }
@@ -541,7 +553,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       })
   }, [ready, turn.streaming, turn.messages, dialog, themeCtx, newSession, gw, pickEikon, editTitle,
       applyTitle, toast, info, sid, switchSession, session, runCompress, rewind, renderer,
-      attachClipboard, goToTab, queue.length])
+      attachClipboard, goToTab, queue.length, goalHook])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback(async (raw: string) => {
@@ -661,8 +673,6 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     "message.delta", "reasoning.delta", "reasoning.available", "thinking.delta",
     "tool.start", "tool.progress", "tool.generating",
   ])).current
-
-  const goalHook = useMemo(() => makeGoalHook(dialog, toast), [dialog, toast])
 
   const handle = useCallback((ev: GatewayEvent) => {
     if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
