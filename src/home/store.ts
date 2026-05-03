@@ -64,8 +64,9 @@ export interface Slice<K extends SliceKey> {
   read: (deps: Partial<HomeState>) => Promise<HomeState[K]>
   /** Slice keys this reader needs resolved first. Invalidation cascades along these edges. */
   deps?: readonly SliceKey[]
-  /** Absolute paths to fs.watch. Change → invalidate(k). */
-  watch?: readonly string[]
+  /** Absolute paths to fs.watch. Thunk so profile-switch rebinds —
+   *  paths are resolved at startWatch time, not module-load. */
+  watch?: () => readonly string[]
 }
 
 type Slices = { [K in SliceKey]: Slice<K> }
@@ -73,17 +74,17 @@ type Slices = { [K in SliceKey]: Slice<K> }
 const SLICES: Slices = {
   config: {
     read: () => readConfig(),
-    watch: [hermesPath("config.yaml")],
+    watch: () => [hermesPath("config.yaml")],
   },
   memory: {
     read: (d) => readMemoryFile("MEMORY.md", d.config?.memory?.memory_char_limit ?? 2200),
     deps: ["config"],
-    watch: [hermesPath("memories/MEMORY.md")],
+    watch: () => [hermesPath("memories/MEMORY.md")],
   },
   userProfile: {
     read: (d) => readMemoryFile("USER.md", d.config?.memory?.user_char_limit ?? 1375),
     deps: ["config"],
-    watch: [hermesPath("memories/USER.md")],
+    watch: () => [hermesPath("memories/USER.md")],
   },
   memoryProviders: {
     read: (d) => readMemoryProviders(d.config?.memory?.provider ?? ""),
@@ -94,15 +95,15 @@ const SLICES: Slices = {
   },
   env: {
     read: () => readEnvFile(),
-    watch: [hermesPath(".env")],
+    watch: () => [hermesPath(".env")],
   },
   soul: {
     read: () => readSoul(),
-    watch: [hermesPath("SOUL.md")],
+    watch: () => [hermesPath("SOUL.md")],
   },
   liveSessions: {
     read: () => readLiveSessions(),
-    watch: [hermesPath("sessions/sessions.json")],
+    watch: () => [hermesPath("sessions/sessions.json")],
   },
   // DB-backed slices are pull-only: WAL mode means writes land in
   // state.db-wal, so watching state.db misses them until checkpoint;
@@ -127,15 +128,15 @@ const SLICES: Slices = {
     // Scans sessions/ for newest session_*.json — watching the dir picks
     // up new files without tracking a specific one.
     read: () => readToolsFromLatestSession(),
-    watch: [hermesPath("sessions")],
+    watch: () => [hermesPath("sessions")],
   },
   skillUsage: {
     read: () => readSkillUsage(),
-    watch: [hermesPath("skills/.usage.json")],
+    watch: () => [hermesPath("skills/.usage.json")],
   },
   curatorState: {
     read: () => readCuratorState(),
-    watch: [hermesPath("skills/.curator_state")],
+    watch: () => [hermesPath("skills/.curator_state")],
   },
 }
 
@@ -225,13 +226,28 @@ export class HomeStore {
     this.data = {}
   }
 
+  /** Drop all cached data and rearm watchers against the current
+   *  hermesPath(). Subscribers survive — every slice with listeners is
+   *  re-ensured, so mounted tabs repaint with the new profile's data. */
+  reset(): void {
+    for (const ws of this.watchers.values()) for (const w of ws) w.close()
+    for (const t of this.debounce.values()) clearTimeout(t)
+    this.watchers.clear()
+    this.debounce.clear()
+    this.inflight.clear()
+    this.data = {}
+    for (const k of this.subs.keys())
+      if (this.subs.get(k)?.size) void this.ensure(k)
+  }
+
   private notify(k: SliceKey): void {
     const set = this.subs.get(k)
     if (set) for (const cb of set) cb()
   }
 
-  private startWatch(k: SliceKey, paths: readonly string[] | undefined): void {
-    if (!paths || this.watchers.has(k)) return
+  private startWatch(k: SliceKey, watchFn: Slice<SliceKey>["watch"]): void {
+    if (!watchFn || this.watchers.has(k)) return
+    const paths = watchFn()
     const ws: FSWatcher[] = []
     const fire = () => {
       const prev = this.debounce.get(k)

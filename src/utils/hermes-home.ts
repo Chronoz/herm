@@ -16,13 +16,20 @@ import { parse as parseYaml } from "yaml";
 import { count as tokenCount } from "./tokens";
 
 // ─── Path Resolution ─────────────────────────────────────────────────
+//
+// Mutable cell — profile switch (herm-q73) rebinds this at runtime so
+// every hermesPath() caller follows without a process restart. Same
+// shape as sessions-db.ts:setHome; orchestration lives in home/rehome.
 
 const HOME = process.env.HOME || homedir();
-const HERMES_HOME = process.env.HERMES_HOME || `${HOME}/.hermes`;
+const home = { path: process.env.HERMES_HOME || `${HOME}/.hermes` };
+
+/** Point all ~/.hermes readers at a new HERMES_HOME. */
+export const setHome = (h: string): void => { home.path = h };
 
 /** Resolve a path relative to ~/.hermes/ */
 export const hermesPath = (relative: string): string =>
-  `${HERMES_HOME}/${relative}`;
+  `${home.path}/${relative}`;
 
 /** Detect a package-manager-owned install. Two signals, matching
  *  hermes_cli/config.py:get_managed_system — HERMES_MANAGED env var
@@ -280,7 +287,7 @@ export interface CuratorReportInfo {
 
 export async function readLatestCuratorReport(): Promise<CuratorReportInfo | null> {
   try {
-    const base = `${HERMES_HOME}/logs/curator`;
+    const base = hermesPath("logs/curator");
     const entries = readdirSync(base, { withFileTypes: true }).filter(e => e.isDirectory());
     if (entries.length === 0) return null;
     // Run dirs are named YYYYMMDD-HHMMSS — lexicographic sort = chronological.
@@ -306,7 +313,7 @@ export type CuratorRun = {
 
 export function listCuratorRuns(): CuratorRun[] {
   try {
-    const base = `${HERMES_HOME}/logs/curator`;
+    const base = hermesPath("logs/curator");
     return readdirSync(base, { withFileTypes: true })
       .filter(e => e.isDirectory())
       .sort((a, b) => b.name.localeCompare(a.name))
@@ -581,7 +588,7 @@ const MEMORY_CFG_FILES: Record<string, string[]> = {
 function discoverMemoryProviders(): string[] {
   const names = new Set<string>(["builtin"]);
   try {
-    for (const e of readdirSync(`${HERMES_HOME}/hermes-agent/plugins/memory`, { withFileTypes: true }))
+    for (const e of readdirSync(hermesPath("hermes-agent/plugins/memory"), { withFileTypes: true }))
       if (e.isDirectory() && !e.name.startsWith("_")) names.add(e.name);
   } catch {}
   return [...names];

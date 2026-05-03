@@ -66,6 +66,14 @@ export function reset(): void {
   cached = null
 }
 
+/** Re-read tui.json from the current configDir() and notify usePref()
+ *  subscribers. Profile switch calls this after HERMES_HOME rebinds so
+ *  theme/eikon/keys follow the new profile. */
+export function reload(): void {
+  cached = null
+  for (const l of listeners) l()
+}
+
 /**
  * Load preferences from disk. Returns cached copy on subsequent calls.
  * Never throws — returns defaults on missing/corrupt file.

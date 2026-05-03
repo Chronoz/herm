@@ -49,7 +49,9 @@ const conn = { path: SRC.file, ro: null as Database | null }
 /** Point all readers at a specific HERMES_HOME. Drops the cached
  *  connection and statement cache. Used by the io worker. */
 export const setHome = (h: string) => {
-  conn.path = SRC.file = `${h}/state.db`
+  const next = `${h}/state.db`
+  if (conn.path === next) return
+  conn.path = SRC.file = next
   resetDb()
 }
 
@@ -60,8 +62,15 @@ export const stateDb = (): Database | null => {
   catch { return null }
 }
 
-/** Test hook — drop the cached handle so the next call reopens. */
-export const resetDb = () => { conn.ro?.close(); conn.ro = null; stmts.clear() }
+/** Test hook — drop the cached handle so the next call reopens.
+ *  Finalize statements BEFORE close: bun:sqlite Statement finalizers at
+ *  process exit otherwise hit a freed sqlite3* and segfault. */
+export const resetDb = () => {
+  for (const s of stmts.values()) s.finalize()
+  stmts.clear()
+  conn.ro?.close()
+  conn.ro = null
+}
 
 // Prepared-statement cache keyed by SQL text. db.query() already
 // memoises internally, but holding our own map lets stats()/perf
