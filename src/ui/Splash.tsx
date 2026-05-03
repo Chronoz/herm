@@ -8,7 +8,7 @@ import { measureText, type ASCIIFontName } from "@opentui/core"
 import type { BoxRenderable } from "@opentui/core"
 import { useTheme } from "../theme"
 import { frame } from "./splash-art"
-import pkg from "../../package.json" with { type: "json" }
+import { VERSION } from "../app/launch"
 
 export type SplashInfo = {
   agentVersion?: string
@@ -60,7 +60,7 @@ export function Splash(p: SplashProps) {
 
   const behind = p.info?.behind
   const sub = [
-    `v${pkg.version}`,
+    `v${VERSION}`,
     p.info ? `hermes ${p.info.agentVersion ?? "?"}` : "…",
     behind == null ? null : behind === 0 ? "up to date" : `${behind} behind`,
     p.info?.model,

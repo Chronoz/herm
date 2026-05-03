@@ -17,9 +17,12 @@ export default {
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
-    "@semantic-release/npm",
+    // Publish the built artifact, not the source tree. `scripts/build.ts`
+    // writes a self-contained dist/ with its own package.json whose only
+    // deps are the platform-native @opentui/core-* optionals.
+    ["@semantic-release/npm", { pkgRoot: "dist" }],
     ["@semantic-release/git", {
-      assets: ["package.json", "CHANGELOG.md"],
+      assets: ["CHANGELOG.md"],
       message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
     }],
     "@semantic-release/github",

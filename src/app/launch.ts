@@ -2,9 +2,20 @@
 // Bare `herm` → fresh session (splash shows continue-prompt).
 // `-c` / `--continue` / `--resume [id]` → resume, no splash.
 
-import pkg from "../../package.json" with { type: "json" }
+import { readFileSync, existsSync } from "node:fs"
+import { dirname, join } from "node:path"
 
-export const VERSION = pkg.version
+// Runtime read so the published bundle picks up dist/package.json (which
+// @semantic-release/npm stamps), not the build-time root value. Walks up
+// from this file's dir so dev (src/app/ → ../../package.json) and dist
+// (./package.json) both resolve.
+const pkgVersion = (d: string, up = 4): string => {
+  const p = join(d, "package.json")
+  if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8")).version
+  return up > 0 ? pkgVersion(dirname(d), up - 1) : "0.0.0"
+}
+
+export const VERSION = pkgVersion(import.meta.dirname)
 
 export type Launch =
   | { mode: "new"; splash?: boolean }

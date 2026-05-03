@@ -45,6 +45,8 @@ jobs:
 
       - run: bun test
 
+      - run: bun scripts/build.ts
+
       - name: semantic-release
         run: npx semantic-release
         env:
