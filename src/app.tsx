@@ -210,15 +210,24 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
 
   const switchSession = useCallback(async (target: string) => {
     reset()
-    setSplash(false)
+    // Keep splash visible while the resume RPC lands so the user sees
+    // the ornate frame instead of the empty-transcript welcome. summoned
+    // suppresses the continue-prompt (we've already chosen a session).
+    // Cleared after messages load (or on error) below.
+    summoned.current = true
+    setSplash(true)
     goToTab(CHAT_TAB)
     try {
       const res = await session.resume(target)
       setSid(res.id)
       sessionStart.current = Date.now()
       if (res.messages.length) dispatch({ kind: "load", messages: res.messages })
+      setSplash(false)
+      summoned.current = false
     } catch (err) {
       dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
+      setSplash(false)
+      summoned.current = false
     }
   }, [reset, session, goToTab])
 
