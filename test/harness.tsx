@@ -184,9 +184,14 @@ async function render(node: ReactNode, gw: MockGateway, opts: Opts): Promise<Har
   }
 }
 
-/** Poll until `fn()` is truthy. Throws on timeout with the last frame. */
+/** Settle at least once, then poll until `fn()` is truthy. Throws on timeout
+ *  with the last frame. The leading settle makes until() equivalent to
+ *  `await t.settle(); expect(fn())` in the common case — a predicate that
+ *  happens to already match a stale frame (e.g. popover text colliding
+ *  with dialog text) would otherwise return without ever rendering. */
 export async function until(t: Harness, fn: () => boolean, ms = 2000) {
   const end = Date.now() + ms
+  await t.settle()
   while (!fn()) {
     if (Date.now() > end) throw new Error(`until() timed out\n${t.frame()}`)
     await t.settle()

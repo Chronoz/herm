@@ -832,7 +832,11 @@ describe("app", () => {
 
     await act(async () => { await t.keys.typeText("/status") })
     act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes("Version"))
+    // Predicate must be dialog-only — "Version" also appears in the
+    // popover row ("Version, model, paths"), which can already be in
+    // the frame at this point if act() outran the 16.67ms render gate,
+    // making until() return without settling.
+    await until(t, () => t.frame().includes("sid-abc"))
 
     const f = t.frame()
     expect(f).toContain("9.9.9")
