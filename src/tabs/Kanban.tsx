@@ -73,8 +73,8 @@ const Column = memo((p: {
   // true) so entering a column that was previously scrolled away snaps
   // to row 0. No-op while this column isn't active.
   useEffect(() => {
-    if (p.on) box.current?.scrollChildIntoView(id(p.sel))
-  }, [p.on, p.sel])
+    if (p.on && p.tasks.length > 0) box.current?.scrollChildIntoView(id(p.sel))
+  }, [p.on, p.sel, p.tasks.length])
   const tint = p.status === "blocked" ? theme.warning
     : p.status === "running" ? theme.success
     : p.status === "done" ? theme.textMuted : theme.primary
@@ -192,17 +192,19 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     return () => clearInterval(t)
   }, [props.focused, running, load])
 
+  const total = [...data.values()].reduce((a, v) => a + v.length, 0)
+
   // Drop empty columns at narrow widths but never collapse the one
-  // the selection is on.
+  // the selection is on. An entirely empty board keeps full chrome so
+  // the layout reads as a kanban, not a blank slate.
   const cols = useMemo(() => {
     const all = STATUSES.map(s => ({ status: s, tasks: data.get(s) ?? [] }))
-    if (dims.width >= 160) return all
+    if (dims.width >= 160 || total === 0) return all
     return all.filter((c, i) => c.tasks.length > 0 || i === col)
-  }, [data, dims.width, col])
+  }, [data, dims.width, col, total])
 
   const cur = cols[Math.min(col, cols.length - 1)]
   const task = cur?.tasks[Math.min(row, (cur?.tasks.length ?? 1) - 1)]
-  const total = [...data.values()].reduce((a, v) => a + v.length, 0)
 
   // `shell.exec → hermes kanban <verb>`. Non-zero → toast the CLI's
   // own stderr (cycle detected, unknown id, etc). reload on success.
@@ -341,25 +343,23 @@ export const Kanban = memo((props: { focused?: boolean }) => {
         title={`Kanban · ${total} task${total === 1 ? "" : "s"}${running ? ` · ${running} running` : ""}`}
         hint={hint}
       >
-        {total === 0
-          ? <box flexDirection="column">
-              <text fg={theme.textMuted}>no tasks — board at ~/.hermes/kanban.db</text>
-              <box height={1} />
-              <text fg={theme.textMuted}>press <span fg={theme.accent}>n</span> to create one</text>
-            </box>
-          : (
-            <box flexDirection="row" flexGrow={1} gap={1}>
-              {cols.map((c, i) => (
-                <Column key={c.status} status={c.status} tasks={c.tasks}
-                        on={i === Math.min(col, cols.length - 1)} sel={row}
-                        onPick={r => {
-                          setCol(i); setRow(r)
-                          const d = detail(c.tasks[r].id)
-                          if (d) setPane({ kind: "detail", d })
-                        }} />
-              ))}
-            </box>
-          )}
+        <box flexDirection="row" flexGrow={1} gap={1}>
+          {cols.map((c, i) => (
+            <Column key={c.status} status={c.status} tasks={c.tasks}
+                    on={i === Math.min(col, cols.length - 1)} sel={row}
+                    onPick={r => {
+                      setCol(i); setRow(r)
+                      const d = detail(c.tasks[r].id)
+                      if (d) setPane({ kind: "detail", d })
+                    }} />
+          ))}
+        </box>
+        {total === 0 && (
+          <box flexDirection="column" marginTop={1}>
+            <text fg={theme.textMuted}>no tasks — board at ~/.hermes/kanban.db</text>
+            <text fg={theme.textMuted}>press <span fg={theme.accent}>n</span> to create one</text>
+          </box>
+        )}
       </TabShell>
       {pane ? <SidePane pane={pane} /> : null}
     </box>
