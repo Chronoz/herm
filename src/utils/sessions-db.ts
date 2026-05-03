@@ -43,7 +43,7 @@ const SRC: Source = { file: PATH, relative: "state.db", label: "state.db" }
 let ro: Database | null = null
 
 /** Shared readonly handle. Null when state.db doesn't exist yet. */
-const stateDb = (): Database | null => {
+export const stateDb = (): Database | null => {
   if (ro) return ro
   try { return (ro = new Database(PATH, { readonly: true })) }
   catch { return null }

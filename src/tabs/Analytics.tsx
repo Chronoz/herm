@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, memo } from "react"
-import { useKeyboard, useTerminalDimensions } from "@opentui/react"
+import { useState, useEffect, useRef, useMemo, memo } from "react"
+import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
-import { analytics, type Analytics as Data, type NameRow } from "../utils/hermes-analytics"
+import { analytics, cache, type Analytics as Data, type NameRow } from "../utils/hermes-analytics"
 import { useKeys } from "../keys"
 import { useTheme } from "../theme"
+import { Spinner } from "../ui/spinner"
 import { TabShell } from "../ui/shell"
 import { Col, Hdr } from "../ui/table"
 import { fmt, cost, trunc } from "../ui/fmt"
@@ -57,8 +58,14 @@ const Chart = memo((p: { data: Data; h: number }) => {
 })
 
 // Ranked name+count list with horizontal bar. Shared by Tools/Sources.
-const Rank = memo((p: { title: string; rows: NameRow[]; fg: RGBA; n?: number }) => {
+const Rank = memo((p: { title: string; rows: NameRow[] | null; fg: RGBA; n?: number }) => {
   const theme = useTheme().theme
+  if (p.rows === null) return (
+    <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={0}>
+      <box height={1}><text fg={theme.textMuted}>{p.title}</text></box>
+      <box height={1}><Spinner label="aggregating…" /></box>
+    </box>
+  )
   const top = p.rows.slice(0, p.n ?? 10)
   const peak = Math.max(1, ...top.map(r => r.n))
   const total = p.rows.reduce((a, r) => a + r.n, 0)
@@ -86,35 +93,72 @@ const Rank = memo((p: { title: string; rows: NameRow[]; fg: RGBA; n?: number }) 
 export const Analytics = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme
   const dims = useTerminalDimensions()
+  const renderer = useRenderer()
   const [days, setDays] = useState(7)
-  const [data, setData] = useState<Data>(() => analytics(7))
+  // analytics() is sync bun:sqlite on the main thread; on a cold 400 MB
+  // state.db the tools json_each query alone is ~1.5s. Staging:
+  //   render 1 — cached snapshot if any, else spinner
+  //   render 2 — sessions-only (totals/chart/models/sources, <20 ms)
+  //   render 3 — tools filled in
+  // renderer.idle() is the only yield that guarantees the preceding
+  // setState committed to a frame in idle/request mode — sleep(0) /
+  // microtask land before requestRender's nextTick path.
+  const [data, setData] = useState<Data | null>(() => cache.get(days) ?? null)
+  const [tools, setTools] = useState<NameRow[] | null>(
+    () => cache.get(days)?.byTool ?? null)
+  const [tick, setTick] = useState(0)
+  const gen = useRef(0)
 
-  const load = useCallback(() => setData(analytics(days)), [days])
-  useEffect(load, [load])
+  useEffect(() => {
+    const hit = cache.get(days)
+    setData(hit ?? null)
+    setTools(hit?.byTool ?? null)
+    const g = ++gen.current
+    void renderer.idle().then(() => {
+      if (gen.current !== g) return
+      const fast = analytics(days, { tools: false })
+      setData(fast)
+      void renderer.idle().then(() => {
+        if (gen.current !== g) return
+        const full = { ...fast, byTool: analytics(days).byTool }
+        cache.set(days, full)
+        setData(full)
+        setTools(full.byTool)
+      })
+    })
+    return () => { gen.current++ }
+  }, [days, tick, renderer])
 
   const keys = useKeys()
   useKeyboard((key) => {
     if (!props.focused) return
-    if (keys.match("list.refresh", key)) return load()
+    if (keys.match("list.refresh", key)) { cache.delete(days); return setTick(n => n + 1) }
     if (key.raw === "1") return setDays(1)
     if (key.raw === "7") return setDays(7)
     if (key.raw === "3") return setDays(30)
     if (key.raw === "9") return setDays(90)
   })
 
-  const t = data.total
-  const tok = t.input + t.output
-  const title = useMemo(() =>
-    `Analytics · ${days}d · ${t.sessions} sess · ${fmt(tok)} tok · ${cost(t.cost)}`,
-    [days, t.sessions, tok, t.cost])
+  const t = data?.total
+  const tok = (t?.input ?? 0) + (t?.output ?? 0)
+  const title = useMemo(() => !t
+    ? `Analytics · ${days}d`
+    : `Analytics · ${days}d · ${t.sessions} sess · ${fmt(tok)} tok · ${cost(t.cost)}`,
+    [days, t, tok])
 
   const wide = dims.width >= 110
   const chartH = dims.height >= 40 ? 8 : 6
 
+  if (!data) return (
+    <TabShell title={title} hint="1/7/3/9 period · r reload">
+      <box height={1}><Spinner label={`aggregating ${days}d…`} /></box>
+    </TabShell>
+  )
+
   return (
     <TabShell title={title} hint="1/7/3/9 period · r reload">
       <box height={1}><text fg={theme.textMuted}>
-        {`Cost per day  ·  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cache)} cache · ${fmt(t.calls)} tool calls`}
+        {`Cost per day  ·  ${fmt(t!.input)} in · ${fmt(t!.output)} out · ${fmt(t!.cache)} cache · ${fmt(t!.calls)} tool calls`}
       </text></box>
       <Chart data={data} h={chartH} />
 
@@ -146,7 +190,7 @@ export const Analytics = memo((props: { focused?: boolean }) => {
 
       <box height={1} />
       <box flexDirection={wide ? "row" : "column"} gap={wide ? 2 : 1}>
-        <Rank title="Tools" rows={data.byTool} fg={theme.success} />
+        <Rank title="Tools" rows={tools} fg={theme.success} />
         <Rank title="Sources" rows={data.bySource} fg={theme.info} n={6} />
       </box>
     </TabShell>

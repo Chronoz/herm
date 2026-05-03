@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll } from "bun:test"
 import { act } from "react"
 import { mountNode, until } from "./harness"
 import { openStateDb } from "./fixtures/state-db"
-import { analytics } from "../src/utils/hermes-analytics"
+import { analytics, cache } from "../src/utils/hermes-analytics"
 import { Analytics } from "../src/tabs/Analytics"
 
 // ─── fixture ─────────────────────────────────────────────────────────
@@ -93,6 +93,7 @@ describe("analytics()", () => {
 
 describe("Analytics tab", () => {
   test("renders title totals, chart, model table, tool/source ranks; period keys", async () => {
+    cache.clear()
     const t = await mountNode(<Analytics focused />)
     await until(t, () => t.frame().includes("Analytics · 7d"))
 
@@ -120,5 +121,56 @@ describe("Analytics tab", () => {
     await act(async () => { await t.keys.typeText("1") })
     await until(t, () => t.frame().includes("Analytics · 1d"))
     t.destroy()
+  })
+
+  test("renders from cache synchronously; effect refreshes and writes back", async () => {
+    cache.clear()
+    cache.set(7, {
+      total: { sessions: 99, messages: 0, input: 10, output: 0, cache: 0, cost: 9, calls: 0 },
+      byModel: [{ model: "STALE", sessions: 1, input: 0, output: 0, cache: 0, cost: 0 }],
+      byDay: [{ date: "2026-01-01", sessions: 0, cost: 0 }],
+      byTool: [{ name: "CACHED_TOOL", n: 5 }], bySource: [],
+    })
+    const t = await mountNode(<Analytics focused />)
+    // mountNode settle()s twice → effect has run → cache replaced with
+    // live fixture (3 sessions), and frame reflects it.
+    await until(t, () => t.frame().includes("3 sess"))
+    expect(cache.get(7)?.total.sessions).toBe(3)
+    expect(cache.get(7)?.byTool[0]?.name).toBe("terminal")
+    expect(t.frame()).not.toContain("STALE")
+
+    // r reload clears the entry and re-runs
+    cache.set(7, { ...cache.get(7)!, total: { ...cache.get(7)!.total, sessions: 0 } })
+    await act(async () => { await t.keys.typeText("r") })
+    await until(t, () => cache.get(7)?.total.sessions === 3)
+    t.destroy()
+    cache.clear()
+  })
+
+  test("cold window paints spinner frame before data; cache entry written", async () => {
+    cache.clear()
+    const t = await mountNode(<Analytics focused />)
+    const seen: string[] = []
+    const r = t.renderer as unknown as { renderNative: () => void }
+    const orig = r.renderNative.bind(r)
+    r.renderNative = () => {
+      orig()
+      const f = t.frame()
+      const tag = f.includes("aggregating 30d") ? "spin"
+        : f.includes("Analytics · 30d · 3 sess") ? "data" : "?"
+      if (seen.at(-1) !== tag) seen.push(tag)
+    }
+    await act(async () => { await t.keys.typeText("3") })
+    await until(t, () => t.frame().includes("30d · 3 sess"))
+    r.renderNative = orig
+    // The spinner frame is a committed paint before any sqlite ran.
+    // fast→full is a second idle() boundary that collapses under
+    // act(); asserting spin precedes data is the invariant that
+    // removes the tab-switch hitch.
+    expect(seen[0]).toBe("spin")
+    expect(seen).toContain("data")
+    expect(cache.has(30)).toBe(true)
+    t.destroy()
+    cache.clear()
   })
 })
