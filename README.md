@@ -7,19 +7,22 @@ Herm is a tabbed, mouse-aware TUI built with [OpenTUI](https://github.com/anomal
 
 ## What it does
 
-- **Chat** with streaming, markdown, code blocks, diff rendering, tool-call expansion, and an animated ASCII avatar
-- **Tabs** for sessions, context, agents, skills, cron, toolsets, memory, env, config
+- **Chat** with streaming, markdown, inline images (chafa), LaTeX→unicode, diff chips, tool-call expansion, and an animated ASCII avatar
+- **Tabs** for sessions, context, agents, analytics, skills, cron, toolsets, config, env, memory, kanban
+- **Profile switching** — hop between Hermes profiles without leaving the TUI
 - **Command palette** (`Ctrl+K`), **slash popover**, **@-refs** for file/diff context
-- **Fully rebindable keys** (`/keys`) and theme picker
+- **Fully rebindable keys** (`/keys`, opencode-compatible) and theme picker
 
 ## Install
 
 Herm needs a working [Hermes Agent](https://github.com/NousResearch/hermes-agent) install and [Bun](https://bun.sh).
 
 ```bash
+bunx herm-tui              # try without installing
 bun add -g herm-tui        # stable
 bun add -g herm-tui@next   # bleeding edge (every dev push)
-herm
+herm                       # fresh session
+herm -c                    # resume last session
 ```
 
 Or from source:
