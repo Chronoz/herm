@@ -356,9 +356,10 @@ async function handle(req: Request): Promise<Response> {
 
   // POST /type — inject a string as individual keystrokes
   //
-  // Body: { text: "hello", safe?: bool }
+  // Body: { text: "hello", safe?: bool, delay?: ms }
+  // delay paces characters for cinematic typing (demo recordings).
   if (path === "/type" && req.method === "POST") {
-    const body = await req.json() as { text?: string; safe?: boolean }
+    const body = await req.json() as { text?: string; safe?: boolean; delay?: number }
     if (!body.text) return json({ error: "text required" }, 400)
 
     const renderer = bridge.renderer()
@@ -366,6 +367,7 @@ async function handle(req: Request): Promise<Response> {
 
     const safe = body.safe !== false
     const tab = currentTab()
+    const delay = body.delay ?? 0
     let count = 0
 
     for (const ch of body.text) {
@@ -373,9 +375,24 @@ async function handle(req: Request): Promise<Response> {
       const key = makeKey({ name: ch, raw: ch })
       injectKey(renderer, key)
       count++
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
     }
 
     return json({ typed: count, total: body.text.length, tab, tabName: TAB_NAMES[tab] })
+  }
+
+  // POST /input — set composer value in one shot (no per-char keys).
+  if (path === "/input" && req.method === "POST") {
+    const body = await req.json() as { text?: string }
+    bridge.setInput(body.text ?? "")
+    return json({ ok: true, text: body.text ?? "" })
+  }
+
+  // GET /quit — clean exit so a recording PTY sees EOF. Macrotask so the
+  // 200 flushes before the process dies.
+  if (path === "/quit") {
+    setTimeout(() => process.exit(0), 10)
+    return json({ ok: true })
   }
 
   // GET /focus — focus tree (focusable elements and their state)
@@ -458,7 +475,9 @@ async function handle(req: Request): Promise<Response> {
       "POST /send   {message}",
       "POST /key    {name, ctrl?, shift?, meta?, raw?, safe?}",
       "POST /keys   {keys: [{name, ...}], delay?, safe?}",
-      "POST /type   {text, safe?}",
+      "POST /type   {text, delay?, safe?}",
+      "POST /input  {text}",
+      "GET  /quit",
       "GET  /frame  ?grep=pat&json=1",
       "GET  /logs   ?n=200",
       "GET  /focus",
