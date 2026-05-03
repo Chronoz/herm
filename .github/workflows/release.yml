@@ -22,7 +22,7 @@ jobs:
     # the Actions layer, but belt-and-suspenders for forks that strip it.
     if: "!contains(github.event.head_commit.message, 'chore(release):')"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0         # semantic-release needs full history + tags
 
@@ -33,9 +33,9 @@ jobs:
       # semantic-release itself and @semantic-release/npm run `npm`, not
       # bun, so a node toolchain still has to be present. setup-bun ships
       # node, but registry auth for provenance wants setup-node's writer.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - run: bun install --frozen-lockfile
