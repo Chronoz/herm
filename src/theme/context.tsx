@@ -50,7 +50,13 @@ export const ThemeProvider = ({
   initial,
   mode: initialMode = "dark",
 }: ThemeProviderProps) => {
-  const [active, setActive] = useState(initial ?? DEFAULT_THEME);
+  // Active theme is a preference, not component state — usePref makes
+  // it follow prefs.reload() so profile-switch retints without a
+  // remount. `initial` wins only when no pref is set (tests / fresh
+  // install); production passes initial=prefs.theme so they agree at
+  // boot and the pref drives thereafter.
+  const prefTheme = preferences.usePref("theme")
+  const active = prefTheme ?? initial ?? DEFAULT_THEME;
   const [mode] = useState(initialMode);
   const [themes] = useState<Record<string, ThemeJson>>(DEFAULT_THEMES);
 
@@ -71,7 +77,6 @@ export const ThemeProvider = ({
   const set = useCallback(
     (name: string) => {
       if (!themes[name]) return false;
-      setActive(name);
       preferences.set("theme", name);
       return true;
     },

@@ -4,7 +4,7 @@ import * as perf from "./utils/perf"
 import * as spawnHistory from "./app/spawnHistory"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
 import { hasInterp, interpolate } from "./utils/interpolate"
-import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
+import { GatewayProvider, useGateway, useGatewayEvent, useGatewayRestart, type Gateway } from "./app/gateway"
 import type { GatewayEvent, SessionInfo, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
 import type { Message } from "./types/message"
 import { text as msgText } from "./types/message"
@@ -62,6 +62,7 @@ import { SkinProvider, deriveSkin, type SkinState } from "./app/skin"
 import { useAppKeys, redraw } from "./app/useAppKeys"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
+import { rehome } from "./home/rehome"
 import type { Launch } from "./app/launch"
 
 type AppProps = { initialTheme?: string; gateway?: Gateway; launch?: Launch }
@@ -82,8 +83,9 @@ export const App = (props: AppProps) => (
   </ThemeProvider>
 )
 
-const AppInner = ({ launch }: { launch: Launch }) => {
+const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const gw = useGateway()
+  const gwRestart = useGatewayRestart()
   const dialog = useDialog()
   const themeCtx = useTheme()
   const cmd = useCommand()
@@ -112,6 +114,11 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   // Welcome-state chrome over an empty transcript. Composer stays live
   // underneath; first send dismisses. `/splash` re-summons mid-session
   // (Esc-dismissable in that case only).
+  // Latched launch intent — the gateway.ready handler reads this. A
+  // profile-switch overwrites it so the respawned gateway boots fresh
+  // under the new HERMES_HOME instead of replaying the original argv.
+  const launchRef = useRef<Launch>(launch0)
+  const launch = launchRef.current
   const [splash, setSplash] = useState(launch.mode === "new" && launch.splash !== false)
   const summoned = useRef(false)
   const [composing, setComposing] = useState(false)
@@ -212,6 +219,26 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     }
   }, [reset, session, goToTab])
 
+  // ── Profile switch ────────────────────────────────────────────────
+  // Rebind every HERMES_HOME reader, respawn the gateway subprocess
+  // under the new env, and re-run the boot path. prefs.reload (inside
+  // rehome) retints theme/eikon/keys via usePref; home.reset repaints
+  // tabs. The session is NOT preserved — it belongs to the old
+  // profile's state.db. Confirm step lives in the Agents tab.
+  const switchProfile = useCallback((newHome: string, name: string) => {
+    rehome(newHome)
+    reset()
+    gw.setSession("")
+    setSid("")
+    setInfo(null)
+    setSkin(deriveSkin(undefined))
+    setSplash(false)
+    launchRef.current = { mode: "new", splash: false }
+    toast.show({ variant: "info", message: `Switching to '${name}'…` })
+    goToTab(CHAT_TAB)
+    gwRestart()
+  }, [reset, goToTab, gwRestart, toast, gw])
+
   // Compress wrapper — toasts on start, dispatches a transcript system
   // message carrying the headline + token line from the gateway's
   // summary payload on completion. Upstream emits intermediate
@@ -240,17 +267,14 @@ const AppInner = ({ launch }: { launch: Launch }) => {
       .catch(() => {})
   }, [])
 
+  const eikonPath = preferences.usePref("eikonPath")
   useEffect(() => {
-    const path = preferences.get("eikonPath")
-    if (path) loadEikon(path)
-  }, [loadEikon])
+    if (eikonPath) loadEikon(eikonPath); else setEikon(undefined)
+  }, [eikonPath, loadEikon])
 
   const pickEikon = useCallback(() => {
-    openEikonPicker(dialog, (path) => {
-      preferences.set("eikonPath", path)
-      loadEikon(path)
-    })
-  }, [dialog, loadEikon])
+    openEikonPicker(dialog, (path) => preferences.set("eikonPath", path))
+  }, [dialog])
 
   // ── Title ─────────────────────────────────────────────────────────
   const applyTitle = useCallback((t: string) => {
@@ -640,7 +664,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
     const action = mapEvent(ev, {
       onReady: () => {
-        session.boot(launch).then((r) => {
+        session.boot(launchRef.current).then((r) => {
           setSid(r.id)
           sessionStart.current = Date.now()
           if (r.messages.length) dispatch({ kind: "load", messages: r.messages })
@@ -703,7 +727,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     }
     flush()
     dispatch(action)
-  }, [session, dialog, toast, gw, flush, launch])
+  }, [session, dialog, toast, gw, flush])
 
   useGatewayEvent(handle)
 
@@ -835,7 +859,7 @@ const AppInner = ({ launch }: { launch: Launch }) => {
                                sessionStart={sessionStart.current} info={info ?? undefined}
                                focused={contentFocused} />
         case 2: return <Sessions onSwitch={switchSession} currentId={sid} focused={contentFocused} />
-        case 3: return <Agents focused={contentFocused} sessionId={sid} />
+        case 3: return <Agents focused={contentFocused} sessionId={sid} onSwitchProfile={switchProfile} />
         case 4: return <Analytics focused={contentFocused} />
         case 5: return <Skills focused={contentFocused} />
         case 6: return <Cron focused={contentFocused} />

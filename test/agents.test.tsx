@@ -346,6 +346,33 @@ describe("Agents tab", () => {
     t.destroy()
   })
 
+  test("s on non-active row → confirm → onSwitchProfile; active row no-ops", async () => {
+    const gw = new MockGateway({ "delegation.status": () => STATUS() })
+    const got: Array<[string, string]> = []
+    const t = await mountNode(
+      <Agents focused sessionId="test-sid"
+              onSwitchProfile={(h, n) => got.push([h, n])} />,
+      { gw },
+    )
+    await until(t, () => t.frame().includes("Profiles (2)"))
+    expect(t.frame()).toContain("s switch")
+
+    // Row 0 is active — `s` should not open the confirm.
+    await act(async () => { await t.keys.typeText("s") })
+    await t.settle()
+    expect(t.frame()).not.toContain("Switch to")
+    expect(got).toHaveLength(0)
+
+    // Row 1 ("coder") — confirm fires with the profile's path.
+    act(() => t.keys.pressArrow("down"))
+    await act(async () => { await t.keys.typeText("s") })
+    await until(t, () => t.frame().includes("Switch to 'coder'?"))
+    await act(async () => { await t.keys.typeText("y") })
+    await t.settle()
+    expect(got).toEqual([[join(ROOT, "profiles", "coder"), "coder"]])
+    t.destroy()
+  })
+
   test("empty delegation shows placeholder; paused pill toggles via delegation.pause", async () => {
     let paused = true
     const gw = new MockGateway({

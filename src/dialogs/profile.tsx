@@ -10,6 +10,7 @@ import type { ProfileInfo } from "../utils/hermes-profiles"
 import { openFile } from "../utils/open-file"
 
 export type ProfileOps = {
+  switch?: () => void
   sticky: (p: ProfileInfo) => void
   unsticky: () => void
   export: (p: ProfileInfo) => void
@@ -18,6 +19,10 @@ export type ProfileOps = {
 
 export function openProfileMenu(dialog: DialogContext, p: ProfileInfo, ops: ProfileOps) {
   const opts: SelectOption[] = [
+    ...(ops.switch && !p.is_active
+      ? [{ category: "Switch", value: "switch", title: `Switch to '${p.name}'`,
+           description: "restart gateway under this HERMES_HOME — ends current session" }]
+      : []),
     { category: "Open", value: "soul", title: "SOUL.md", description: "edit persona/system prompt" },
     { category: "Open", value: "config", title: "config.yaml", description: "model, provider, toolsets" },
     ...(p.has_env
@@ -41,6 +46,7 @@ export function openProfileMenu(dialog: DialogContext, p: ProfileInfo, ops: Prof
       options={opts}
       onSelect={(o) => {
         dialog.clear()
+        if (o.value === "switch") return ops.switch?.()
         if (o.value === "soul") return openFile(p.sources.soul.file)
         if (o.value === "config") return openFile(p.sources.config.file)
         if (o.value === "env") return openFile(p.sources.env.file)

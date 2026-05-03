@@ -2,7 +2,7 @@
 // injected client so tests can substitute a MockGateway without
 // spawning the Python tui_gateway subprocess.
 
-import { createContext, useContext, useEffect, useRef, useState, useMemo } from "react"
+import { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from "react"
 import type { ReactNode } from "react"
 import { EventEmitter } from "events"
 import { GatewayClient } from "../utils/gateway-client"
@@ -22,6 +22,9 @@ export interface Gateway extends EventEmitter {
 type Ctx = {
   client: Gateway
   ready: boolean
+  /** Kill and respawn the gateway subprocess. Reads process.env fresh —
+   *  call after rehome() so the new process sees the new HERMES_HOME. */
+  restart: () => void
 }
 
 const Gw = createContext<Ctx | null>(null)
@@ -46,7 +49,12 @@ export const GatewayProvider = ({ client, children }: { client?: Gateway; childr
     }
   }, [])
 
-  const value = useMemo<Ctx>(() => ({ client: ref.current!, ready }), [ready])
+  const restart = useCallback(() => {
+    setReady(false)
+    ref.current!.start()
+  }, [])
+
+  const value = useMemo<Ctx>(() => ({ client: ref.current!, ready, restart }), [ready, restart])
   return <Gw.Provider value={value}>{children}</Gw.Provider>
 }
 
@@ -80,4 +88,11 @@ export function useGatewayReady(): boolean {
   const ctx = useContext(Gw)
   if (!ctx) throw new Error("useGatewayReady() must be inside <GatewayProvider>")
   return ctx.ready
+}
+
+/** Kill + respawn the gateway subprocess under the current process.env. */
+export function useGatewayRestart(): () => void {
+  const ctx = useContext(Gw)
+  if (!ctx) throw new Error("useGatewayRestart() must be inside <GatewayProvider>")
+  return ctx.restart
 }

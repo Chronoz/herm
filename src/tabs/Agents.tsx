@@ -27,11 +27,12 @@ import { tree as buildTree, totals as treeTotals, summary, spark, heat, peak, ty
 // Two panes:
 //   Profiles (left)   — filesystem scan of `<root>/profiles/`. Each
 //     profile is an isolated HERMES_HOME (config, env, memory, skills).
-//     Switching profiles = restarting the gateway under a new
-//     HERMES_HOME, which would sever this session — so "switch" is
-//     deliberately NOT offered here. All mutations route through
-//     `shell.exec → hermes profile <verb>` so the authoritative CLI
-//     owns validation, skill seeding, aliases and gateway cleanup.
+//     `s` / menu→Switch rehomes herm + respawns the gateway subprocess
+//     under that HERMES_HOME (see home/rehome.ts). The current session
+//     ends — it belongs to the outgoing profile's state.db — so the
+//     switch is gated behind a confirm. All other mutations route
+//     through `shell.exec → hermes profile <verb>` so the authoritative
+//     CLI owns validation, skill seeding, aliases and gateway cleanup.
 //   Delegation (right) — live subagent tree via `delegation.status`
 //     (tools/delegate_tool registry). `p` toggles spawn-pause
 //     (`delegation.pause`), `k` interrupts the selected child
@@ -253,7 +254,11 @@ const DelegDetail = memo((props: { r: DelegationRecord; live?: Live; agg?: Agg; 
 type ShellResult = { stdout: string; stderr: string; code: number }
 type Pane = "profiles" | "deleg"
 type View = "list" | "detail"
-type Props = { focused?: boolean; sessionId: string }
+type Props = {
+  focused?: boolean
+  sessionId: string
+  onSwitchProfile?: (home: string, name: string) => void
+}
 
 export const Agents = memo((props: Props) => {
   const theme = useTheme().theme
@@ -397,11 +402,24 @@ export const Agents = memo((props: Props) => {
       .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
   }, [sh, dialog, toast, loadProfiles])
 
+  const pSwitch = useCallback(async (i: number) => {
+    const p = live.current.profiles[i]
+    if (!p || p.is_active || !props.onSwitchProfile) return
+    const ok = await openConfirm(dialog, {
+      title: `Switch to '${p.name}'?`,
+      body: "The gateway restarts under this profile's HERMES_HOME. "
+          + "The current session ends (it stays in the outgoing profile's history).",
+      yes: "switch",
+    })
+    if (ok) props.onSwitchProfile(p.path, p.name)
+  }, [dialog, props.onSwitchProfile])
+
   const pEnter = useCallback((i: number) => {
     setPSel(i)
     const p = live.current.profiles[i]
     if (!p) return
     openProfileMenu(dialog, p, {
+      switch: props.onSwitchProfile ? () => pSwitch(i) : undefined,
       sticky: (pp) => sh(`hermes profile use ${pp.name}`)
         .then(() => { toast.show({ variant: "success", message: `Sticky default → '${pp.name}'` }); loadProfiles() })
         .catch((e: Error) => toast.show({ variant: "error", message: e.message })),
@@ -413,7 +431,7 @@ export const Agents = memo((props: Props) => {
         .catch((e: Error) => toast.show({ variant: "error", message: e.message })),
       remove: () => pDelete(i),
     })
-  }, [sh, dialog, toast, loadProfiles, pDelete])
+  }, [sh, dialog, toast, loadProfiles, pDelete, pSwitch, props.onSwitchProfile])
 
   const dKill = useCallback(async (i: number) => {
     const r = live.current.active[i]
@@ -478,6 +496,7 @@ export const Agents = memo((props: Props) => {
     if (keys.match("list.refresh", key)) { loadProfiles(); loadDeleg(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }); return }
     if (pane === "profiles") {
       if (key.name === "escape" && !pWide && pView === "detail") return setPView("list")
+      if (key.name === "s") return void pSwitch(pSel)
       handleListKey(keys, key, {
         count: profiles.length, setSel: setPSel, ...pFollow.opts,
         onNew: create,
@@ -524,10 +543,11 @@ export const Agents = memo((props: Props) => {
       category: "Agents", onSelect: togglePause },
   ]), [cmd, togglePause, deleg?.paused])
 
+  const sw = props.onSwitchProfile ? "s switch  " : ""
   const pHint = pWide
-    ? `↑↓ nav  ${keys.print("list.activate")} actions  ${keys.print("list.new")} new  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`
-    : pView === "list" ? `↑↓ nav  ${keys.print("list.activate")} detail  ${keys.print("list.new")} new  ${keys.print("list.delete")} delete`
-    : `${keys.print("list.activate")} actions  Esc back  ${keys.print("list.delete")} delete`
+    ? `↑↓ nav  ${keys.print("list.activate")} actions  ${sw}${keys.print("list.new")} new  ${keys.print("list.delete")} delete  ${keys.print("list.refresh")} refresh`
+    : pView === "list" ? `↑↓ nav  ${keys.print("list.activate")} detail  ${sw}${keys.print("list.new")} new  ${keys.print("list.delete")} delete`
+    : `${keys.print("list.activate")} actions  ${sw}Esc back  ${keys.print("list.delete")} delete`
 
   return (
     <box flexDirection="row" flexGrow={1}>
