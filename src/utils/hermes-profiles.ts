@@ -183,10 +183,33 @@ export function validateName(name: string, existing: string[]): string | null {
 // cron/jobs.json. Not part of listProfiles() — fetched on selection so
 // a 10-profile list doesn't open 10 sqlite connections per refresh.
 
+export type ProfilePrefs = {
+  theme?: string
+  eikon?: string
+  keys: number
+}
+
 export type ProfileStats = {
   sessions: number | null
   messages: number | null
   crons: number | null
+  /** That profile's herm/tui.json, when present. Null = no herm prefs
+   *  written yet. Per-profile only when HERM_CONFIG_DIR is unset — an
+   *  env override makes tui.json global and this read is best-effort. */
+  prefs: ProfilePrefs | null
+}
+
+function readPrefs(dir: string): ProfilePrefs | null {
+  try {
+    const raw = JSON.parse(readFileSync(join(dir, "herm", "tui.json"), "utf-8")) as {
+      theme?: string; eikonPath?: string; keys?: Record<string, string>
+    }
+    return {
+      theme: raw.theme,
+      eikon: raw.eikonPath ? basename(raw.eikonPath, ".eikon") : undefined,
+      keys: raw.keys ? Object.keys(raw.keys).length : 0,
+    }
+  } catch { return null }
 }
 
 export async function profileStats(dir: string): Promise<ProfileStats> {
@@ -213,5 +236,5 @@ export async function profileStats(dir: string): Promise<ProfileStats> {
         ? (jobs as { jobs: unknown[] }).jobs.length
       : 0
   } catch { crons = existsSync(join(dir, "cron")) ? 0 : null }
-  return { sessions, messages, crons }
+  return { sessions, messages, crons, prefs: readPrefs(dir) }
 }

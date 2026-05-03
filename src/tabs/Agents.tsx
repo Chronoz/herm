@@ -101,6 +101,9 @@ const ProfileDetail = memo((props: { p: ProfileInfo; stats?: ProfileStats }) => 
         <KV label="Skills" value={String(p.skill_count)} />
         <KV label="Sessions" value={s ? s.sessions == null ? "—" : `${fmt(s.sessions)}  (${fmt(s.messages ?? 0)} msgs)` : "…"} />
         <KV label="Cron jobs" value={s ? s.crons == null ? "—" : String(s.crons) : "…"} />
+        <KV label="Theme" value={s ? s.prefs?.theme ?? "—" : "…"} />
+        <KV label="Avatar" value={s ? s.prefs?.eikon ?? "—" : "…"} />
+        {s?.prefs?.keys ? <KV label="Keybinds" value={`${s.prefs.keys} overrides`} /> : null}
         <KV label="Gateway" value={p.gateway_running ? "running" : "stopped"}
             fg={p.gateway_running ? theme.success : theme.textMuted} />
         {p.has_alias ? <KV label="Alias" value={`${p.name} (shell)`} /> : null}

@@ -97,10 +97,10 @@ describe("hermes-profiles", () => {
     expect(validateName("default", [])).toBe("reserved name")
   })
 
-  test("profileStats reads state.db + cron/jobs.json; nulls when absent", async () => {
-    // Bare profile: no state.db, no cron → all null.
+  test("profileStats reads state.db + cron/jobs.json + herm/tui.json; nulls when absent", async () => {
+    // Bare profile: no state.db, no cron, no herm dir → nulls.
     const bare = await profileStats(join(ROOT, "profiles", "coder"))
-    expect(bare).toEqual({ sessions: null, messages: null, crons: null })
+    expect(bare).toEqual({ sessions: null, messages: null, crons: null, prefs: null })
 
     // Seed default with a state.db and jobs.json.
     const { Database } = await import("bun:sqlite")
@@ -111,11 +111,15 @@ describe("hermes-profiles", () => {
     mkdirSync(join(ROOT, "cron"), { recursive: true })
     writeFileSync(join(ROOT, "cron", "jobs.json"),
       JSON.stringify({ jobs: [{ id: "j1" }, { id: "j2" }] }))
+    mkdirSync(join(ROOT, "herm"), { recursive: true })
+    writeFileSync(join(ROOT, "herm", "tui.json"),
+      JSON.stringify({ theme: "liminal", eikonPath: "/x/herm.eikon", keys: { "list.new": "a" } }))
 
     const s = await profileStats(ROOT)
     expect(s.sessions).toBe(2)   // message_count > 0
     expect(s.messages).toBe(11)
     expect(s.crons).toBe(2)
+    expect(s.prefs).toEqual({ theme: "liminal", eikon: "herm", keys: 1 })
 
     // Array-shaped jobs.json also supported.
     writeFileSync(join(ROOT, "cron", "jobs.json"), JSON.stringify([{ id: "j1" }]))
