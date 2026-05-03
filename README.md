@@ -20,6 +20,7 @@ Herm needs a working [Hermes Agent](https://github.com/NousResearch/hermes-agent
 ```bash
 bunx herm-tui              # try without installing
 bun add -g herm-tui        # stable
+npm i -g herm-tui          # also fine
 bun add -g herm-tui@next   # bleeding edge (every dev push)
 herm                       # fresh session
 herm -c                    # resume last session
