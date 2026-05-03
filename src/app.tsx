@@ -63,6 +63,7 @@ import { useAppKeys, redraw } from "./app/useAppKeys"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
 import { rehome } from "./home/rehome"
+import { makeGoalHook } from "./app/goalHook"
 import type { Launch } from "./app/launch"
 
 type AppProps = { initialTheme?: string; gateway?: Gateway; launch?: Launch }
@@ -97,6 +98,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
   const [ready, setReady] = useState(false)
   const [sid, setSid] = useState("")
+  const sidRef = useRef(sid); sidRef.current = sid
   const [tab, setTab] = useState(CHAT_TAB)
   const [hideSidebar, setHideSidebar] = useState(false)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
@@ -660,6 +662,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     "tool.start", "tool.progress", "tool.generating",
   ])).current
 
+  const goalHook = useMemo(() => makeGoalHook(dialog, toast), [dialog, toast])
+
   const handle = useCallback((ev: GatewayEvent) => {
     if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
     const action = mapEvent(ev, {
@@ -689,7 +693,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       onTurnComplete: () => {
         interrupted.current = false
         setStatus("")
-        spawnHistory.flush(gw, sid)
+        spawnHistory.flush(gw, sidRef.current)
+        goalHook.check(sidRef.current)
       },
       onBackground: (tid, text) => {
         const head = text.split("\n")[0].slice(0, 80)
@@ -727,7 +732,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     }
     flush()
     dispatch(action)
-  }, [session, dialog, toast, gw, flush])
+  }, [session, dialog, toast, gw, flush, goalHook])
 
   useGatewayEvent(handle)
 

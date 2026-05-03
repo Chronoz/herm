@@ -44,6 +44,11 @@ interface TuiPreferences {
   timeFormat?: "12h" | "24h"
   /** List-column timestamps: "2h ago" vs "14:32" / "May 1" */
   timeStyle?: "relative" | "absolute"
+  /** Action when a session's goal flips to status=done.
+   *  "toast"   — toast only (default)
+   *  "suspend" — 10s-countdown confirm, then `systemctl suspend`
+   *  any other string — 10s-countdown confirm, then run it via sh */
+  onGoalDone?: string
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {

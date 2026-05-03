@@ -13,6 +13,7 @@ export const FNS = {
   peek: sdb.peek,
   search: sdb.search,
   systemPrompt: sdb.systemPrompt,
+  goalState: sdb.goalState,
   analytics,
   memoryActivity: readMemoryActivity,
 } as const

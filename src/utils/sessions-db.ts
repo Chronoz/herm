@@ -365,6 +365,33 @@ export const systemPrompt = (): { id: string; text: string } | null =>
       ORDER BY started_at DESC LIMIT 1`,
   )?.get() as { id: string; text: string } | undefined) ?? null
 
+// ─── Goal state ──────────────────────────────────────────────────────
+// hermes_cli/goals.py persists GoalState as JSON in state_meta keyed
+// 'goal:<sid>'. status: active | paused | done | cleared. Only the
+// fields herm consumes are surfaced.
+
+export type GoalState = {
+  goal: string
+  status: "active" | "paused" | "done" | "cleared"
+  turn_count?: number
+  max_turns?: number | null
+}
+
+export function goalState(sid: string): GoalState | null {
+  const row = q("SELECT value FROM state_meta WHERE key = ?")
+    ?.get(`goal:${sid}`) as { value: string } | undefined
+  if (!row) return null
+  try {
+    const j = JSON.parse(row.value) as Record<string, unknown>
+    return {
+      goal: String(j.goal ?? ""),
+      status: (j.status as GoalState["status"]) ?? "active",
+      turn_count: typeof j.turn_count === "number" ? j.turn_count : undefined,
+      max_turns: (j.max_turns as number | null | undefined) ?? null,
+    }
+  } catch { return null }
+}
+
 // ─── Search ──────────────────────────────────────────────────────────
 // FTS5 over messages_fts — same table/triggers SessionDB builds, so
 // results match `hermes sessions search` and the session_search tool.
