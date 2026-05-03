@@ -14,7 +14,9 @@ describe("utils/git", () => {
     const root = mkdtempSync(join(tmpdir(), "herm-git-"))
     try {
       expect(await branch(root)).toBeNull()
-      await sh(root, "git init -q -b main && git commit -q --allow-empty -m x")
+      // -c user.* because CI runners have no global identity; commit
+      // would silently fail (sh() discards stderr).
+      await sh(root, "git -c user.name=t -c user.email=t@t init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m x")
       expect(await branch(root)).toBe("main")
       expect(await gitdir(root)).toBe(join(root, ".git"))
       await sh(root, "git checkout -q -b feature/long-name")
