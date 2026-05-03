@@ -123,6 +123,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const launchRef = useRef<Launch>(launch0)
   const launch = launchRef.current
   const [splash, setSplash] = useState(launch.mode === "new" && launch.splash !== false)
+  const [switching, setSwitching] = useState(false)
   const summoned = useRef(false)
   const [composing, setComposing] = useState(false)
   const splashLast = useMemo(
@@ -212,10 +213,11 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     reset()
     // Keep splash visible while the resume RPC lands so the user sees
     // the ornate frame instead of the empty-transcript welcome. summoned
-    // suppresses the continue-prompt (we've already chosen a session).
-    // Cleared after messages load (or on error) below.
+    // suppresses the continue-prompt (we've already chosen a session);
+    // switching drives the "Loading…" line on Splash.
     summoned.current = true
     setSplash(true)
+    setSwitching(true)
     goToTab(CHAT_TAB)
     try {
       const res = await session.resume(target)
@@ -228,6 +230,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       dispatch({ kind: "system", text: `Failed to resume: ${err instanceof Error ? err.message : String(err)}` })
       setSplash(false)
       summoned.current = false
+    } finally {
+      setSwitching(false)
     }
   }, [reset, session, goToTab])
 
@@ -929,6 +933,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
                     ? { id: splashLast.id, title: splashLast.title } : undefined}
                   composing={composing}
                   news={news}
+                  loading={switching || !info}
                 />
               ) : null}
             </box>

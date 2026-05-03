@@ -25,6 +25,8 @@ export type SplashProps = {
   composing?: boolean
   /** Cron-generated first-bullet from ~/.hermes/herm/changelog.md. */
   news?: string
+  /** True while a session is loading (cold-boot info, mid-app switch). */
+  loading?: boolean
 }
 
 // Wordmark font tiers, widest first. `measureText` is cheap (table lookup).
@@ -94,7 +96,11 @@ export function Splash(p: SplashProps) {
             </box>
           ) : null}
           <box height={2} />
-          {prompt ? (
+          {p.loading ? (
+            <text fg={theme.textMuted}>
+              <span fg={theme.accent}>Loading…</span>
+            </text>
+          ) : prompt ? (
             <>
               <text fg={theme.textMuted}>
                 {"continue "}
