@@ -26,6 +26,9 @@ export type EikonState = {
   fps: number
   /** Each frame as an array of lines (row-per-string). */
   frames: string[][]
+  /** First frame of the loop segment. 0 = loop whole sequence;
+   *  frames.length = play once and hold the last frame. */
+  loopFrom: number
 }
 
 export type ParsedEikon = {
@@ -69,12 +72,16 @@ export function parseEikon(text: string): ParsedEikon {
   }
 
   const states = new Map<string, EikonState>()
-  let cur: { name: string; fps?: number; frames: string[][]; durs: number[] } | null = null
+  let cur: { name: string; fps?: number; loopFrom: number; loop?: boolean; frames: string[][]; durs: number[] } | null = null
 
   const seal = () => {
     if (!cur) return
     const fps = cur.fps ?? (cur.durs.length ? Math.round(1000 / median(cur.durs)) || 12 : 12)
-    states.set(cur.name, { fps, frames: cur.frames })
+    // Clamp to [0, count]. `loop: false` (v1) maps to loop_from = count (hold).
+    const n = cur.frames.length
+    const raw = cur.loop === false ? n : cur.loopFrom
+    const loopFrom = Math.max(0, Math.min(raw, n))
+    states.set(cur.name, { fps, frames: cur.frames, loopFrom })
     cur = null
   }
 
@@ -88,6 +95,8 @@ export function parseEikon(text: string): ParsedEikon {
       cur = {
         name: obj.state,
         fps: typeof obj.fps === "number" ? obj.fps : undefined,
+        loopFrom: typeof obj.loop_from === "number" ? Math.trunc(obj.loop_from) : 0,
+        loop: typeof obj.loop === "boolean" ? obj.loop : undefined,
         frames: [],
         durs: [],
       }

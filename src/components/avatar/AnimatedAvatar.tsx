@@ -1,22 +1,23 @@
 import { useState, useEffect, useRef, memo } from "react"
-import { STATE_FRAMES, FPS, type AvatarState } from "./states"
-import type { ParsedEikon } from "./eikon"
+import { STATE_FRAMES, type AvatarState } from "./states"
+import type { ParsedEikon, EikonState } from "./eikon"
 import { useTheme } from "../../theme"
 import * as perf from "../../utils/perf"
 
 /**
- * Animation loop:
- *   1. Pause on frame 0 for PAUSE_FIRST ms
- *   2. Play forward (0 → last) at FPS
- *   3. Pause on last frame for PAUSE_LAST ms
- *   4. Play reverse (last → 0) at FPS
- *   5. Goto 1
+ * Forward-only state driver (SPEC.md Playback Rules):
  *
- * Restarts from frame 0 whenever `state` changes.
+ *   intro:  0 .. loopFrom-1   played once on state entry
+ *   loop:   loopFrom .. N-1   repeated
  *
- * When an `eikon` is supplied and it defines the current state, its
- * frames and fps take precedence over the baked-in set; states missing
- * from the eikon fall back to the baked-in frames.
+ * loopFrom = 0       → no intro, loop whole sequence
+ * loopFrom = N       → play once, hold last frame (timer stops)
+ *
+ * State change restarts from frame 0, so the intro always plays.
+ * When an `eikon` is supplied and defines the current state, it wins;
+ * states missing from the eikon fall back to the baked-in set (which
+ * palindromes its frames to preserve the legacy ping-pong look under
+ * this forward-only driver).
  */
 
 export const AnimatedAvatar = memo(({ state = "idle", eikon }: { state?: AvatarState; eikon?: ParsedEikon }) => {
@@ -24,33 +25,34 @@ export const AnimatedAvatar = memo(({ state = "idle", eikon }: { state?: AvatarS
   const [frame, setFrame] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const ext = eikon?.states.get(state)
-  const frames: string[][] = ext ? ext.frames : STATE_FRAMES[state]
-  const fps = ext?.fps ?? FPS
+  const clip: EikonState = eikon?.states.get(state) ?? STATE_FRAMES[state]
+  const { frames, fps, loopFrom } = clip
   const count = frames.length
 
-  // Restart animation loop when state or source changes
   useEffect(() => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null }
+    setFrame(0)
+    if (count < 2) return
+    const dt = 1000 / fps
     let idx = 0
-    let dir = 1
 
     const tick = () => {
       perf.count("avatar:tick")
-      idx += dir
-      if (idx >= count - 1) dir = -1
-      if (idx <= 0) dir = 1
+      idx++
+      if (idx >= count) {
+        if (loopFrom >= count) { setFrame(count - 1); return }  // hold
+        idx = loopFrom
+      }
       setFrame(idx)
-      timer.current = setTimeout(tick, 1000 / fps)
+      timer.current = setTimeout(tick, dt)
     }
 
-    setFrame(0)
-    timer.current = setTimeout(tick, 1000 / fps)
+    timer.current = setTimeout(tick, dt)
     return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [state, count, fps])
+  }, [state, count, fps, loopFrom])
 
   const end = perf.mark("avatar:render")
-  const idx = Math.min(frame, count - 1)
-  const lines = frames[idx] ?? []
+  const lines = frames[Math.min(frame, count - 1)] ?? []
 
   const result = (
     <box flexDirection="column">
