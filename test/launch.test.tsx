@@ -11,13 +11,14 @@ import { MockGateway, mountNode } from "./harness"
 describe("parseLaunch", () => {
   const cases: Array<[string[], Launch]> = [
     [[], { mode: "new", splash: true }],
-    [["-c"], { mode: "resume" }],
-    [["--continue"], { mode: "resume" }],
-    [["--resume"], { mode: "resume" }],
-    [["--resume", "abc123"], { mode: "resume", sid: "abc123" }],
-    [["--resume", "--foo"], { mode: "resume" }],
-    [["--foo", "-c"], { mode: "resume" }],
+    [["-c"], { mode: "resume", splash: true }],
+    [["--continue"], { mode: "resume", splash: true }],
+    [["--resume"], { mode: "resume", splash: true }],
+    [["--resume", "abc123"], { mode: "resume", sid: "abc123", splash: true }],
+    [["--resume", "--foo"], { mode: "resume", splash: true }],
+    [["--foo", "-c"], { mode: "resume", splash: true }],
     [["--no-splash"], { mode: "new", splash: false }],
+    [["--no-splash", "-c"], { mode: "resume", splash: false }],
   ]
   for (const [argv, want] of cases) {
     test(JSON.stringify(argv), () => expect(parseLaunch(argv)).toEqual(want))

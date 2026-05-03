@@ -1,6 +1,7 @@
 // Launch intent parsed from argv before the renderer starts.
 // Bare `herm` → fresh session (splash shows continue-prompt).
-// `-c` / `--continue` / `--resume [id]` → resume, no splash.
+// `-c` / `--continue` / `--resume [id]` → resume (splash shows Loading…).
+// `--no-splash` → skip splash in either mode.
 
 import { readFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
@@ -19,7 +20,7 @@ export const VERSION = pkgVersion(import.meta.dirname)
 
 export type Launch =
   | { mode: "new"; splash?: boolean }
-  | { mode: "resume"; sid?: string }
+  | { mode: "resume"; sid?: string; splash?: boolean }
 
 /** Parse process argv (everything after the script path). No deps. */
 export function parseLaunch(argv: readonly string[]): Launch {
@@ -27,13 +28,13 @@ export function parseLaunch(argv: readonly string[]): Launch {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--no-splash") { splash = false; continue }
-    if (a === "-c" || a === "--continue") return { mode: "resume" }
+    if (a === "-c" || a === "--continue") return { mode: "resume", splash }
     if (a === "--resume") {
       const next = argv[i + 1]
       // Treat a following non-flag token as the session id.
       return next && !next.startsWith("-")
-        ? { mode: "resume", sid: next }
-        : { mode: "resume" }
+        ? { mode: "resume", sid: next, splash }
+        : { mode: "resume", splash }
     }
   }
   return { mode: "new", splash }

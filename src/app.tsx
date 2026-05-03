@@ -122,7 +122,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // under the new HERMES_HOME instead of replaying the original argv.
   const launchRef = useRef<Launch>(launch0)
   const launch = launchRef.current
-  const [splash, setSplash] = useState(launch.mode === "new" && launch.splash !== false)
+  const [splash, setSplash] = useState(launch.splash !== false)
   const [switching, setSwitching] = useState(false)
   const summoned = useRef(false)
   const [composing, setComposing] = useState(false)

@@ -63,9 +63,18 @@ describe("splash (herm-tji.2)", () => {
     t.destroy()
   })
 
-  test("mode:resume → no splash at all", async () => {
+  test("mode:resume → splash shows Loading… frame (not the empty-chat welcome)", async () => {
     seed({ id: "prev-sid", title: "x" })
     const t = await mount({ launch: { mode: "resume" } })
+    await until(t, () => t.frame().includes("Ready"))
+    // Braille frame painted — the splash is up.
+    expect(/[⠁-⣿]/.test(t.frame())).toBe(true)
+    t.destroy()
+  })
+
+  test("mode:resume + --no-splash → no splash", async () => {
+    seed({ id: "prev-sid", title: "x" })
+    const t = await mount({ launch: { mode: "resume", splash: false } })
     await until(t, () => t.frame().includes("Ready"))
     expect(/[⠁-⣿]/.test(t.frame())).toBe(false)
     t.destroy()
