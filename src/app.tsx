@@ -151,12 +151,24 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // without re-creating itself on every catalog refresh.
   const cmdsRef = useRef(cmds); cmdsRef.current = cmds
 
-  const agentState: AvatarState = !ready
+  // Transient error pulse — set on any reducer {kind:"error"} or
+  // gateway exit; cleared when the avatar's play-once error clip
+  // reaches hold (onAvatarHold below). `!ready` no longer maps to
+  // error: cold boot is behind the splash, and a dead gateway already
+  // emits "exit" → errorPulse via the listener below.
+  const [errorPulse, setErrorPulse] = useState(false)
+
+  const agentState: AvatarState = errorPulse
     ? "error"
     : turn.toolActive ? "working"
     : turn.streaming && turn.hasContent ? "speaking"
     : turn.streaming ? "thinking"
+    : composing ? "listening"
     : "idle"
+
+  const onAvatarHold = useCallback((s: AvatarState) => {
+    if (s === "error") setErrorPulse(false)
+  }, [])
 
   // ── Thought cloud ─────────────────────────────────────────────────
   // Auto-follows the "non-text" phase of a turn: open while the model is
@@ -765,6 +777,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       return
     }
     flush()
+    if (action.kind === "error") setErrorPulse(true)
     dispatch(action)
   }, [session, dialog, toast, gw, flush, goalHook])
 
@@ -970,7 +983,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
               <Sidebar agentState={agentState} info={info} usage={usage} eikon={eikon} profile={activeProfileName()}
                        title={title}
                        cloud={tab === 0 && cloud} pulse={turn.streaming}
-                       onAvatar={onAvatar} />
+                       onAvatar={onAvatar} onAvatarHold={onAvatarHold} />
             </Profiler>
           ) : null}
         </box>

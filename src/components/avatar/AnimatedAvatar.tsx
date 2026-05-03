@@ -20,10 +20,17 @@ import * as perf from "../../utils/perf"
  * this forward-only driver).
  */
 
-export const AnimatedAvatar = memo(({ state = "idle", eikon }: { state?: AvatarState; eikon?: ParsedEikon }) => {
+export const AnimatedAvatar = memo(({ state = "idle", eikon, onHold }: {
+  state?: AvatarState
+  eikon?: ParsedEikon
+  /** Fired once when a play-once state (loopFrom === frames.length)
+   *  reaches its last frame. Consumer decides fallthrough policy. */
+  onHold?: (state: AvatarState) => void
+}) => {
   const theme = useTheme().theme
   const [frame, setFrame] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const holdRef = useRef(onHold); holdRef.current = onHold
 
   const clip: EikonState = eikon?.states.get(state) ?? STATE_FRAMES[state]
   const { frames, fps, loopFrom } = clip
@@ -40,7 +47,7 @@ export const AnimatedAvatar = memo(({ state = "idle", eikon }: { state?: AvatarS
       perf.count("avatar:tick")
       idx++
       if (idx >= count) {
-        if (loopFrom >= count) { setFrame(count - 1); return }  // hold
+        if (loopFrom >= count) { setFrame(count - 1); holdRef.current?.(state); return }
         idx = loopFrom
       }
       setFrame(idx)

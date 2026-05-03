@@ -73,6 +73,7 @@ export const Sidebar = memo((props: {
   cloud?: boolean
   pulse?: boolean
   onAvatar?: () => void
+  onAvatarHold?: (s: AvatarState) => void
 }) => {
   const theme = useTheme().theme
   const state = props.agentState ?? "idle"
@@ -88,7 +89,7 @@ export const Sidebar = memo((props: {
       {/* Avatar (bust) — also the anchor for the thought-cloud tail */}
       <box position="relative" flexDirection="column" height={24} overflow="hidden"
            onMouseDown={props.onAvatar}>
-        <AnimatedAvatar state={state} eikon={props.eikon} />
+        <AnimatedAvatar state={state} eikon={props.eikon} onHold={props.onAvatarHold} />
         {props.cloud ? (
           <box position="absolute" left={0} top={0}>
             <Tail run={!!props.pulse} />
