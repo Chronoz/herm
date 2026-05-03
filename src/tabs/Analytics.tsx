@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, memo } from "react"
-import { useKeyboard, useTerminalDimensions, useRenderer } from "@opentui/react"
+import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { RGBA } from "@opentui/core"
-import { analytics, cache, type Analytics as Data, type NameRow } from "../utils/hermes-analytics"
+import { cache, type Analytics as Data, type NameRow } from "../utils/hermes-analytics"
+import { io } from "../io"
 import { useKeys } from "../keys"
 import { useTheme } from "../theme"
 import { Spinner } from "../ui/spinner"
@@ -93,16 +94,15 @@ const Rank = memo((p: { title: string; rows: NameRow[] | null; fg: RGBA; n?: num
 export const Analytics = memo((props: { focused?: boolean }) => {
   const theme = useTheme().theme
   const dims = useTerminalDimensions()
-  const renderer = useRenderer()
   const [days, setDays] = useState(7)
-  // analytics() is sync bun:sqlite on the main thread; on a cold 400 MB
-  // state.db the tools json_each query alone is ~1.5s. Staging:
-  //   render 1 — cached snapshot if any, else spinner
-  //   render 2 — sessions-only (totals/chart/models/sources, <20 ms)
-  //   render 3 — tools filled in
-  // renderer.idle() is the only yield that guarantees the preceding
-  // setState committed to a frame in idle/request mode — sleep(0) /
-  // microtask land before requestRender's nextTick path.
+  // io.analytics runs bun:sqlite in a worker; the main thread never
+  // blocks. Worker-message delivery is a macrotask, which in opentui's
+  // request-driven mode lands *after* requestRender's nextTick→
+  // activateFrame — so `setData(fast); await io.x()` commits the fast
+  // frame before the heavy query returns. Staging:
+  //   frame 1 — cached snapshot if any, else spinner
+  //   frame 2 — sessions-only (totals/chart/models/sources, <20 ms)
+  //   frame 3 — tools filled in
   const [data, setData] = useState<Data | null>(() => cache.get(days) ?? null)
   const [tools, setTools] = useState<NameRow[] | null>(
     () => cache.get(days)?.byTool ?? null)
@@ -114,20 +114,18 @@ export const Analytics = memo((props: { focused?: boolean }) => {
     setData(hit ?? null)
     setTools(hit?.byTool ?? null)
     const g = ++gen.current
-    void renderer.idle().then(() => {
+    void io.analytics(days, { tools: false }).then(fast => {
       if (gen.current !== g) return
-      const fast = analytics(days, { tools: false })
       setData(fast)
-      void renderer.idle().then(() => {
+      void io.analytics(days).then(full => {
         if (gen.current !== g) return
-        const full = { ...fast, byTool: analytics(days).byTool }
         cache.set(days, full)
         setData(full)
         setTools(full.byTool)
       })
     })
     return () => { gen.current++ }
-  }, [days, tick, renderer])
+  }, [days, tick])
 
   const keys = useKeys()
   useKeyboard((key) => {

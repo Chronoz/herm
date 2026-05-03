@@ -13,6 +13,7 @@ import { openSpawnHistory } from "../dialogs/spawn-history"
 import { openProfileMenu } from "../dialogs/profile"
 import { openCreateProfile } from "../dialogs/new-profile"
 import { TabShell } from "../ui/shell"
+import { Spinner } from "../ui/spinner"
 import { KV, KVBlock } from "../ui/kv"
 import { KVLink } from "../components/ui/FileLink"
 import { dur, trunc, fmt } from "../ui/fmt"
@@ -297,9 +298,11 @@ export const Agents = memo((props: Props) => {
   // Lazy per-profile stats (session/msg/cron counts) — fetched when a
   // profile is first selected, cached by path, cleared on `r`.
   const [stats, setStats] = useState<ReadonlyMap<string, ProfileStats>>(() => new Map())
+  const [sticky, setSticky] = useState(stickyDefault)
 
   const loadProfiles = useCallback(() => {
     setStats(new Map())
+    setSticky(stickyDefault())
     listProfiles(gwHome.current)
       .then(ps => { setProfiles(ps); setErr("") })
       .catch((e: Error) => setErr(`profiles: ${e.message}`))
@@ -450,16 +453,16 @@ export const Agents = memo((props: Props) => {
   }, [sh, dialog, toast, loadProfiles])
 
   const selected = profiles[pSel]
+  const statGen = useRef(0)
 
   useEffect(() => {
     const path = selected?.path
     if (!path || stats.has(path)) return
-    let dead = false
-    profileStats(path).then(s => {
-      if (dead) return
+    const g = ++statGen.current
+    void profileStats(path).then(s => {
+      if (statGen.current !== g) return
       setStats(prev => new Map(prev).set(path, s))
     })
-    return () => { dead = true }
   }, [selected?.path, stats])
 
   const dims = useTerminalDimensions()
@@ -500,7 +503,6 @@ export const Agents = memo((props: Props) => {
   const showList = pWide || pView === "list"
   const showDetail = pWide || pView === "detail"
 
-  const sticky = stickyDefault()
   const limits = deleg
     ? `depth≤${deleg.max_spawn_depth} · conc≤${deleg.max_concurrent_children}` : ""
   const dHint = active.length > 0
@@ -539,10 +541,15 @@ export const Agents = memo((props: Props) => {
           {showList ? (
           <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={14}>
             <scrollbox ref={pFollow.ref} scrollY flexGrow={1} verticalScrollbarOptions={VBAR}>
-              {profiles.map((p, i) => (
-                <ProfileRow key={p.name} id={pFollow.id(i)} p={p} idx={i} selected={i === pSel}
-                  onHover={pHover} onEnter={pEnter} onDelete={pDelete} />
-              ))}
+              {profiles.length === 0
+                ? <box height={1}>{err
+                    ? <text fg={theme.textMuted}>—</text>
+                    : <Spinner color={theme.textMuted} label="scanning profiles…" />}
+                  </box>
+                : profiles.map((p, i) => (
+                    <ProfileRow key={p.name} id={pFollow.id(i)} p={p} idx={i} selected={i === pSel}
+                      onHover={pHover} onEnter={pEnter} onDelete={pDelete} />
+                  ))}
             </scrollbox>
           </box>
           ) : null}

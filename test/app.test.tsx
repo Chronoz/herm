@@ -31,9 +31,8 @@ describe("app", () => {
 
     // → Sessions (index 2)
     act(() => { for (let i = 0; i < 2; i++) t.keys.pressArrow("right", { ctrl: true }) })
-    await t.settle()
     // Sandboxed HERMES_HOME has no state.db → empty state
-    expect(t.frame()).toContain("No sessions")
+    await until(t, () => t.frame().includes("No sessions"))
 
     t.destroy()
   })
@@ -46,8 +45,7 @@ describe("app", () => {
     expect(t.frame()).toMatch(/1 Chat.*2 Context.*3 Sessions/)
 
     act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("3") })
-    await t.settle()
-    expect(t.frame()).toContain("No sessions")
+    await until(t, () => t.frame().includes("No sessions"))
 
     act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("0") })
     await until(t, () => t.frame().includes("Env / API Keys"))
@@ -84,8 +82,7 @@ describe("app", () => {
 
     // Rebound chord does.
     act(() => { t.keys.pressKey("]", { ctrl: true }); t.keys.pressKey("]", { ctrl: true }) })
-    await t.settle()
-    expect(t.frame()).toContain("No sessions")
+    await until(t, () => t.frame().includes("No sessions"))
 
     act(() => t.keys.pressKey("[", { ctrl: true }))
     await t.settle()

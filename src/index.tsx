@@ -10,6 +10,7 @@ import { createRoot } from "@opentui/react";
 import { App } from "./app";
 import { parseLaunch, HELP, VERSION } from "./app/launch";
 import * as perf from "./utils/perf";
+import { warm as warmIO } from "./io";
 import * as control from "./utils/control";
 import * as preferences from "./utils/preferences";
 import { resetTerminalModes, installExitResetHooks } from "./utils/terminal-reset";
@@ -81,6 +82,7 @@ const main = async () => {
   // gpt-tokenizer is ~170ms to import and not needed for first frame;
   // kick it off the hot path so the first count() call doesn't stall.
   warmTokens()
+  warmIO()
 
   perf.mem("post-first-render")
 

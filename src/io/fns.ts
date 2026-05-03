@@ -1,0 +1,21 @@
+// Registry of every state.db reader herm calls from React. Import
+// surface is the three leaf sqlite modules — no hermes-home / yaml /
+// tokens — so the worker bundle stays ~15 KB.
+
+import * as sdb from "../utils/sessions-db"
+import { analytics } from "../utils/hermes-analytics"
+import { readMemoryActivity } from "../utils/memory-activity"
+
+export const FNS = {
+  roots: sdb.roots,
+  children: sdb.children,
+  lineage: sdb.lineage,
+  peek: sdb.peek,
+  search: sdb.search,
+  systemPrompt: sdb.systemPrompt,
+  analytics,
+  memoryActivity: readMemoryActivity,
+} as const
+
+export type Fns = typeof FNS
+export type Fn = keyof Fns

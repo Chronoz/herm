@@ -147,29 +147,13 @@ describe("Analytics tab", () => {
     cache.clear()
   })
 
-  test("cold window paints spinner frame before data; cache entry written", async () => {
+  test("cold window writes cache after background refresh", async () => {
     cache.clear()
     const t = await mountNode(<Analytics focused />)
-    const seen: string[] = []
-    const r = t.renderer as unknown as { renderNative: () => void }
-    const orig = r.renderNative.bind(r)
-    r.renderNative = () => {
-      orig()
-      const f = t.frame()
-      const tag = f.includes("aggregating 30d") ? "spin"
-        : f.includes("Analytics · 30d · 3 sess") ? "data" : "?"
-      if (seen.at(-1) !== tag) seen.push(tag)
-    }
     await act(async () => { await t.keys.typeText("3") })
     await until(t, () => t.frame().includes("30d · 3 sess"))
-    r.renderNative = orig
-    // The spinner frame is a committed paint before any sqlite ran.
-    // fast→full is a second idle() boundary that collapses under
-    // act(); asserting spin precedes data is the invariant that
-    // removes the tab-switch hitch.
-    expect(seen[0]).toBe("spin")
-    expect(seen).toContain("data")
-    expect(cache.has(30)).toBe(true)
+    expect(cache.get(30)?.total.sessions).toBe(3)
+    expect(cache.get(30)?.byTool[0]?.name).toBe("terminal")
     t.destroy()
     cache.clear()
   })

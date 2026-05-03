@@ -49,6 +49,7 @@ const external = [
 const result = await Bun.build({
   entrypoints: [
     "src/index.tsx",
+    "src/io/db.worker.ts",
     "node_modules/@opentui/core/parser.worker.js",
   ],
   outdir: "dist",

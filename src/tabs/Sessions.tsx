@@ -5,6 +5,7 @@ import type { ScrollBoxRenderable } from "@opentui/core"
 import { useKeys, handleListKey } from "../keys"
 import * as sdb from "../utils/sessions-db"
 import type { SessionRow, SessionHit, LineageInfo, PeekMsg } from "../utils/sessions-db"
+import { io as dbio } from "../io"
 import type {
   SessionListItem, SessionListResponse,
 } from "../utils/gateway-types"
@@ -105,13 +106,15 @@ const PeekRow = memo((props: { row: Folded }) => {
   )
 })
 
-const Peek = memo((props: { sid: string; total: number; peek: typeof sdb.peek }) => {
+type Peeker = (sid: string, n?: number) => PeekMsg[] | Promise<PeekMsg[]>
+
+const Peek = memo((props: { sid: string; total: number; peek: Peeker }) => {
   const theme = useTheme().theme
   const [data, setData] = useState<{ turns: Folded[]; tools: number } | null>(null)
   const sb = useRef<ScrollBoxRenderable | null>(null)
 
   useEffect(() => {
-    setData(fold(props.peek(props.sid, 60)))
+    void Promise.resolve(props.peek(props.sid, 60)).then(m => setData(fold(m)))
   }, [props.sid, props.peek])
   // Pin to bottom on load — "where did this end up", not "how did
   // it start".
@@ -162,19 +165,19 @@ const Peek = memo((props: { sid: string; total: number; peek: typeof sdb.peek })
 const Detail = memo((props: {
   row: Row
   onSwitch?: (sid: string) => void
-  lineage?: (sid: string) => LineageInfo
-  peek: (sid: string, n?: number) => PeekMsg[]
+  lineage: (sid: string) => LineageInfo | Promise<LineageInfo>
+  peek: Peeker
 }) => {
   const theme = useTheme().theme
   const r = props.row
   const d = r.detail
   const lastActive = d?.last_active ?? d?.ended_at ?? null
   const subs = d?.subagent_count ?? 0
-  // Lineage is pulled fresh on row change — query is in-process and
-  // sub-ms. Cached by row.id so the lookup doesn't fire on every render.
+  // Lineage is an off-thread worker round-trip (sub-ms query, ~1 ms
+  // total). Loaded on row change, not every render.
   const [info, setInfo] = useState<LineageInfo>({})
   useEffect(() => {
-    setInfo((props.lineage ?? sdb.lineage)(r.id))
+    void Promise.resolve(props.lineage(r.id)).then(setInfo)
   }, [r.id, props.lineage])
   const hasLineage = info.continuesFrom || info.compressedTo || subs > 0
   const go = (sid: string) => () => props.onSwitch?.(sid)
@@ -399,18 +402,27 @@ const SearchItem = memo((props: {
 // ─── Main ────────────────────────────────────────────────────────────
 
 // Data-layer ops are injectable so tests don't fight analytics.test
-// for the shared sandbox state.db. Defaults are the real functions.
+// for the shared sandbox state.db. Defaults go through the io worker
+// (off-thread bun:sqlite) except the two writers, which are rare and
+// main-thread on purpose — they open a short-lived RW handle.
+type P<F extends (...a: never[]) => unknown> =
+  (...a: Parameters<F>) => ReturnType<F> | Promise<ReturnType<F>>
 type IO = {
-  list: typeof sdb.roots
-  search: typeof sdb.search
+  list: P<typeof sdb.roots>
+  search: P<typeof sdb.search>
+  subagents: P<typeof sdb.children>
+  lineage: P<typeof sdb.lineage>
+  peek: P<typeof sdb.peek>
   remove: typeof sdb.remove
   rename: typeof sdb.rename
-  subagents: typeof sdb.children
-  lineage: typeof sdb.lineage
-  peek: typeof sdb.peek
 }
 
 type Props = { focused?: boolean; currentId?: string; onSwitch?: (sid: string) => void; io?: Partial<IO> }
+
+// Module-level cache so revisiting the tab paints the previous list on
+// frame 1 while load() refreshes in place. Tests that inject `io` don't
+// write here (see `cached` guard in load) — keeps suites independent.
+const last = { rows: [] as Row[], kids: new Map<string, Row[]>() }
 
 export const Sessions = memo((props: Props) => {
   const theme = useTheme().theme
@@ -419,19 +431,20 @@ export const Sessions = memo((props: Props) => {
   const toast = useToast()
   const dims = useTerminalDimensions()
 
+  const cached = props.io == null
   const io: IO = {
-    list: props.io?.list ?? sdb.roots,
-    search: props.io?.search ?? sdb.search,
+    list: props.io?.list ?? dbio.roots,
+    search: props.io?.search ?? dbio.search,
+    subagents: props.io?.subagents ?? dbio.children,
+    lineage: props.io?.lineage ?? dbio.lineage,
+    peek: props.io?.peek ?? dbio.peek,
     remove: props.io?.remove ?? sdb.remove,
     rename: props.io?.rename ?? sdb.rename,
-    subagents: props.io?.subagents ?? sdb.children,
-    lineage: props.io?.lineage ?? sdb.lineage,
-    peek: props.io?.peek ?? sdb.peek,
   }
 
-  const [rows, setRows] = useState<Row[]>([])
+  const [rows, setRows] = useState<Row[]>(cached ? last.rows : [])
   const [warn, setWarn] = useState("")
-  const [pending, setPending] = useState(true)
+  const [pending, setPending] = useState(rows.length === 0)
   // Selection is tracked by row identity so that collapsing children
   // (which changes the flat index of every row below) never lands sel
   // on the wrong row. The numeric index consumers use (handleListKey,
@@ -443,7 +456,7 @@ export const Sessions = memo((props: Props) => {
   const [searchSel, setSearchSel] = useState(0)
   // parent_id → children, populated at load() time for every row
   // with subagent_count > 0 so render stays pure (no sync fetch).
-  const [kids, setKids] = useState<Map<string, Row[]>>(new Map())
+  const [kids, setKids] = useState<Map<string, Row[]>>(cached ? last.kids : new Map())
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const vscroll = useRef<ScrollBoxRenderable | null>(null)
 
@@ -499,38 +512,43 @@ export const Sessions = memo((props: Props) => {
     source: d.sessionSource, detail: d,
   })
 
-  // Paint fs rows synchronously (io.list is an in-process sqlite read),
-  // then reconcile with the RPC result. session.list is the slow path
-  // (2000-row limit over stdio) and is what made the tab sit empty on
-  // mount. Enrichment comes from fs either way, so the optimistic paint
-  // is visually identical when state.db == gateway's state.db — which
-  // is the common local case. Remote gateways paint [] first, then RPC;
-  // `pending` covers that gap with a spinner.
-  const fill = (list: Row[]) => {
-    setKids(new Map(list
-      .filter(r => (r.detail?.subagent_count ?? 0) > 0)
-      .map(r => [r.id, io.subagents(r.id).map(toRow)])))
-    setRows(list)
-  }
-
+  // Two-stage paint. io.list is off-thread, so the mount frame commits
+  // (spinner / cached rows) before it resolves; the RPC is slower still.
+  // Kids (subagents per parent) fill in after the list — the tree
+  // expands by anchor, so until then it just doesn't expand.
   const load = useCallback(async () => {
-    const fs = Promise.resolve().then(() => io.list(LIMIT)).catch(() => [])
+    setPending(true)
     const rpc = gw.request<SessionListResponse>("session.list", { limit: LIMIT })
       .then(r => ({ ok: true as const, v: r }))
       .catch((e: Error) => ({ ok: false as const, e }))
+    const fs = Promise.resolve(io.list(LIMIT)).catch(() => [])
 
     const disk = await fs
     const local = new Map(disk.map(r => [r.id, r]))
-    fill(disk.filter(d => d.message_count > 0).map(toRow))
-    setPending(true)
+    const diskRows = disk.filter(d => d.message_count > 0).map(toRow)
+    setRows(diskRows)
+    if (cached) last.rows = diskRows
+
+    const fillKids = async (list: Row[]) => {
+      const ps = list.filter(r => (r.detail?.subagent_count ?? 0) > 0)
+      const cs = await Promise.all(ps.map(r => io.subagents(r.id)))
+      const m = new Map(ps.map((r, i) => [r.id, cs[i].map(toRow)]))
+      setKids(m)
+      if (cached) last.kids = m
+    }
+    void fillKids(diskRows)
 
     // Stock session.list doesn't drop 0-msg stubs — every abandoned
     // connect leaves one, and they're never useful to resume.
     const r = await rpc
-    if (r.ok && r.v.sessions?.length)
-      fill(r.v.sessions
+    if (r.ok && r.v.sessions?.length) {
+      const merged = r.v.sessions
         .filter(s => (s.message_count ?? 0) > 0)
-        .map(s => ({ ...s, detail: local.get(s.id) })))
+        .map(s => ({ ...s, detail: local.get(s.id) }))
+      setRows(merged)
+      if (cached) last.rows = merged
+      void fillKids(merged)
+    }
     setPending(false)
     setWarn(!r.ok
       ? local.size
@@ -553,8 +571,10 @@ export const Sessions = memo((props: Props) => {
   useEffect(() => {
     if (!searching || !query.trim()) { setResults([]); return }
     debounce.current = setTimeout(() => {
-      setResults(io.search(query, 30))
-      setSearchSel(0)
+      void Promise.resolve(io.search(query, 30)).then(r => {
+        setResults(r)
+        setSearchSel(0)
+      })
     }, 150)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
   }, [query, searching])
@@ -704,14 +724,12 @@ export const Sessions = memo((props: Props) => {
       // reason to cache across the small number of ←/→ presses.
       const v = visible[sel]
       if (!v) return
-      const ln = io.lineage(v.row.id)
-      const target = keys.match("sessions.prev", key)
-        ? ln.continuesFrom?.id
-        : ln.compressedTo?.id
-      if (!target) return
-      // Match lineage-click semantics: confirm switching (unless it's
-      // the current session, which lineageSwitch short-circuits).
-      lineageSwitch(target)
+      void Promise.resolve(io.lineage(v.row.id)).then(ln => {
+        const target = keys.match("sessions.prev", key)
+          ? ln.continuesFrom?.id
+          : ln.compressedTo?.id
+        if (target) lineageSwitch(target)
+      })
       return
     }
   })

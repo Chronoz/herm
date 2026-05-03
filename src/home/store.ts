@@ -20,11 +20,10 @@ import {
   readEnvFile,
   readSoul,
   readLiveSessions,
-  readSystemPromptInfo,
   readToolsFromLatestSession,
-  queryRecentSessions,
   readSkillUsage,
   readCuratorState,
+  makeSource,
   type HermesConfig,
   type MemoryFileInfo,
   type MemoryProviderInfo,
@@ -36,7 +35,9 @@ import {
   type SkillUsage,
   type CuratorState,
 } from "../utils/hermes-home"
-import { readMemoryActivity, type MemoryActivity } from "../utils/memory-activity"
+import type { MemoryActivity } from "../utils/memory-activity"
+import { count as tokenCount } from "../utils/tokens"
+import { io } from "../io"
 
 // ─── State shape ──────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ const SLICES: Slices = {
     deps: ["config"],
   },
   memoryActivity: {
-    read: async () => readMemoryActivity(),
+    read: () => io.memoryActivity(),
   },
   env: {
     read: () => readEnvFile(),
@@ -109,10 +110,18 @@ const SLICES: Slices = {
   // an always-mounted Sidebar is wasteful. Consumers invalidate on
   // demand (section-open, `r`, post-mutation).
   recentSessions: {
-    read: async () => queryRecentSessions(),
+    read: () => io.roots(30),
   },
   systemPrompt: {
-    read: async () => readSystemPromptInfo(),
+    // Older state.db schemas lack the column — degrade to "unknown"
+    // (old readSystemPromptInfo did the same via blanket try/catch).
+    read: () => io.systemPrompt().then(r => r && {
+      source: makeSource("state.db"),
+      sessionId: r.id,
+      text: r.text,
+      totalChars: r.text.length,
+      tokenEstimate: tokenCount(r.text),
+    }).catch(() => null),
   },
   toolsInfo: {
     // Scans sessions/ for newest session_*.json — watching the dir picks

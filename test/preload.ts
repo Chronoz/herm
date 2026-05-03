@@ -13,6 +13,7 @@ const cfg = join(root, "config")
 process.env.HERM_CONFIG_DIR = cfg
 process.env.HERMES_HOME = join(root, "hermes")
 process.env.HERMES_AGENT_ROOT = join(root, "agent")
+process.env.HERM_IO_INLINE = "1"
 process.env.CONTROL = ""
 process.env.PERF = ""
 

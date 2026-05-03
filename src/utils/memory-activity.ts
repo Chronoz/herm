@@ -4,8 +4,7 @@
 // assistant rows carries the full invocation JSON, so read sqlite
 // directly (same pattern as hermes-analytics.ts).
 
-import { Database } from "bun:sqlite"
-import { hermesPath } from "./hermes-home"
+import { stateDb } from "./sessions-db"
 
 type MemoryOp = "write" | "read"
 
@@ -112,29 +111,21 @@ export const extract = (r: Row): MemoryActivity[] => {
  * days of heavy use.
  */
 export function readMemoryActivity(limit = 100, scan = 2000): MemoryActivity[] {
-  let db: Database
-  try {
-    db = new Database(hermesPath("state.db"), { readonly: true })
-  } catch {
-    return []
-  }
-  try {
-    const rows = db.query<Row, [number]>(
-      `SELECT m.timestamp ts, m.tool_calls, m.session_id,
-              s.title
-       FROM messages m LEFT JOIN sessions s ON m.session_id = s.id
-       WHERE m.role = 'assistant' AND m.tool_calls IS NOT NULL
-       ORDER BY m.id DESC LIMIT ?`,
-    ).all(scan)
-    const out: MemoryActivity[] = []
-    for (const r of rows) {
-      for (const a of extract(r)) {
-        out.push(a)
-        if (out.length >= limit) return out
-      }
+  const db = stateDb()
+  if (!db) return []
+  const rows = db.query<Row, [number]>(
+    `SELECT m.timestamp ts, m.tool_calls, m.session_id,
+            s.title
+     FROM messages m LEFT JOIN sessions s ON m.session_id = s.id
+     WHERE m.role = 'assistant' AND m.tool_calls IS NOT NULL
+     ORDER BY m.id DESC LIMIT ?`,
+  ).all(scan)
+  const out: MemoryActivity[] = []
+  for (const r of rows) {
+    for (const a of extract(r)) {
+      out.push(a)
+      if (out.length >= limit) return out
     }
-    return out
-  } finally {
-    db.close()
   }
+  return out
 }

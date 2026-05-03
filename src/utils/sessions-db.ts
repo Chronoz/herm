@@ -27,11 +27,10 @@ import { homedir } from "os"
 import * as perf from "./perf"
 
 const HERMES = process.env.HERMES_HOME || `${process.env.HOME || homedir()}/.hermes`
-const PATH = `${HERMES}/state.db`
 // Source provenance mirrors hermes-home.ts makeSource("state.db") —
 // inlined to keep this module leaf (hermes-home re-exports from here).
 export type Source = { file: string; relative: string; label: string }
-const SRC: Source = { file: PATH, relative: "state.db", label: "state.db" }
+const SRC: Source = { file: `${HERMES}/state.db`, relative: "state.db", label: "state.db" }
 
 // ─── Connection ──────────────────────────────────────────────────────
 // One readonly handle, opened on first use. SQLite readonly connections
@@ -39,18 +38,30 @@ const SRC: Source = { file: PATH, relative: "state.db", label: "state.db" }
 // appending messages while herm holds this open is fine. Writes
 // (rename/remove) open a short-lived RW handle — rare enough that
 // pooling isn't worth it.
+//
+// `conn.path` is mutable so the io worker can rebind it — Bun workers
+// inherit the OS environ (and under `bun test` ignore process.env
+// writes entirely), so the parent passes its resolved HERMES_HOME
+// explicitly instead of relying on env propagation.
 
-let ro: Database | null = null
+const conn = { path: SRC.file, ro: null as Database | null }
+
+/** Point all readers at a specific HERMES_HOME. Drops the cached
+ *  connection and statement cache. Used by the io worker. */
+export const setHome = (h: string) => {
+  conn.path = SRC.file = `${h}/state.db`
+  resetDb()
+}
 
 /** Shared readonly handle. Null when state.db doesn't exist yet. */
 export const stateDb = (): Database | null => {
-  if (ro) return ro
-  try { return (ro = new Database(PATH, { readonly: true })) }
+  if (conn.ro) return conn.ro
+  try { return (conn.ro = new Database(conn.path, { readonly: true })) }
   catch { return null }
 }
 
 /** Test hook — drop the cached handle so the next call reopens. */
-export const resetDb = () => { ro?.close(); ro = null; stmts.clear() }
+export const resetDb = () => { conn.ro?.close(); conn.ro = null; stmts.clear() }
 
 // Prepared-statement cache keyed by SQL text. db.query() already
 // memoises internally, but holding our own map lets stats()/perf
@@ -335,6 +346,16 @@ export function peek(sid: string, n = 60): PeekMsg[] {
   } finally { end() }
 }
 
+/** Most-recent session with a "real" system prompt (long enough to
+ *  carry SOUL/memory/skills, not the ~700-char generic fallback).
+ *  Worker-side half of home's `systemPrompt` slice — token counting
+ *  happens on the main thread so the worker never loads gpt-tokenizer. */
+export const systemPrompt = (): { id: string; text: string } | null =>
+  (q(`SELECT id, system_prompt AS text FROM sessions
+      WHERE system_prompt IS NOT NULL AND length(system_prompt) > 1000
+      ORDER BY started_at DESC LIMIT 1`,
+  )?.get() as { id: string; text: string } | undefined) ?? null
+
 // ─── Search ──────────────────────────────────────────────────────────
 // FTS5 over messages_fts — same table/triggers SessionDB builds, so
 // results match `hermes sessions search` and the session_search tool.
@@ -376,7 +397,7 @@ export function search(query: string, limit = 30): SessionHit[] {
 // here only when the gateway is down.
 
 export function rename(sid: string, title: string): boolean {
-  const db = new Database(PATH)
+  const db = new Database(conn.path)
   try {
     db.run("UPDATE sessions SET title = ? WHERE id = ?", [title, sid])
     return (db.query("SELECT changes() AS c").get() as { c: number }).c > 0
@@ -385,7 +406,7 @@ export function rename(sid: string, title: string): boolean {
 
 /** Delete a session. Orphans children (matches upstream delete_session). */
 export function remove(sid: string): boolean {
-  const db = new Database(PATH)
+  const db = new Database(conn.path)
   try {
     if (!db.query("SELECT 1 FROM sessions WHERE id = ?").get(sid)) return false
     db.run("UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?", [sid])
