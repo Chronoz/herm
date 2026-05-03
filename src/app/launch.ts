@@ -2,6 +2,10 @@
 // Bare `herm` → fresh session (splash shows continue-prompt).
 // `-c` / `--continue` / `--resume [id]` → resume, no splash.
 
+import pkg from "../../package.json" with { type: "json" }
+
+export const VERSION = pkg.version
+
 export type Launch =
   | { mode: "new"; splash?: boolean }
   | { mode: "resume"; sid?: string }
@@ -32,5 +36,6 @@ Usage:
   herm -c, --continue     resume the last real TUI session
   herm --resume [id]      resume last (or the given) session
   herm --no-splash        skip the launch splash
-  herm --help             show this help
+  herm -v, --version      print version
+  herm -h, --help         show this help
 `

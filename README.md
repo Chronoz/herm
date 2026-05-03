@@ -23,11 +23,11 @@ bun install
 bun run src/index.tsx
 ```
 
-<!-- bunx segfaults. commenting until this is fixed
- Or run it straight from GitHub:
+<!-- bunx path — re-verify from /tmp after pushing v0.1.0 (opentui now exact-pinned, prior segfault should be gone)
+Or straight from GitHub (pin a tag for reproducibility):
 
 ```bash
-bunx github:liftaris/herm
+bunx github:liftaris/herm#v0.1.0
 ``` -->
 
 Herm looks for `~/.hermes`. If yours lives elsewhere, set `HERMES_HOME`. See [`.env.example`](./.env.example) for rarely-needed overrides.

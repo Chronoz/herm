@@ -25,7 +25,7 @@ if (existsSync(shim)) process.env.OTUI_TREE_SITTER_WORKER_PATH = shim
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
-import { parseLaunch, HELP } from "./app/launch";
+import { parseLaunch, HELP, VERSION } from "./app/launch";
 import * as perf from "./utils/perf";
 import * as control from "./utils/control";
 import * as preferences from "./utils/preferences";
@@ -40,6 +40,10 @@ perf.boot("import-graph", Bun.nanoseconds() / 1e6)
 const argv = Bun.argv.slice(2)
 if (argv.includes("--help") || argv.includes("-h")) {
   process.stdout.write(HELP)
+  process.exit(0)
+}
+if (argv.includes("--version") || argv.includes("-v")) {
+  process.stdout.write(VERSION + "\n")
   process.exit(0)
 }
 const launch = parseLaunch(argv)

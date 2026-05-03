@@ -36,6 +36,7 @@
     "dev:full": "PERF=1 CONTROL=1 bun run --watch src/index.tsx",
     "gen-schema": "bun scripts/gen-schema.ts",
     "showcase": "scripts/showcase/record.sh",
+    "release": "bun scripts/release.ts",
     "build": "bun scripts/gen-schema.ts && bun build src/index.tsx node_modules/@opentui/core/parser.worker.js scripts/parser-worker-shim.ts --target=bun --outdir=dist --minify --entry-naming='[name].[ext]' && mv dist/parser-worker-shim.js dist/parser.worker.shim.js && test -f dist/parser.worker.js && test -f dist/parser.worker.shim.js",
     "start": "bun run dist/index.js",
     "test": "bun test",
