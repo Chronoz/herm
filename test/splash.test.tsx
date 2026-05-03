@@ -4,6 +4,12 @@ import { mount, until } from "./harness"
 import { openStateDb } from "./fixtures/state-db"
 import { resetDb } from "../src/utils/sessions-db"
 
+// Sentinel for "splash frame is painted". Must be splash-unique because the
+// sidebar avatar also renders braille — can't key on /[⠁-⣿]/ anymore.
+// TL corner, row 2 of the baked 9-patch (src/ui/splash-art.ts).
+const SPLASH = "⠀⢸⡖⢿⠏⣤⣶⣽⣫⢶⣢⡌⠹⣧⡏⠻"
+const splashUp = (f: string) => f.includes(SPLASH)
+
 const seed = (last?: { id: string; title: string }) => {
   const db = openStateDb()
   db.run("DELETE FROM messages"); db.run("DELETE FROM sessions")
@@ -20,8 +26,8 @@ describe("splash (herm-tji.2)", () => {
   test("mode:new → splash renders frame + wordmark; composer is live", async () => {
     seed()
     const t = await mount({ launch: { mode: "new", splash: true } })
-    await until(t, () => t.frame().includes("HERM") || /[⠁-⣿]/.test(t.frame()))
-    expect(/[⠁-⣿]/.test(t.frame())).toBe(true)       // braille frame
+    await until(t, () => t.frame().includes("HERM") || splashUp(t.frame()))
+    expect(splashUp(t.frame())).toBe(true)       // braille frame
     expect(t.frame()).toMatch(/v\d+\.\d+\.\d+/)       // sub-line
     expect(t.frame()).toContain("Ready")              // composer still live
     expect(t.frame()).not.toContain("continue \"")     // no lastReal
@@ -31,11 +37,11 @@ describe("splash (herm-tji.2)", () => {
   test("first send dismisses; prompt.submit fires", async () => {
     seed()
     const t = await mount({ launch: { mode: "new", splash: true } })
-    await until(t, () => /[⠁-⣿]/.test(t.frame()))
+    await until(t, () => splashUp(t.frame()))
     await act(async () => { await t.keys.typeText("hello") })
     await t.settle()
     act(() => t.keys.pressEnter())
-    await until(t, () => !/[⠁-⣿]/.test(t.frame()))
+    await until(t, () => !splashUp(t.frame()))
     expect(t.gw.last("prompt.submit")?.params.text).toBe("hello")
     t.destroy()
   })
@@ -46,7 +52,7 @@ describe("splash (herm-tji.2)", () => {
     await until(t, () => t.frame().includes("fix the latex bug"))
     expect(t.frame()).toContain("[enter]")
     act(() => t.keys.pressEnter())
-    await until(t, () => !/[⠁-⣿]/.test(t.frame()))
+    await until(t, () => !splashUp(t.frame()))
     expect(t.gw.last("session.resume")?.params.session_id).toBe("prev-sid")
     expect(t.gw.calls.some(c => c.method === "prompt.submit")).toBe(false)
     t.destroy()
@@ -59,7 +65,7 @@ describe("splash (herm-tji.2)", () => {
     await act(async () => { await t.keys.typeText("h") })
     await t.settle()
     expect(t.frame()).not.toContain("fix the latex bug")
-    expect(/[⠁-⣿]/.test(t.frame())).toBe(true)        // splash still up
+    expect(splashUp(t.frame())).toBe(true)        // splash still up
     t.destroy()
   })
 
@@ -68,7 +74,7 @@ describe("splash (herm-tji.2)", () => {
     const t = await mount({ launch: { mode: "resume" } })
     await until(t, () => t.frame().includes("Ready"))
     // Braille frame painted — the splash is up.
-    expect(/[⠁-⣿]/.test(t.frame())).toBe(true)
+    expect(splashUp(t.frame())).toBe(true)
     t.destroy()
   })
 
@@ -76,7 +82,7 @@ describe("splash (herm-tji.2)", () => {
     seed({ id: "prev-sid", title: "x" })
     const t = await mount({ launch: { mode: "resume", splash: false } })
     await until(t, () => t.frame().includes("Ready"))
-    expect(/[⠁-⣿]/.test(t.frame())).toBe(false)
+    expect(splashUp(t.frame())).toBe(false)
     t.destroy()
   })
 })
