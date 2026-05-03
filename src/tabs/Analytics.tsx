@@ -153,43 +153,61 @@ export const Analytics = memo((props: { focused?: boolean }) => {
     </TabShell>
   )
 
+  // Tools/Sources section height: header + n rows. Wide=side-by-side so
+  // height = max(tools.n, sources.n)+1. Stacked = tools.n+sources.n+3 (two
+  // headers + gap). Reserve this at the bottom so byModel scrollbox never
+  // steals their space. n caps match the Rank defaults.
+  const nTools = 8
+  const nSrc = 6
+  const ranksH = wide ? Math.max(nTools, nSrc) + 1 : nTools + nSrc + 3
+
   return (
     <TabShell title={title} hint="1/7/3/9 period · r reload">
-      <box height={1}><text fg={theme.textMuted}>
-        {`Cost per day  ·  ${fmt(t!.input)} in · ${fmt(t!.output)} out · ${fmt(t!.cache)} cache · ${fmt(t!.calls)} tool calls`}
-      </text></box>
-      <Chart data={data} h={chartH} />
-
-      <box height={1} />
-      <Hdr>
-        <Col grow min={18} fg={theme.textMuted}>Model</Col>
-        <Col w={6} right fg={theme.textMuted}>sess</Col>
-        <Col w={9} right fg={theme.textMuted}>in</Col>
-        <Col w={9} right fg={theme.textMuted}>out</Col>
-        <Col w={9} right fg={theme.textMuted}>cache</Col>
-        <Col w={9} right fg={theme.textMuted}>cost</Col>
-      </Hdr>
-      <scrollbox scrollY flexGrow={1}>
-        <box flexDirection="column" width="100%">
-          {data.byModel.length === 0
-            ? <box height={1}><text fg={theme.textMuted}>no sessions in range</text></box>
-            : data.byModel.map(m => (
-                <box key={m.model} height={1} flexDirection="row">
-                  <Col grow min={18}>{trunc(m.model, 40)}</Col>
-                  <Col w={6} right fg={theme.textMuted}>{String(m.sessions)}</Col>
-                  <Col w={9} right>{fmt(m.input)}</Col>
-                  <Col w={9} right>{fmt(m.output)}</Col>
-                  <Col w={9} right fg={theme.textMuted}>{fmt(m.cache)}</Col>
-                  <Col w={9} right fg={theme.accent}>{cost(m.cost)}</Col>
-                </box>
-              ))}
+      <box flexDirection="column" flexGrow={1} minWidth={0} overflow="hidden">
+        {/* Summary + chart — fixed block */}
+        <box flexShrink={0} flexDirection="column">
+          <box height={1}><text fg={theme.textMuted}>
+            {`Cost per day  ·  ${fmt(t!.input)} in · ${fmt(t!.output)} out · ${fmt(t!.cache)} cache · ${fmt(t!.calls)} tool calls`}
+          </text></box>
+          <Chart data={data} h={chartH} />
         </box>
-      </scrollbox>
 
-      <box height={1} />
-      <box flexDirection={wide ? "row" : "column"} gap={wide ? 2 : 1}>
-        <Rank title="Tools" rows={tools} fg={theme.success} />
-        <Rank title="Sources" rows={data.bySource} fg={theme.info} n={6} />
+        {/* Model breakdown — grows to fill, but byModel can be empty/short */}
+        <box height={1} flexShrink={0} />
+        <box flexShrink={0}>
+          <Hdr>
+            <Col grow min={18} fg={theme.textMuted}>Model</Col>
+            <Col w={6} right fg={theme.textMuted}>sess</Col>
+            <Col w={9} right fg={theme.textMuted}>in</Col>
+            <Col w={9} right fg={theme.textMuted}>out</Col>
+            <Col w={9} right fg={theme.textMuted}>cache</Col>
+            <Col w={9} right fg={theme.textMuted}>cost</Col>
+          </Hdr>
+        </box>
+        <scrollbox scrollY flexGrow={1} flexShrink={1} minHeight={1}>
+          <box flexDirection="column" width="100%">
+            {data.byModel.length === 0
+              ? <box height={1}><text fg={theme.textMuted}>no sessions in range</text></box>
+              : data.byModel.map(m => (
+                  <box key={m.model} height={1} flexDirection="row">
+                    <Col grow min={18}>{trunc(m.model, 40)}</Col>
+                    <Col w={6} right fg={theme.textMuted}>{String(m.sessions)}</Col>
+                    <Col w={9} right>{fmt(m.input)}</Col>
+                    <Col w={9} right>{fmt(m.output)}</Col>
+                    <Col w={9} right fg={theme.textMuted}>{fmt(m.cache)}</Col>
+                    <Col w={9} right fg={theme.accent}>{cost(m.cost)}</Col>
+                  </box>
+                ))}
+          </box>
+        </scrollbox>
+
+        {/* Tools + Sources — fixed bottom, never overflows */}
+        <box height={1} flexShrink={0} />
+        <box flexShrink={0} height={ranksH}
+             flexDirection={wide ? "row" : "column"} gap={wide ? 2 : 1}>
+          <Rank title="Tools" rows={tools} fg={theme.success} n={nTools} />
+          <Rank title="Sources" rows={data.bySource} fg={theme.info} n={nSrc} />
+        </box>
       </box>
     </TabShell>
   )
