@@ -139,7 +139,9 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // Client-side interrupt latch: flipped on Esc×2 before the gateway has
   // confirmed the stop. Stream-mutation events still in the stdio pipe
   // (already written by the agent thread before it saw the interrupt
-  // flag) are dropped until the terminal `message.complete` arrives.
+  // flag) are dropped until the NEXT user send — not message.complete —
+  // because run_agent's worker thread can keep emitting after the
+  // monitor thread's InterruptedError has already ended the turn.
   const interrupted = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
@@ -195,6 +197,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
 
   // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
+    interrupted.current = false
     dispatch({ kind: "reset" })
     setUsage(undefined)
     setReady(false)
@@ -683,12 +686,21 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // (system messages, session.info, toasts, completion, side channels)
   // is orthogonal to the stream and must pass the interrupt gate.
   const STREAM_EVENTS = useRef(new Set<GatewayEvent["type"]>([
+    "message.start",
     "message.delta", "reasoning.delta", "reasoning.available", "thinking.delta",
     "tool.start", "tool.progress", "tool.generating",
   ])).current
 
   const handle = useCallback((ev: GatewayEvent) => {
-    if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
+    // The agent's stream-retry loop (run_agent._call) classifies the
+    // force-closed httpx socket from an interrupt as a transient drop
+    // and emits "Reconnecting…" lifecycle status before the top-of-loop
+    // interrupt guard catches it. Drain those (and any ghost stream
+    // events from the clear_interrupt race) until the next user send.
+    if (interrupted.current) {
+      if (STREAM_EVENTS.has(ev.type)) return
+      if (ev.type === "status.update" && ev.payload?.kind === "lifecycle") return
+    }
     const action = mapEvent(ev, {
       onReady: () => {
         session.boot(launchRef.current).then((r) => {
@@ -714,7 +726,6 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       },
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => {
-        interrupted.current = false
         setStatus("")
         spawnHistory.flush(gw, sidRef.current)
         goalHook.check(sidRef.current)

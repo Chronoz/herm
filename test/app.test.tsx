@@ -947,8 +947,24 @@ describe("app", () => {
     // the assistant right-side gutter (content on the left, bar on the right).
     expect(f).toMatch(/interrupted\s+│/)
 
-    // Latch clears on completion: next turn's tool.start is NOT dropped.
+    // Latch survives completion: the worker thread's stream-retry except
+    // handler emits lifecycle "Reconnecting…" after message.complete; a
+    // lost clear_interrupt race can fire a whole orphan stream. All gated.
+    act(() => {
+      t.gw.push({ type: "status.update", payload: { kind: "lifecycle", text: "⚠️ Connection dropped. Reconnecting…" } })
+      t.gw.push({ type: "message.start" })
+      t.gw.push({ type: "tool.start", payload: { tool_id: "g", name: "zz_ghost_tool", context: "" } })
+    })
+    await t.settle()
+    expect(t.frame()).not.toContain("Reconnecting")
+    expect(t.frame()).not.toContain("zz_ghost_tool")
+    expect(t.frame()).not.toContain("Generating")  // message.start was dropped
+
+    // Next user send reopens the gate: this turn's tool.start renders.
     // Tool parts surface in the cloud with a humanised label.
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("prompt.submit") !== undefined)
     act(() => t.gw.push({ type: "message.start" }))
     act(() => t.gw.push({ type: "tool.start", payload: { tool_id: "y", name: "read_file", context: "" } }))
     await until(t, () => t.frame().includes("Reading file"))
