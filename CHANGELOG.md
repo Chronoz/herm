@@ -1,3 +1,16 @@
+# [1.0.0-dev.2](https://github.com/liftaris/herm/compare/v1.0.0-dev.1...v1.0.0-dev.2) (2026-05-03)
+
+
+### Bug Fixes
+
+* **editor:** guard resume/clear against destroyed renderer (UAF → SIGSEGV) ([d34aa75](https://github.com/liftaris/herm/commit/d34aa75adc9340337f3f40a51d81fa9188fbfe5c))
+
+
+### Features
+
+* **build:** publish bundled dist/ — 2 pkg install (108→2) ([7ecd926](https://github.com/liftaris/herm/commit/7ecd926bcfd3a9a1fafe111e7c0efa000d16ca67))
+* **deps:** @opentui/* 0.1.99 → 0.2.2 — drop all overrides + postinstall ([22575c8](https://github.com/liftaris/herm/commit/22575c8c1f3da79e3af22b538b89edd141107c52))
+
 # 1.0.0-dev.1 (2026-05-03)
 
 
