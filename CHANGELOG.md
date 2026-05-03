@@ -1,3 +1,17 @@
+# [1.0.0-dev.4](https://github.com/liftaris/herm/compare/v1.0.0-dev.3...v1.0.0-dev.4) (2026-05-03)
+
+
+### Bug Fixes
+
+* **interrupt:** hold drain gate open until next send ([8d0463c](https://github.com/liftaris/herm/commit/8d0463cb71de6900c043ddba39c289ba6aaacfe8))
+
+
+### Features
+
+* **avatar:** default.eikon → braille 48×24 [@16fps](https://github.com/16fps) ([dbba5e2](https://github.com/liftaris/herm/commit/dbba5e2fa556445479f8aabb59f0fdf3b72b7fb3))
+* **avatar:** intro→loop/hold driver with loop_from ([dd3f141](https://github.com/liftaris/herm/commit/dd3f14169169b78c56b7f539dc07889dac602789))
+* **avatar:** wire listening state; error plays once then falls to idle ([43a0c7b](https://github.com/liftaris/herm/commit/43a0c7bc2d903780c692b519d7d79727d1a199b4))
+
 # [1.0.0-dev.3](https://github.com/liftaris/herm/compare/v1.0.0-dev.2...v1.0.0-dev.3) (2026-05-03)
 
 
