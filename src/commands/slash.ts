@@ -27,8 +27,19 @@ export type SlashCommand = {
 /**
  * Names of purely client-side commands — intercepted before gateway dispatch.
  * These are always treated as local regardless of what the gateway returns.
+ * Anything that must act on the *live* gateway session (not the slash-worker
+ * subprocess) belongs here — see docs/slash-parity-audit.md.
  */
-export const LOCAL_NAMES = new Set(["clear", "new", "theme", "help", "keys", "logs", "eikon", "title", "rollback", "save", "history", "status", "usage", "profile", "steer", "reload", "reload-mcp", "chafa", "splash"])
+export const LOCAL_NAMES = new Set([
+  "clear", "new", "theme", "help", "keys", "logs", "eikon", "title",
+  "rollback", "save", "history", "status", "usage", "profile", "steer",
+  "reload", "reload-mcp", "chafa", "splash",
+  // parity: session-mutating commands the slash-worker can't service
+  "resume", "branch", "compress", "undo", "retry", "model", "quit",
+  "copy", "paste", "image", "background", "voice", "mouse", "redraw", "queue",
+  // Ink-only UI toggles — local no-op with a note
+  "compact", "setup",
+])
 
 /**
  * Descriptions for locally-handled commands. Used to render them in the

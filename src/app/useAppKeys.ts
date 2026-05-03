@@ -4,6 +4,17 @@
 
 import { useKeyboard, useRenderer } from "@opentui/react"
 import { resolveRenderLib, RGBA, type ParsedKey } from "@opentui/core"
+
+/** Wipe the physical screen and force a full re-emit on next frame. */
+export function redraw(renderer: {
+  rendererPtr: unknown
+  currentRenderBuffer: { clear(c: unknown): void }
+  requestRender(): void
+}) {
+  resolveRenderLib().clearTerminal(renderer.rendererPtr as never)
+  renderer.currentRenderBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+  renderer.requestRender()
+}
 import { useRef, useEffect, type RefObject } from "react"
 import { copySelection } from "../utils/clipboard"
 import { editInEditor } from "../utils/editor"
@@ -96,9 +107,7 @@ export function useAppKeys(o: Opts) {
       // Calling lib.render(ptr, true) directly would bypass the loop
       // and rot the native buffer-swap state, so go through
       // requestRender() instead.
-      resolveRenderLib().clearTerminal(renderer.rendererPtr)
-      renderer.currentRenderBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
-      renderer.requestRender()
+      redraw(renderer)
       key.stopPropagation()
       return
     }

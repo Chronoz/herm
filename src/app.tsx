@@ -7,6 +7,7 @@ import { hasInterp, interpolate } from "./utils/interpolate"
 import { GatewayProvider, useGateway, useGatewayEvent, type Gateway } from "./app/gateway"
 import type { GatewayEvent, SessionInfo, TranscriptMessage, ImageAttachResponse } from "./utils/gateway-types"
 import type { Message } from "./types/message"
+import { text as msgText } from "./types/message"
 import { CLOUD_MIN } from "./components/chat/ThoughtCloud"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
@@ -24,7 +25,7 @@ import { Toolsets } from "./tabs/Toolsets"
 import { Env } from "./tabs/Env"
 import { Kanban } from "./tabs/Kanban"
 import type { Usage } from "./types/message"
-import { copySelection } from "./utils/clipboard"
+import { copySelection, copy as clipCopy } from "./utils/clipboard"
 import { ThemeProvider, useTheme } from "./theme"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { ToastProvider, useToast } from "./ui/toast"
@@ -58,7 +59,7 @@ import { turnReducer, initialTurn, transcriptToMessages } from "./app/turnReduce
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
 import { SkinProvider, deriveSkin, type SkinState } from "./app/skin"
-import { useAppKeys } from "./app/useAppKeys"
+import { useAppKeys, redraw } from "./app/useAppKeys"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
 import type { Launch } from "./app/launch"
@@ -320,6 +321,11 @@ const AppInner = ({ launch }: { launch: Launch }) => {
   }, [gw, toast])
 
   // ── Slash dispatch ────────────────────────────────────────────────
+  // `slash` and `send` reference each other (skill/alias dispatch needs
+  // to submit a turn; typed `/cmd` in send() resolves via slash). The
+  // cycle is broken with a forward ref — same shape as upstream Ink's
+  // slashRef/submitRef pair.
+  const sendRef = useRef<(raw: string) => void>(() => {})
   const slash = useCallback((c: SlashCommand, arg = "") => {
     if (c.target === "local") {
       switch (c.name) {
@@ -341,17 +347,101 @@ const AppInner = ({ launch }: { launch: Launch }) => {
           openChafa(dialog, arg.trim())
           return
         case "splash": summoned.current = true; setSplash(true); return
-        case "steer":
-          openTextPrompt(dialog, { title: "Steer", label: "Note to inject on next tool result" })
-            .then(text => {
-              if (!text) return
-              gw.request<{ accepted: boolean }>("session.steer", { text })
-                .then(r => toast.show(r.accepted
-                  ? { variant: "success", message: "Queued — lands on next tool result" }
-                  : { variant: "info", message: "No turn running; send as a normal message" }))
-                .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-            })
+        // ── parity: session-mutating (slash-worker can't service these) ──
+        case "resume":
+          if (arg) { void switchSession(arg); return }
+          goToTab(TAB_SLASH.sessions); return
+        case "branch":
+          session.branch(arg || undefined).then(id => id
+            ? void switchSession(id)
+            : toast.show({ variant: "error", message: "branch failed" }))
           return
+        case "compress": void runCompress(); return
+        case "undo":
+          session.undo().then(() =>
+            gw.request<{ messages: TranscriptMessage[] }>("session.history")
+              .then(r => dispatch({ kind: "load", messages: transcriptToMessages(r.messages ?? []) }))
+              .catch(() => {}))
+          return
+        case "retry": {
+          const last = [...turn.messages].reverse().find(m => m.role === "user")
+          if (!last) { toast.show({ variant: "info", message: "nothing to retry" }); return }
+          void rewind(last).then(() => sendRef.current(msgText(last)))
+          return
+        }
+        case "model":
+          if (!arg) { openModelPicker(dialog, gw); return }
+          gw.request<{ value?: string; warning?: string }>("config.set",
+            { key: "model", value: arg })
+            .then(r => {
+              if (r.warning) toast.show({ variant: "warning", message: r.warning })
+              dispatch({ kind: "system", text: `model → ${r.value ?? arg}` })
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        case "quit": renderer.destroy(); process.exit(0); return
+        case "queue":
+          if (!arg) { dispatch({ kind: "system", text: `${queue.length} queued` }); return }
+          setQueue(q => [...q, arg]); return
+        case "copy": {
+          const all = turn.messages.filter(m => m.role === "assistant")
+          const n = arg ? Math.min(Math.max(1, parseInt(arg, 10) || 0), all.length) : all.length
+          const m = all[n - 1]
+          if (!m) { toast.show({ variant: "info", message: "nothing to copy" }); return }
+          const body = msgText(m)
+          void clipCopy(body)
+          toast.show({ variant: "success", message: `copied ${body.length} chars` })
+          return
+        }
+        case "paste": attachClipboard(); return
+        case "image":
+          if (!arg) { toast.show({ variant: "info", message: "usage: /image <path>" }); return }
+          gw.request<ImageAttachResponse>("image.attach", { path: arg })
+            .then(r => r.attached
+              ? setAttachments(a => [...a, r])
+              : toast.show({ variant: "warning", message: r.message ?? "attach failed" }))
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        case "background":
+          if (!arg) { toast.show({ variant: "info", message: "usage: /background <prompt>" }); return }
+          gw.request<{ task_id?: string }>("prompt.background", { text: arg })
+            .then(r => toast.show(r.task_id
+              ? { variant: "success", message: `background ${r.task_id} started` }
+              : { variant: "error", message: "background start failed" }))
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        case "voice":
+          gw.request<{ enabled?: boolean; tts?: boolean }>("voice.toggle",
+            { action: (arg || "status").toLowerCase() })
+            .then(r => dispatch({ kind: "system",
+              text: `voice ${r.enabled ? "on" : "off"}${r.tts ? " · tts on" : ""}` }))
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        case "mouse": {
+          const want = arg === "on" ? true : arg === "off" ? false : !renderer.useMouse
+          renderer.useMouse = want
+          preferences.set("mouse", want)
+          toast.show({ variant: "info", message: `mouse ${want ? "on" : "off"}` })
+          return
+        }
+        case "redraw": redraw(renderer); return
+        case "compact":
+        case "setup":
+          dispatch({ kind: "system",
+            text: `/${c.name} is an Ink-TUI command and has no effect in herm` })
+          return
+        case "steer": {
+          const fire = (text: string) =>
+            gw.request<{ accepted: boolean }>("session.steer", { text })
+              .then(r => toast.show(r.accepted
+                ? { variant: "success", message: "Queued — lands on next tool result" }
+                : { variant: "info", message: "No turn running; send as a normal message" }))
+              .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          if (arg) { void fire(arg); return }
+          openTextPrompt(dialog, { title: "Steer", label: "Note to inject on next tool result" })
+            .then(text => { if (text) void fire(text) })
+          return
+        }
         case "reload-mcp": {
           // Reloading MCP invalidates prompt cache (tool schemas are baked into
           // the system prompt), so the next turn re-sends full input tokens.
@@ -395,12 +485,37 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     if (c.target !== "gateway" || !ready || turn.streaming) return
     const jump = TAB_SLASH[c.name]
     if (jump !== undefined && !arg) { goToTab(jump); return }
+    // slash.exec runs in a persistent HermesCLI subprocess; commands that
+    // it rejects (skills, quick_commands, plugins, pending-input cmds)
+    // fall through to command.dispatch, which returns a typed payload.
+    // Upstream Ink does the same (see createSlashHandler.ts).
     const full = `/${c.name}${arg ? " " + arg : ""}`
     dispatch({ kind: "user", text: full })
-    gw.request<{ output?: string }>("slash.exec", { command: full })
-      .then(res => { if (res?.output) dispatch({ kind: "system", text: res.output }) })
-      .catch(() => { gw.request("prompt.submit", { text: full }).catch(() => {}) })
-  }, [ready, turn.streaming, dialog, themeCtx, newSession, gw, pickEikon, editTitle, applyTitle, toast, info, sid])
+    gw.request<{ output?: string; warning?: string }>("slash.exec", { command: full })
+      .then(res => {
+        if (res?.warning) dispatch({ kind: "system", text: `⚠ ${res.warning}` })
+        if (res?.output) dispatch({ kind: "system", text: res.output })
+      })
+      .catch(() => {
+        type Dispatch = { type?: string; output?: string; target?: string; message?: string; name?: string }
+        gw.request<Dispatch>("command.dispatch", { name: c.name, arg })
+          .then(d => {
+            if (d.type === "exec" || d.type === "plugin")
+              return dispatch({ kind: "system", text: d.output || "(no output)" })
+            if (d.type === "alias" && d.target)
+              return void sendRef.current(`/${d.target}${arg ? " " + arg : ""}`)
+            if ((d.type === "skill" || d.type === "send") && d.message) {
+              if (d.type === "skill")
+                dispatch({ kind: "system", text: `⚡ loading skill: ${d.name ?? c.name}` })
+              return void sendRef.current(d.message)
+            }
+            dispatch({ kind: "system", text: `/${c.name}: unknown` })
+          })
+          .catch((e: Error) => dispatch({ kind: "system", text: `error: ${e.message}` }))
+      })
+  }, [ready, turn.streaming, turn.messages, dialog, themeCtx, newSession, gw, pickEikon, editTitle,
+      applyTitle, toast, info, sid, switchSession, session, runCompress, rewind, renderer,
+      attachClipboard, goToTab, queue.length])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback(async (raw: string) => {
@@ -412,7 +527,6 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     const m = raw.match(/^\/(\S+)(?:\s+([\s\S]*))?$/)
     if (m) {
       const [, name, arg = ""] = m
-      if (name === "queue" || name === "q") return setQueue(q => [...q, arg.trim()])
       const r = resolveSlash(cmdsRef.current, name)
       if ("hit" in r) return slash(r.hit, arg.trim())
       if ("ambiguous" in r) {
@@ -449,7 +563,8 @@ const AppInner = ({ launch }: { launch: Launch }) => {
     setAttachments([])
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
-  }, [gw, slash, applyTitle, attachments])
+  }, [gw, slash, attachments])
+  sendRef.current = send
 
   // Dismiss-on-send wrapper. Also the single gate for the splash's
   // "continue last?" prompt: empty-Enter while it's visible resumes
