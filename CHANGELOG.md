@@ -1,3 +1,29 @@
+# [1.0.0-dev.3](https://github.com/liftaris/herm/compare/v1.0.0-dev.2...v1.0.0-dev.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* **analytics:** reserve bottom space for Tools/Sources, prevent overflow past TabShell ([44fbe18](https://github.com/liftaris/herm/commit/44fbe18d756916920fb1f40522e3b2708524efcc))
+* **chat:** show splash during session-switch load, not empty-chat welcome ([b0286ff](https://github.com/liftaris/herm/commit/b0286ffdc087daa921ee15b0a72c5f3d94cc7d03))
+* **control:** derive DANGEROUS tab table from TAB_NAMES, not hardcoded index ([b3a3901](https://github.com/liftaris/herm/commit/b3a390199115e91c685c1f6362c6c32686d26eea)), closes [#2](https://github.com/liftaris/herm/issues/2)
+
+
+### Features
+
+* **goal:** /goal slash — drive GoalManager via shell.exec ([a6bf9af](https://github.com/liftaris/herm/commit/a6bf9af9825bd3675af0731c17de93d543045f5f))
+* **goal:** onGoalDone hook — countdown-confirm suspend on goal complete ([f97eb76](https://github.com/liftaris/herm/commit/f97eb76ea79238cbeb07972322abeeea5c51f303))
+* **profile:** in-TUI switch — respawn gateway under new HERMES_HOME ([ecf4a56](https://github.com/liftaris/herm/commit/ecf4a56639aca205d2c8f7a43cf63fe6ebd11067))
+* **profile:** rehome() — rebind all HERMES_HOME readers at runtime ([4b40694](https://github.com/liftaris/herm/commit/4b406940fd5bec5a09e1e4e7315501a1eba4d84f))
+* **profile:** surface per-profile theme/avatar/keybinds in Agents detail ([d631004](https://github.com/liftaris/herm/commit/d631004e18bb14691b1198a6e3d9dd1e7e4816c3))
+* **splash:** show Loading… indicator while session-info or resume in flight ([a664e63](https://github.com/liftaris/herm/commit/a664e63b509e588c366d91501c61b2d05c66c96a))
+* **splash:** show splash + Loading… on cold-boot -c resume ([e978f5c](https://github.com/liftaris/herm/commit/e978f5c1e2464801b39aafd148a9df20de39ec11))
+
+
+### Performance Improvements
+
+* **analytics:** stop blocking render; stage + cache behind renderer.idle() ([d7f1466](https://github.com/liftaris/herm/commit/d7f1466f8a84d92cecc7c6c090fc5b7a90cd7f80))
+* **io:** move bun:sqlite reads to a worker — tabs never block the render loop ([d60a0d3](https://github.com/liftaris/herm/commit/d60a0d3dbf84aed3d8224b9052fa9abdc62eb3b0))
+
 # [1.0.0-dev.2](https://github.com/liftaris/herm/compare/v1.0.0-dev.1...v1.0.0-dev.2) (2026-05-03)
 
 
