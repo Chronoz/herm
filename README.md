@@ -14,21 +14,21 @@ Herm is a tabbed, mouse-aware TUI built with [OpenTUI](https://github.com/anomal
 
 ## Install
 
-Herm needs a working [Hermes Agent](https://github.com/NousResearch/hermes-agent) install. 
+Herm needs a working [Hermes Agent](https://github.com/NousResearch/hermes-agent) install and [Bun](https://bun.sh).
+
+```bash
+bun add -g herm-tui        # stable
+bun add -g herm-tui@next   # bleeding edge (every dev push)
+herm
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/liftaris/herm.git
-cd herm
-bun install
+cd herm && bun install
 bun run src/index.tsx
 ```
-
-<!-- bunx path — re-verify from /tmp after pushing v0.1.0 (opentui now exact-pinned, prior segfault should be gone)
-Or straight from GitHub (pin a tag for reproducibility):
-
-```bash
-bunx github:liftaris/herm#v0.1.0
-``` -->
 
 Herm looks for `~/.hermes`. If yours lives elsewhere, set `HERMES_HOME`. See [`.env.example`](./.env.example) for rarely-needed overrides.
 

@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: write       # push tags + release commit
+  issues: write         # semantic-release comments on released issues
+  pull-requests: write
+  id-token: write       # npm --provenance
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Don't recurse on the release commit the @semantic-release/git
+    # plugin pushes back. `[skip ci]` in its message also gates this at
+    # the Actions layer, but belt-and-suspenders for forks that strip it.
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0         # semantic-release needs full history + tags
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # semantic-release itself and @semantic-release/npm run `npm`, not
+      # bun, so a node toolchain still has to be present. setup-bun ships
+      # node, but registry auth for provenance wants setup-node's writer.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - run: bun install --frozen-lockfile
+
+      - name: typecheck (src/ only)
+        run: bunx tsc --noEmit 2>&1 | tee /tmp/tsc; ! grep -q '^src/' /tmp/tsc
+
+      - run: bun test
+
+      - name: semantic-release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
