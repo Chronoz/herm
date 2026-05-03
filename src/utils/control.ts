@@ -62,16 +62,24 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   })
 
-// Keys that can mutate state on specific tabs
-const DANGEROUS_KEYS: Record<number, Set<string>> = {
-  1: new Set(["return"]),           // Chat: Enter sends message
-  3: new Set(["d", "delete", "return"]), // Sessions: d=delete, Enter=switch session
-  8: new Set(["space", "return", "h", "l", "]", "[", "ctrl+s"]), // Config: toggles, edits, save
-  9: new Set(["return", "space", "d", "delete"]), // Env: potential mutations
+// Keys that can mutate state on specific tabs. Derived from TAB_NAMES at
+// module load — hardcoded indexes drift every time a tab is inserted.
+// Throws if a named tab is missing so the app refuses to start with a
+// broken safety table rather than silently leaving Chat's Enter unguarded.
+const idx = (name: string) => {
+  const n = TAB_NAMES.indexOf(name)
+  if (n < 0) throw new Error(`control.ts DANGEROUS: tab '${name}' missing from TAB_NAMES`)
+  return n
+}
+const DANGEROUS: Record<number, Set<string>> = {
+  [idx("Chat")]:     new Set(["return"]),                                     // Enter sends message
+  [idx("Sessions")]: new Set(["d", "delete", "return"]),                      // d=delete, Enter=switch
+  [idx("Config")]:   new Set(["space", "return", "h", "l", "]", "[", "ctrl+s"]), // toggles, edits, save
+  [idx("Env")]:      new Set(["return", "space", "d", "delete"]),             // potential mutations
 }
 
-function isDangerous(tab: number, keyName: string, ctrl: boolean): boolean {
-  const set = DANGEROUS_KEYS[tab]
+export function isDangerous(tab: number, keyName: string, ctrl: boolean): boolean {
+  const set = DANGEROUS[tab]
   if (!set) return false
   const id = ctrl ? `ctrl+${keyName}` : keyName
   return set.has(id)
