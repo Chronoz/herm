@@ -3,6 +3,7 @@ import { act } from "react"
 import { mount, until } from "./harness"
 import { openStateDb } from "./fixtures/state-db"
 import { resetDb } from "../src/utils/sessions-db"
+import { loadTips, splitTip } from "../src/utils/tips"
 
 // Sentinel for "splash frame is painted". Must be splash-unique because the
 // sidebar avatar also renders braille — can't key on /[⠁-⣿]/ anymore.
@@ -31,6 +32,40 @@ describe("splash (herm-tji.2)", () => {
     expect(t.frame()).toMatch(/v\d+\.\d+\.\d+/)       // sub-line
     expect(t.frame()).toContain("Ready")              // composer still live
     expect(t.frame()).not.toContain("continue \"")     // no lastReal
+    t.destroy()
+  })
+
+  test("tip pinned at bottom of inner window; click cycles", async () => {
+    seed()
+    const t = await mount({ launch: { mode: "new", splash: true } })
+    await until(t, () => splashUp(t.frame()))
+    // Rendered form (splitTip strips backticks from code spans).
+    const tips = loadTips().map(s => splitTip(s).map(p => p.t).join(""))
+    const rows = t.frame().split("\n")
+    const tipRow = rows.findIndex(l => tips.some(tp => l.includes(tp)))
+    expect(tipRow).toBeGreaterThan(-1)
+    // Below the centered prompt, above the B-border band — i.e. bottom
+    // of the inner window, not floating mid-column.
+    const promptRow = rows.findIndex(l => l.includes("[enter]"))
+    const bTop = rows.findIndex(l => l.includes("⡿⣻⣖"))  // B[0] sentinel
+    expect(tipRow).toBeGreaterThan(promptRow)
+    expect(tipRow).toBe(bTop - 1)
+
+    // Click the tip text → cycles to a different tip.
+    const before = rows[tipRow]
+    const hit = tips.find(tp => before.includes(tp))!
+    await act(async () => { await t.mouse.pressDown(before.indexOf(hit) + 2, tipRow) })
+    await until(t, () => t.frame().split("\n")[tipRow] !== before)
+    expect(tips.some(tp => t.frame().includes(tp))).toBe(true)
+    t.destroy()
+  })
+
+  test("short terminal → tip suppressed (inner.h < 14)", async () => {
+    seed()
+    // h=28 → content region ≈23 → inner.h = 23 - 2*ch = 7 < 14
+    const t = await mount({ launch: { mode: "new", splash: true }, height: 28 })
+    await until(t, () => splashUp(t.frame()))
+    expect(loadTips().some(tp => t.frame().includes(tp))).toBe(false)
     t.destroy()
   })
 
