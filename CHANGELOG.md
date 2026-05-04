@@ -1,3 +1,17 @@
+# [1.0.0-dev.7](https://github.com/liftaris/herm/compare/v1.0.0-dev.6...v1.0.0-dev.7) (2026-05-04)
+
+
+### Bug Fixes
+
+* **composer:** slash/@ popover live while streaming; queue gateway slash mid-stream ([b6f3428](https://github.com/liftaris/herm/commit/b6f34280036eb811fba66f4f8c8dec1764bb5a15))
+
+
+### Features
+
+* **keys:** <leader>u flush queue mid-stream; drop session.undo chord ([57c8464](https://github.com/liftaris/herm/commit/57c8464d3fcb98454933bc834bd669bb63d1d5d4))
+* **keys:** Ctrl+C oc-parity (clear buffer / quit); resume banner on exit ([4426937](https://github.com/liftaris/herm/commit/442693743c93a463361f62e24f3946d8a0ea448c))
+* **splash:** tip at bottom of inner window (click to cycle) ([2402071](https://github.com/liftaris/herm/commit/2402071d388d07e7483c1efa811b33a0fbdccaae))
+
 # [1.0.0-dev.6](https://github.com/liftaris/herm/compare/v1.0.0-dev.5...v1.0.0-dev.6) (2026-05-04)
 
 
