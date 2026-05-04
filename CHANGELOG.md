@@ -1,3 +1,23 @@
+# [1.1.0](https://github.com/liftaris/herm/compare/v1.0.0...v1.1.0) (2026-05-04)
+
+
+### Bug Fixes
+
+* **composer:** slash/@ popover live while streaming; queue gateway slash mid-stream ([b6f3428](https://github.com/liftaris/herm/commit/b6f34280036eb811fba66f4f8c8dec1764bb5a15))
+* **interrupt:** hold drain gate open until next send ([8d0463c](https://github.com/liftaris/herm/commit/8d0463cb71de6900c043ddba39c289ba6aaacfe8))
+
+
+### Features
+
+* **avatar:** bundled eikons + skin-matched auto-load (herm-tji.4 §A/§C) ([17c2cad](https://github.com/liftaris/herm/commit/17c2cad6a184b79461f45cab8c84e4107ee7b5ee))
+* **avatar:** default.eikon → braille 48×24 [@16fps](https://github.com/16fps) ([dbba5e2](https://github.com/liftaris/herm/commit/dbba5e2fa556445479f8aabb59f0fdf3b72b7fb3))
+* **avatar:** intro→loop/hold driver with loop_from ([dd3f141](https://github.com/liftaris/herm/commit/dd3f14169169b78c56b7f539dc07889dac602789))
+* **avatar:** wire listening state; error plays once then falls to idle ([43a0c7b](https://github.com/liftaris/herm/commit/43a0c7bc2d903780c692b519d7d79727d1a199b4))
+* **keys:** <leader>u flush queue mid-stream; drop session.undo chord ([57c8464](https://github.com/liftaris/herm/commit/57c8464d3fcb98454933bc834bd669bb63d1d5d4))
+* **keys:** Ctrl+C oc-parity (clear buffer / quit); resume banner on exit ([4426937](https://github.com/liftaris/herm/commit/442693743c93a463361f62e24f3946d8a0ea448c))
+* **slash:** /skin — hermes skin + herm theme + bundled eikon in one ([3c78aa8](https://github.com/liftaris/herm/commit/3c78aa8a872681d4f381bca25953c92bbf558411))
+* **splash:** tip at bottom of inner window (click to cycle) ([2402071](https://github.com/liftaris/herm/commit/2402071d388d07e7483c1efa811b33a0fbdccaae))
+
 # 1.0.0 (2026-05-03)
 
 
