@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "charizardBgDark": "#2B160E",
+    "charizardPanelDark": "#371C12",
+    "charizardElemDark": "#422216",
+    "charizardTextDark": "#FFF0D4",
+    "charizardMutedDark": "#7A3511",
+    "charizardPrimaryDark": "#FFD39A",
+    "charizardAccentDark": "#F29C38",
+    "charizardSecondaryDark": "#FFD39A",
+    "charizardBorderDark": "#C75B1D",
+    "charizardBorderSubtleDark": "#6C4724",
+    "charizardBgLight": "#F8F8F8",
+    "charizardPanelLight": "#EFEFEF",
+    "charizardElemLight": "#E4E4E4",
+    "charizardTextLight": "#1A1A1A",
+    "charizardMutedLight": "#5A5A5A",
+    "charizardPrimaryLight": "#E78200",
+    "charizardAccentLight": "#AE630B",
+    "charizardSecondaryLight": "#E78200",
+    "charizardBorderLight": "#D0D0D0",
+    "charizardBorderSubtleLight": "#E0E0E0",
+    "charizardOkDark": "#4caf50",
+    "charizardErrorDark": "#ef5350",
+    "charizardWarnDark": "#ffa726",
+    "charizardOkLight": "#4caf50",
+    "charizardErrorLight": "#ef5350",
+    "charizardWarnLight": "#A56200"
+  },
+  "theme": {
+    "primary": {
+      "dark": "charizardPrimaryDark",
+      "light": "charizardPrimaryLight"
+    },
+    "secondary": {
+      "dark": "charizardSecondaryDark",
+      "light": "charizardSecondaryLight"
+    },
+    "accent": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "error": {
+      "dark": "charizardErrorDark",
+      "light": "charizardErrorLight"
+    },
+    "warning": {
+      "dark": "charizardWarnDark",
+      "light": "charizardWarnLight"
+    },
+    "success": {
+      "dark": "charizardOkDark",
+      "light": "charizardOkLight"
+    },
+    "info": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "text": {
+      "dark": "charizardTextDark",
+      "light": "charizardTextLight"
+    },
+    "textMuted": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "background": {
+      "dark": "charizardBgDark",
+      "light": "charizardBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "charizardPanelDark",
+      "light": "charizardPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "charizardElemDark",
+      "light": "charizardElemLight"
+    },
+    "border": {
+      "dark": "charizardBorderDark",
+      "light": "charizardBorderLight"
+    },
+    "borderActive": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "charizardBorderSubtleDark",
+      "light": "charizardBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "charizardOkDark",
+      "light": "charizardOkLight"
+    },
+    "diffRemoved": {
+      "dark": "charizardErrorDark",
+      "light": "charizardErrorLight"
+    },
+    "diffContext": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "charizardOkDark",
+      "light": "charizardOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "charizardErrorDark",
+      "light": "charizardErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#31321A",
+      "light": "#DEEDDF"
+    },
+    "diffRemovedBg": {
+      "dark": "#4E211A",
+      "light": "#F7DFDF"
+    },
+    "diffContextBg": {
+      "dark": "charizardPanelDark",
+      "light": "charizardPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#2E2515",
+      "light": "#EAF2EB"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#3F1C15",
+      "light": "#F7EBEB"
+    },
+    "markdownText": {
+      "dark": "charizardTextDark",
+      "light": "charizardTextLight"
+    },
+    "markdownHeading": {
+      "dark": "charizardPrimaryDark",
+      "light": "charizardPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "charizardSecondaryDark",
+      "light": "charizardSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "charizardSecondaryDark",
+      "light": "charizardSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "charizardPrimaryDark",
+      "light": "charizardPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "charizardBorderDark",
+      "light": "charizardBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "charizardTextDark",
+      "light": "charizardTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "markdownImage": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "charizardTextDark",
+      "light": "charizardTextLight"
+    },
+    "syntaxComment": {
+      "dark": "charizardMutedDark",
+      "light": "charizardMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "charizardPrimaryDark",
+      "light": "charizardPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "charizardTextDark",
+      "light": "charizardTextLight"
+    },
+    "syntaxString": {
+      "dark": "charizardOkDark",
+      "light": "charizardOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "charizardAccentDark",
+      "light": "charizardAccentLight"
+    },
+    "syntaxType": {
+      "dark": "charizardSecondaryDark",
+      "light": "charizardSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "charizardSecondaryDark",
+      "light": "charizardSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "charizardTextDark",
+      "light": "charizardTextLight"
+    }
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "aresBgDark": "#2A1212",
+    "aresPanelDark": "#351717",
+    "aresElemDark": "#3F1B1B",
+    "aresTextDark": "#F1E6CF",
+    "aresMutedDark": "#6E584B",
+    "aresPrimaryDark": "#C7A96B",
+    "aresAccentDark": "#DD4A3A",
+    "aresSecondaryDark": "#C7A96B",
+    "aresBorderDark": "#9F1C1C",
+    "aresBorderSubtleDark": "#6E584B",
+    "aresBgLight": "#F8F8F8",
+    "aresPanelLight": "#EFEFEF",
+    "aresElemLight": "#E4E4E4",
+    "aresTextLight": "#1A1A1A",
+    "aresMutedLight": "#5A5A5A",
+    "aresPrimaryLight": "#8D7035",
+    "aresAccentLight": "#DD4A3A",
+    "aresSecondaryLight": "#8D7035",
+    "aresBorderLight": "#D0D0D0",
+    "aresBorderSubtleLight": "#E0E0E0",
+    "aresOkDark": "#4caf50",
+    "aresErrorDark": "#ef5350",
+    "aresWarnDark": "#ffa726",
+    "aresOkLight": "#4caf50",
+    "aresErrorLight": "#ef5350",
+    "aresWarnLight": "#A56200"
+  },
+  "theme": {
+    "primary": {
+      "dark": "aresPrimaryDark",
+      "light": "aresPrimaryLight"
+    },
+    "secondary": {
+      "dark": "aresSecondaryDark",
+      "light": "aresSecondaryLight"
+    },
+    "accent": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "error": {
+      "dark": "aresErrorDark",
+      "light": "aresErrorLight"
+    },
+    "warning": {
+      "dark": "aresWarnDark",
+      "light": "aresWarnLight"
+    },
+    "success": {
+      "dark": "aresOkDark",
+      "light": "aresOkLight"
+    },
+    "info": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "text": {
+      "dark": "aresTextDark",
+      "light": "aresTextLight"
+    },
+    "textMuted": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "background": {
+      "dark": "aresBgDark",
+      "light": "aresBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "aresPanelDark",
+      "light": "aresPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "aresElemDark",
+      "light": "aresElemLight"
+    },
+    "border": {
+      "dark": "aresBorderDark",
+      "light": "aresBorderLight"
+    },
+    "borderActive": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "aresBorderSubtleDark",
+      "light": "aresBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "aresOkDark",
+      "light": "aresOkLight"
+    },
+    "diffRemoved": {
+      "dark": "aresErrorDark",
+      "light": "aresErrorLight"
+    },
+    "diffContext": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "aresOkDark",
+      "light": "aresOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "aresErrorDark",
+      "light": "aresErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#302E1D",
+      "light": "#DEEDDF"
+    },
+    "diffRemovedBg": {
+      "dark": "#4D1E1D",
+      "light": "#F7DFDF"
+    },
+    "diffContextBg": {
+      "dark": "aresPanelDark",
+      "light": "aresPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#2D2218",
+      "light": "#EAF2EB"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#3E1818",
+      "light": "#F7EBEB"
+    },
+    "markdownText": {
+      "dark": "aresTextDark",
+      "light": "aresTextLight"
+    },
+    "markdownHeading": {
+      "dark": "aresPrimaryDark",
+      "light": "aresPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "aresSecondaryDark",
+      "light": "aresSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "aresSecondaryDark",
+      "light": "aresSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "aresPrimaryDark",
+      "light": "aresPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "aresBorderDark",
+      "light": "aresBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "aresTextDark",
+      "light": "aresTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "markdownImage": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "aresTextDark",
+      "light": "aresTextLight"
+    },
+    "syntaxComment": {
+      "dark": "aresMutedDark",
+      "light": "aresMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "aresPrimaryDark",
+      "light": "aresPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "aresTextDark",
+      "light": "aresTextLight"
+    },
+    "syntaxString": {
+      "dark": "aresOkDark",
+      "light": "aresOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "aresAccentDark",
+      "light": "aresAccentLight"
+    },
+    "syntaxType": {
+      "dark": "aresSecondaryDark",
+      "light": "aresSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "aresSecondaryDark",
+      "light": "aresSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "aresTextDark",
+      "light": "aresTextLight"
+    }
+  }
+}

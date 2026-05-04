@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "defaultBgDark": "#1a1a2e",
+    "defaultPanelDark": "#202038",
+    "defaultElemDark": "#252542",
+    "defaultTextDark": "#FFF8DC",
+    "defaultMutedDark": "#B8860B",
+    "defaultPrimaryDark": "#FFD700",
+    "defaultAccentDark": "#FFBF00",
+    "defaultSecondaryDark": "#DAA520",
+    "defaultBorderDark": "#CD7F32",
+    "defaultBorderSubtleDark": "#8B8682",
+    "defaultBgLight": "#F8F8F8",
+    "defaultPanelLight": "#EFEFEF",
+    "defaultElemLight": "#E4E4E4",
+    "defaultTextLight": "#1A1A1A",
+    "defaultMutedLight": "#5A5A5A",
+    "defaultPrimaryLight": "#4D4000",
+    "defaultAccentLight": "#4D3900",
+    "defaultSecondaryLight": "#785B12",
+    "defaultBorderLight": "#D0D0D0",
+    "defaultBorderSubtleLight": "#E0E0E0",
+    "defaultOkDark": "#4caf50",
+    "defaultErrorDark": "#ef5350",
+    "defaultWarnDark": "#ffa726",
+    "defaultOkLight": "#4caf50",
+    "defaultErrorLight": "#ef5350",
+    "defaultWarnLight": "#A56200"
+  },
+  "theme": {
+    "primary": {
+      "dark": "defaultPrimaryDark",
+      "light": "defaultPrimaryLight"
+    },
+    "secondary": {
+      "dark": "defaultSecondaryDark",
+      "light": "defaultSecondaryLight"
+    },
+    "accent": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "error": {
+      "dark": "defaultErrorDark",
+      "light": "defaultErrorLight"
+    },
+    "warning": {
+      "dark": "defaultWarnDark",
+      "light": "defaultWarnLight"
+    },
+    "success": {
+      "dark": "defaultOkDark",
+      "light": "defaultOkLight"
+    },
+    "info": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "text": {
+      "dark": "defaultTextDark",
+      "light": "defaultTextLight"
+    },
+    "textMuted": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "background": {
+      "dark": "defaultBgDark",
+      "light": "defaultBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "defaultPanelDark",
+      "light": "defaultPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "defaultElemDark",
+      "light": "defaultElemLight"
+    },
+    "border": {
+      "dark": "defaultBorderDark",
+      "light": "defaultBorderLight"
+    },
+    "borderActive": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "defaultBorderSubtleDark",
+      "light": "defaultBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "defaultOkDark",
+      "light": "defaultOkLight"
+    },
+    "diffRemoved": {
+      "dark": "defaultErrorDark",
+      "light": "defaultErrorLight"
+    },
+    "diffContext": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "defaultOkDark",
+      "light": "defaultOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "defaultErrorDark",
+      "light": "defaultErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#233534",
+      "light": "#DEEDDF"
+    },
+    "diffRemovedBg": {
+      "dark": "#402434",
+      "light": "#F7DFDF"
+    },
+    "diffContextBg": {
+      "dark": "defaultPanelDark",
+      "light": "defaultPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#1F2931",
+      "light": "#EAF2EB"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#2F2031",
+      "light": "#F7EBEB"
+    },
+    "markdownText": {
+      "dark": "defaultTextDark",
+      "light": "defaultTextLight"
+    },
+    "markdownHeading": {
+      "dark": "defaultPrimaryDark",
+      "light": "defaultPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "defaultSecondaryDark",
+      "light": "defaultSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "defaultSecondaryDark",
+      "light": "defaultSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "defaultPrimaryDark",
+      "light": "defaultPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "defaultBorderDark",
+      "light": "defaultBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "defaultTextDark",
+      "light": "defaultTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "markdownImage": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "defaultTextDark",
+      "light": "defaultTextLight"
+    },
+    "syntaxComment": {
+      "dark": "defaultMutedDark",
+      "light": "defaultMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "defaultPrimaryDark",
+      "light": "defaultPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "defaultTextDark",
+      "light": "defaultTextLight"
+    },
+    "syntaxString": {
+      "dark": "defaultOkDark",
+      "light": "defaultOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "defaultAccentDark",
+      "light": "defaultAccentLight"
+    },
+    "syntaxType": {
+      "dark": "defaultSecondaryDark",
+      "light": "defaultSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "defaultSecondaryDark",
+      "light": "defaultSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "defaultTextDark",
+      "light": "defaultTextLight"
+    }
+  }
+}
