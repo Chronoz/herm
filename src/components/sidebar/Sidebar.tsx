@@ -16,6 +16,8 @@ import { ContextGauge } from "./ContextGauge"
 
 const WIDTH = 48
 const PAD_L = 12
+// Inner content width after border (2) + padding (2).
+const INNER = WIDTH - 4
 
 const trunc = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + "…"
 
@@ -35,11 +37,11 @@ const Section = memo((props: {
            onMouseOver={() => setHover(true)}
            onMouseOut={() => setHover(false)}>
         <text>
-          <span fg={hover ? theme.hermBodyText : theme.hermBodyTextMuted}>
+          <span fg={hover ? theme.text : theme.textMuted}>
             {props.open ? "▾ " : "▸ "}
           </span>
-          <span fg={theme.hermBodyText}><strong>{props.title}</strong></span>
-          {props.hint ? <span fg={theme.hermBodyTextMuted}>{`  ${props.hint}`}</span> : null}
+          <span fg={theme.text}><strong>{props.title}</strong></span>
+          {props.hint ? <span fg={theme.textMuted}>{`  ${props.hint}`}</span> : null}
         </text>
       </box>
       {props.open ? <box flexDirection="column">{props.children}</box> : null}
@@ -52,10 +54,10 @@ const Row = (props: { label: string; value: string; strong?: boolean }) => {
   return (
     <box height={1}>
       <text>
-        <span fg={theme.hermBodyTextMuted}>{`  ${props.label.padEnd(PAD_L)}`}</span>
+        <span fg={theme.textMuted}>{`  ${props.label.padEnd(PAD_L)}`}</span>
         {props.strong
-          ? <span fg={theme.hermBodyText}><strong>{trunc(props.value, WIDTH - PAD_L - 4)}</strong></span>
-          : <span fg={theme.hermBodyText}>{trunc(props.value, WIDTH - PAD_L - 4)}</span>}
+          ? <span fg={theme.text}><strong>{trunc(props.value, INNER - PAD_L - 2)}</strong></span>
+          : <span fg={theme.text}>{trunc(props.value, INNER - PAD_L - 2)}</span>}
       </text>
     </box>
   )
@@ -97,9 +99,12 @@ export const Sidebar = memo((props: {
         ) : null}
       </box>
 
-      {/* Body (pillar) */}
-      <box padding={1} flexDirection="column" flexGrow={1}
-           backgroundColor={theme.hermBody} overflow="hidden">
+      {/* Body (pillar) — double-border frame in accent, open at the
+          bottom so it reads as the avatar's plinth running off-screen.
+          No bg fill → content uses the normal text palette. */}
+      <box padding={1} flexDirection="column" flexGrow={1} overflow="hidden"
+           border={["top", "left", "right"]} borderStyle="double"
+           borderColor={theme.hermAvatar}>
 
         {/* Flat identity block — Title is primary (always rendered so the
             block doesn't reflow when `/title` fires), then Profile
@@ -110,7 +115,7 @@ export const Sidebar = memo((props: {
              strong={!!props.profile && props.profile !== "default"} />
         <Row label="Model" value={info?.model ?? "—"} />
         {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
-        {branch ? <Row label="Branch" value={rtrunc(branch, WIDTH - PAD_L - 4)} /> : null}
+        {branch ? <Row label="Branch" value={rtrunc(branch, INNER - PAD_L - 2)} /> : null}
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
           const srv = info!.mcp_servers!
@@ -122,11 +127,11 @@ export const Sidebar = memo((props: {
               {srv.map(s => (
                 <box key={s.name} height={1}>
                   <text>
-                    <span fg={theme.hermBodyTextMuted}>{"  "}</span>
-                    <span fg={s.connected ? theme.hermBodyText : theme.hermBodyTextMuted}>
+                    <span fg={theme.textMuted}>{"  "}</span>
+                    <span fg={s.connected ? theme.text : theme.textMuted}>
                       {(s.connected ? "● " : "○ ") + trunc(s.name, 16).padEnd(16)}
                     </span>
-                    <span fg={theme.hermBodyTextMuted}>
+                    <span fg={theme.textMuted}>
                       {s.connected ? ` ${s.transport} · ${s.tools}t` : " failed"}
                     </span>
                   </text>
@@ -137,7 +142,7 @@ export const Sidebar = memo((props: {
         })() : null}
 
         <box flexGrow={1} />
-        <ContextGauge info={info} usage={props.usage} width={WIDTH - 4} />
+        <ContextGauge info={info} usage={props.usage} width={INNER} />
       </box>
     </box>
   )

@@ -79,7 +79,7 @@ export const ContextGauge = memo((props: {
       case "error":   return theme.error
       case "warning": return theme.warning
       case "primary": return theme.primary
-      default:        return theme.hermBodyTextMuted
+      default:        return theme.textMuted
     }
   })()
 
@@ -89,13 +89,13 @@ export const ContextGauge = memo((props: {
   return (
     <box flexDirection="column" marginTop={1}>
       <box height={1}>
-        <text><span fg={theme.hermBodyTextMuted}>{centered(top, props.width)}</span></text>
+        <text><span fg={theme.textMuted}>{centered(top, props.width)}</span></text>
       </box>
       <box height={1}>
         <text><span fg={color}>{centered(`[${bar}]`, props.width)}</span></text>
       </box>
       <box height={1}>
-        <text><span fg={theme.hermBodyTextMuted}>{centered(pct, props.width)}</span></text>
+        <text><span fg={theme.textMuted}>{centered(pct, props.width)}</span></text>
       </box>
     </box>
   )
