@@ -222,6 +222,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
 
   const newSession = useCallback(async () => {
     reset()
+    summoned.current = true
+    setSplash(true)
     try { setSid(await session.create()); sessionStart.current = Date.now() }
     catch {}
   }, [reset, session])
@@ -265,8 +267,13 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     setSid("")
     setInfo(null)
     setSkin(deriveSkin(undefined))
-    setSplash(false)
-    launchRef.current = { mode: "new", splash: false }
+    // Fresh gateway boots behind the splash (same as cold launch); the
+    // respawned process emits gateway.ready → session.info → onSend
+    // dismisses. `summoned` suppresses the continue-prompt — the
+    // outgoing profile's lastReal() is the wrong db.
+    summoned.current = true
+    setSplash(true)
+    launchRef.current = { mode: "new", splash: true }
     toast.show({ variant: "info", message: `Switching to '${name}'…` })
     goToTab(CHAT_TAB)
     gwRestart()

@@ -83,6 +83,32 @@ describe("splash (herm-tji.2)", () => {
     const t = await mount({ launch: { mode: "resume", splash: false } })
     await until(t, () => t.frame().includes("Ready"))
     expect(splashUp(t.frame())).toBe(false)
+    // Old MessageList welcome is gone — empty transcript is just blank.
+    expect(t.frame()).not.toContain("H E R M")
+    expect(t.frame()).not.toContain("Type a message below")
+    t.destroy()
+  })
+
+  test("/new re-raises the braille frame (not the old welcome)", async () => {
+    seed()
+    const t = await mount({ launch: { mode: "new", splash: true } })
+    await until(t, () => splashUp(t.frame()))
+    // Dismiss via first send.
+    await act(async () => { await t.keys.typeText("hi") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => !splashUp(t.frame()))
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "ok" } }))
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/new") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => splashUp(t.frame()))
+    expect(t.frame()).not.toContain("H E R M")
+    // summoned: no continue-prompt, Esc dismisses.
+    expect(t.frame()).not.toContain("continue \"")
+    act(() => t.keys.pressEscape())
+    await until(t, () => !splashUp(t.frame()))
     t.destroy()
   })
 })
