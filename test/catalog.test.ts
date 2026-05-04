@@ -22,6 +22,7 @@ describe("catalog", () => {
     // collision.
     const ALLOW = new Set<string>([
       "session.interrupt|dialog.cancel",
+      "app.exit|input.clear",
     ])
     const found = conflicts(TABLE).filter(c =>
       !ALLOW.has(`${c.a}|${c.b}`) && !ALLOW.has(`${c.b}|${c.a}`))

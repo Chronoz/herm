@@ -31,7 +31,10 @@ const def = (chord: string, desc: string, scope: Scope): Def => ({ chord, desc, 
 export const DEFAULTS = {
   // ── global ──────────────────────────────────────────────────────
   "leader":            def("ctrl+x",               "Leader prefix",                      "global"),
-  "app.exit":          def("ctrl+c",               "Quit (or copy selection)",           "global"),
+  "app.exit":          def("ctrl+c",               "Quit",                               "global"),
+  // Same chord as app.exit, disjoint on buffer-empty. oc parity:
+  // input_clear + app_exit both bind ctrl+c and dispatch sequentially.
+  "input.clear":       def("ctrl+c",               "Clear input",                        "global"),
   "app.suspend":       def("ctrl+z",               "Suspend to shell",                   "global"),
   "app.redraw":        def("ctrl+l",               "Clear & force-repaint terminal",     "global"), // ☨
   "app.sidebar":       def("<leader>b",            "Toggle sidebar",                     "global"),

@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test, spyOn } from "bun:test"
 import { act } from "react"
 import { mount, until, MockGateway } from "./harness"
 import * as prefs from "../src/utils/preferences"
+import * as exit from "../src/app/exit"
 import { DOUBLE_TAB_MS } from "../src/app/useAppKeys"
 import type { GatewayEvent } from "../src/utils/gateway-types"
 
@@ -67,6 +68,31 @@ describe("app", () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Keybinding conflict"))
     expect(t.frame()).toMatch(/R → .*list\.refresh.*agents\.kill|R → .*agents\.kill.*list\.refresh/)
+    t.destroy()
+  })
+
+  test("Ctrl+C: non-empty buffer clears; empty buffer quits (oc parity)", async () => {
+    const q = spyOn(exit, "quit").mockImplementation((() => {}) as never)
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("draft text") })
+    await t.settle()
+    expect(t.frame()).toContain("> draft text")
+
+    act(() => t.keys.pressKey("c", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).not.toContain("draft text")
+    expect(t.frame()).toContain("Message Hermes")
+    expect(q).not.toHaveBeenCalled()
+
+    act(() => t.keys.pressKey("c", { ctrl: true }))
+    await t.settle()
+    expect(q).toHaveBeenCalledTimes(1)
+    // sid arg threaded from session state.
+    expect(q.mock.calls[0]?.[1]).toBe("test-sid")
+
+    q.mockRestore()
     t.destroy()
   })
 

@@ -1,0 +1,31 @@
+// Single exit path. Latched so a double keypress or an exit racing a
+// signal can't re-enter renderer.destroy() (OpenTUI is not idempotent
+// there — second call throws on a disposed native handle).
+//
+// The resume banner writes *after* renderer.destroy() has left the alt
+// screen (?1049l) so it lands on the primary scrollback the user
+// actually returns to. terminal-reset's `exit` hook then flushes the
+// mode-reset blob synchronously on process.exit().
+//
+// Parity: opencode context/exit.tsx — minus onBeforeExit/onExit (no
+// plugin runtime), setTerminalTitle (herm never sets it), and the
+// win32 input-buffer flush (tracked as a bead).
+
+import { writeSync } from "node:fs"
+
+let done = false
+
+export function quit(
+  renderer: { destroy: () => void },
+  sid?: string,
+  title?: string,
+): never {
+  if (done) process.exit(0)
+  done = true
+  renderer.destroy()
+  if (process.stdout.isTTY && sid) {
+    const t = title ? `  —  ${title.slice(0, 60)}` : ""
+    writeSync(1, `\n  continue  herm --resume ${sid}${t}\n\n`)
+  }
+  process.exit(0)
+}

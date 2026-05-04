@@ -61,6 +61,7 @@ import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
 import { SkinProvider, deriveSkin, SKINS, type SkinState } from "./app/skin"
 import { useAppKeys, redraw } from "./app/useAppKeys"
+import { quit } from "./app/exit"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
 import { rehome } from "./home/rehome"
@@ -476,7 +477,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
             })
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
           return
-        case "quit": renderer.destroy(); process.exit(0); return
+        case "quit": quit(renderer, sid, title); return
         case "queue":
           if (!arg) { dispatch({ kind: "system", text: `${queue.length} queued` }); return }
           setQueue(q => [...q, arg]); return
@@ -615,7 +616,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           .catch((e: Error) => dispatch({ kind: "system", text: `error: ${e.message}` }))
       })
   }, [ready, turn.streaming, turn.messages, dialog, themeCtx, newSession, gw, pickEikon, editTitle,
-      applyTitle, toast, info, sid, switchSession, session, runCompress, rewind, renderer,
+      applyTitle, toast, info, sid, title, switchSession, session, runCompress, rewind, renderer,
       attachClipboard, goToTab, queue.length, goalHook, skin])
 
   // ── Send ──────────────────────────────────────────────────────────
@@ -884,6 +885,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     // the head once turn.streaming flips false.
     queued: queue.length,
     onFlushQueue: doInterrupt,
+    onQuit: () => quit(renderer, sid, title),
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,

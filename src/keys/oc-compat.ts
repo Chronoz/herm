@@ -33,6 +33,7 @@ export const OC_TO_HERM: ReadonlyArray<readonly [string, ActionId]> = [
   ["session_interrupt", "session.interrupt"],
   ["session_rename",    "sessions.rename"],
   ["messages_copy",     "reply.copy"],
+  ["input_clear",       "input.clear"],
   ["input_submit",      "input.submit"],
   ["input_newline",     "input.newline"],
   ["input_paste",       "clipboard.attach"],

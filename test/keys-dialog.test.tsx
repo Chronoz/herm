@@ -13,7 +13,7 @@ describe("/keys rebind dialog", () => {
     await until(t, () => t.frame().includes("Keybindings"))
     const f = t.frame()
     expect(f).toContain("Global")
-    expect(f).toContain("Quit (or copy selection)")
+    expect(f).toContain("Quit")
     expect(f).toMatch(/leader = Ctrl\+X/)
 
     // Row 0 = app.exit (first global after leader is filtered). Rebind it.
@@ -52,7 +52,7 @@ describe("/keys rebind dialog", () => {
     await until(t, () => t.frame().includes("Keybindings"))
 
     const f = t.frame()
-    const exitRow = f.split("\n").find(l => l.includes("Quit (or copy"))
+    const exitRow = f.split("\n").find(l => /Ctrl\+C\s+Quit\b/.test(l))
     const palRow = f.split("\n").find(l => l.includes("Command palette"))
     expect(exitRow).toContain("⚠")
     expect(palRow).toContain("⚠")
