@@ -1,3 +1,10 @@
+# [1.0.0-dev.6](https://github.com/liftaris/herm/compare/v1.0.0-dev.5...v1.0.0-dev.6) (2026-05-04)
+
+
+### Features
+
+* **slash:** /skin — hermes skin + herm theme + bundled eikon in one ([3c78aa8](https://github.com/liftaris/herm/commit/3c78aa8a872681d4f381bca25953c92bbf558411))
+
 # [1.0.0-dev.5](https://github.com/liftaris/herm/compare/v1.0.0-dev.4...v1.0.0-dev.5) (2026-05-04)
 
 
