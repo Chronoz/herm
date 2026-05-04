@@ -59,7 +59,7 @@ import * as preferences from "./utils/preferences"
 import { turnReducer, initialTurn, transcriptToMessages } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
-import { SkinProvider, deriveSkin, type SkinState } from "./app/skin"
+import { SkinProvider, deriveSkin, SKINS, type SkinState } from "./app/skin"
 import { useAppKeys, redraw } from "./app/useAppKeys"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
@@ -407,6 +407,32 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           openChafa(dialog, arg.trim())
           return
         case "splash": summoned.current = true; setSplash(true); return
+        case "skin": {
+          const name = arg.trim()
+          if (!name) {
+            dispatch({ kind: "system",
+              text: `skin: ${skin.skin?.name ?? "—"}\n  ${SKINS.join("  ")}` })
+            return
+          }
+          if (!(SKINS as readonly string[]).includes(name)) {
+            toast.show({ variant: "error", message: `unknown skin: ${name}` })
+            return
+          }
+          // Gateway write emits skin.changed → setSkin → eikon effect
+          // re-resolves via bundledEikonPath(name). Clearing the pref
+          // lets that precedence take over; themeCtx.set is a no-op if
+          // no herm theme exists for this skin yet.
+          gw.request<{ value?: string; warning?: string }>("config.set",
+            { key: "skin", value: name })
+            .then(r => {
+              if (r.warning) toast.show({ variant: "warning", message: r.warning })
+              if (themeCtx.has(name)) themeCtx.set(name)
+              preferences.set("eikonPath", undefined)
+              dispatch({ kind: "system", text: `skin → ${name}` })
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        }
         case "goal": {
           const [verb = "", ...rest] = arg.trim().split(/\s+/)
           goalHook.cmd(sid, verb, rest.join(" "))
@@ -586,7 +612,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       })
   }, [ready, turn.streaming, turn.messages, dialog, themeCtx, newSession, gw, pickEikon, editTitle,
       applyTitle, toast, info, sid, switchSession, session, runCompress, rewind, renderer,
-      attachClipboard, goToTab, queue.length, goalHook])
+      attachClipboard, goToTab, queue.length, goalHook, skin])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback(async (raw: string) => {

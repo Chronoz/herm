@@ -7,6 +7,12 @@
 import { createContext, useContext, memo, type ReactNode } from "react"
 import type { GatewaySkin } from "../utils/gateway-types"
 
+/** Hermes built-in skin ids (hermes_cli/skin_engine.py::_BUILTIN_SKINS). */
+export const SKINS = [
+  "default", "ares", "mono", "slate", "daylight",
+  "warm-lightmode", "poseidon", "sisyphus", "charizard",
+] as const
+
 export type SkinState = {
   skin?: GatewaySkin
   /** Preferred display label for the assistant in chat. */
