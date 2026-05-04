@@ -49,6 +49,7 @@ import { readChangelog } from "./utils/hermes-home"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
+import { bundledEikonPath } from "./components/avatar/bundled"
 import { pending as pendingPrompt, type PromptCardHandle } from "./components/chat/PromptCard"
 import type { PromptWire } from "./components/chat/MessageItem"
 import { resolve as resolveSlash, type SlashCommand } from "./commands/slash"
@@ -298,10 +299,14 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       .catch(() => {})
   }, [])
 
+  // Precedence: user pref → bundled eikon matching active skin → baked-in
+  // default (nous-girl via STATE_FRAMES). Skin match never writes the
+  // pref, so a later manual pick sticks across skin changes.
   const eikonPath = preferences.usePref("eikonPath")
   useEffect(() => {
-    if (eikonPath) loadEikon(eikonPath); else setEikon(undefined)
-  }, [eikonPath, loadEikon])
+    const p = eikonPath || bundledEikonPath(skin.skin?.name)
+    if (p) loadEikon(p); else setEikon(undefined)
+  }, [eikonPath, skin.skin?.name, loadEikon])
 
   const pickEikon = useCallback(() => {
     openEikonPicker(dialog, (path) => preferences.set("eikonPath", path))
