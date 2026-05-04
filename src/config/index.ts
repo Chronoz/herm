@@ -1,3 +1,4 @@
+import { SKINS } from "../app/skin"
 import { SCHEMA, SCHEMA_KEYS, type ConfigEffect } from "./schema"
 import { route } from "./lane"
 
@@ -22,7 +23,7 @@ export type Field = {
 const SELECTS: Record<string, string[]> = {
   "terminal.backend": ["local", "docker", "ssh", "modal", "daytona", "singularity", "vercel_sandbox"],
   "tts.provider": ["edge", "elevenlabs", "openai", "neutts", "xai", "mistral"],
-  "display.skin": ["default", "ares", "mono", "slate"],
+  "display.skin": [...SKINS],
   "logging.level": ["DEBUG", "INFO", "WARNING", "ERROR"],
   "agent.reasoning_effort": ["", "none", "minimal", "low", "medium", "high", "xhigh"],
   "display.busy_input_mode": ["queue", "steer", "interrupt"],

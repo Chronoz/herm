@@ -49,6 +49,7 @@ import { readChangelog } from "./utils/hermes-home"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
 import { parseEikon, type ParsedEikon } from "./components/avatar/eikon"
+import { bundledEikonPath } from "./components/avatar/bundled"
 import { pending as pendingPrompt, type PromptCardHandle } from "./components/chat/PromptCard"
 import type { PromptWire } from "./components/chat/MessageItem"
 import { resolve as resolveSlash, type SlashCommand } from "./commands/slash"
@@ -58,8 +59,9 @@ import * as preferences from "./utils/preferences"
 import { turnReducer, initialTurn, transcriptToMessages } from "./app/turnReducer"
 import { mapEvent } from "./app/gatewayEvents"
 import { useSession } from "./app/useSession"
-import { SkinProvider, deriveSkin, type SkinState } from "./app/skin"
+import { SkinProvider, deriveSkin, SKINS, type SkinState } from "./app/skin"
 import { useAppKeys, redraw } from "./app/useAppKeys"
+import { quit } from "./app/exit"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
 import { activeProfileName } from "./utils/hermes-profiles"
 import { rehome } from "./home/rehome"
@@ -139,7 +141,9 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // Client-side interrupt latch: flipped on Esc×2 before the gateway has
   // confirmed the stop. Stream-mutation events still in the stdio pipe
   // (already written by the agent thread before it saw the interrupt
-  // flag) are dropped until the terminal `message.complete` arrives.
+  // flag) are dropped until the NEXT user send — not message.complete —
+  // because run_agent's worker thread can keep emitting after the
+  // monitor thread's InterruptedError has already ended the turn.
   const interrupted = useRef(false)
   const sessionStart = useRef(Date.now())
   const composer = useRef<ComposerHandle>(null)
@@ -149,12 +153,24 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // without re-creating itself on every catalog refresh.
   const cmdsRef = useRef(cmds); cmdsRef.current = cmds
 
-  const agentState: AvatarState = !ready
+  // Transient error pulse — set on any reducer {kind:"error"} or
+  // gateway exit; cleared when the avatar's play-once error clip
+  // reaches hold (onAvatarHold below). `!ready` no longer maps to
+  // error: cold boot is behind the splash, and a dead gateway already
+  // emits "exit" → errorPulse via the listener below.
+  const [errorPulse, setErrorPulse] = useState(false)
+
+  const agentState: AvatarState = errorPulse
     ? "error"
     : turn.toolActive ? "working"
     : turn.streaming && turn.hasContent ? "speaking"
     : turn.streaming ? "thinking"
+    : composing ? "listening"
     : "idle"
+
+  const onAvatarHold = useCallback((s: AvatarState) => {
+    if (s === "error") setErrorPulse(false)
+  }, [])
 
   // ── Thought cloud ─────────────────────────────────────────────────
   // Auto-follows the "non-text" phase of a turn: open while the model is
@@ -195,6 +211,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
 
   // ── Session reset / lifecycle ─────────────────────────────────────
   const reset = useCallback(() => {
+    interrupted.current = false
     dispatch({ kind: "reset" })
     setUsage(undefined)
     setReady(false)
@@ -205,6 +222,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
 
   const newSession = useCallback(async () => {
     reset()
+    summoned.current = true
+    setSplash(true)
     try { setSid(await session.create()); sessionStart.current = Date.now() }
     catch {}
   }, [reset, session])
@@ -248,8 +267,13 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     setSid("")
     setInfo(null)
     setSkin(deriveSkin(undefined))
-    setSplash(false)
-    launchRef.current = { mode: "new", splash: false }
+    // Fresh gateway boots behind the splash (same as cold launch); the
+    // respawned process emits gateway.ready → session.info → onSend
+    // dismisses. `summoned` suppresses the continue-prompt — the
+    // outgoing profile's lastReal() is the wrong db.
+    summoned.current = true
+    setSplash(true)
+    launchRef.current = { mode: "new", splash: true }
     toast.show({ variant: "info", message: `Switching to '${name}'…` })
     goToTab(CHAT_TAB)
     gwRestart()
@@ -283,10 +307,14 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       .catch(() => {})
   }, [])
 
+  // Precedence: user pref → bundled eikon matching active skin → baked-in
+  // default (nous-girl via STATE_FRAMES). Skin match never writes the
+  // pref, so a later manual pick sticks across skin changes.
   const eikonPath = preferences.usePref("eikonPath")
   useEffect(() => {
-    if (eikonPath) loadEikon(eikonPath); else setEikon(undefined)
-  }, [eikonPath, loadEikon])
+    const p = eikonPath || bundledEikonPath(skin.skin?.name)
+    if (p) loadEikon(p); else setEikon(undefined)
+  }, [eikonPath, skin.skin?.name, loadEikon])
 
   const pickEikon = useCallback(() => {
     openEikonPicker(dialog, (path) => preferences.set("eikonPath", path))
@@ -387,6 +415,32 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           openChafa(dialog, arg.trim())
           return
         case "splash": summoned.current = true; setSplash(true); return
+        case "skin": {
+          const name = arg.trim()
+          if (!name) {
+            dispatch({ kind: "system",
+              text: `skin: ${skin.skin?.name ?? "—"}\n  ${SKINS.join("  ")}` })
+            return
+          }
+          if (!(SKINS as readonly string[]).includes(name)) {
+            toast.show({ variant: "error", message: `unknown skin: ${name}` })
+            return
+          }
+          // Gateway write emits skin.changed → setSkin → eikon effect
+          // re-resolves via bundledEikonPath(name). Clearing the pref
+          // lets that precedence take over; themeCtx.set is a no-op if
+          // no herm theme exists for this skin yet.
+          gw.request<{ value?: string; warning?: string }>("config.set",
+            { key: "skin", value: name })
+            .then(r => {
+              if (r.warning) toast.show({ variant: "warning", message: r.warning })
+              if (themeCtx.has(name)) themeCtx.set(name)
+              preferences.set("eikonPath", undefined)
+              dispatch({ kind: "system", text: `skin → ${name}` })
+            })
+            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
+          return
+        }
         case "goal": {
           const [verb = "", ...rest] = arg.trim().split(/\s+/)
           goalHook.cmd(sid, verb, rest.join(" "))
@@ -430,7 +484,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
             })
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
           return
-        case "quit": renderer.destroy(); process.exit(0); return
+        case "quit": quit(renderer, sid, title); return
         case "queue":
           if (!arg) { dispatch({ kind: "system", text: `${queue.length} queued` }); return }
           setQueue(q => [...q, arg]); return
@@ -533,14 +587,18 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           return
       }
     }
-    if (c.target !== "gateway" || !ready || turn.streaming) return
+    if (c.target !== "gateway" || !ready) return
     const jump = TAB_SLASH[c.name]
     if (jump !== undefined && !arg) { goToTab(jump); return }
+    const full = `/${c.name}${arg ? " " + arg : ""}`
+    // slash.exec owns the persistent HermesCLI subprocess; mid-stream it
+    // races the agent turn. Enqueue as `/cmd arg` and let the drain path
+    // (send → resolveSlash → slash) dispatch once idle.
+    if (turn.streaming) { setQueue(q => [...q, full]); return }
     // slash.exec runs in a persistent HermesCLI subprocess; commands that
     // it rejects (skills, quick_commands, plugins, pending-input cmds)
     // fall through to command.dispatch, which returns a typed payload.
     // Upstream Ink does the same (see createSlashHandler.ts).
-    const full = `/${c.name}${arg ? " " + arg : ""}`
     dispatch({ kind: "user", text: full })
     gw.request<{ output?: string; warning?: string }>("slash.exec", { command: full })
       .then(res => {
@@ -565,8 +623,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           .catch((e: Error) => dispatch({ kind: "system", text: `error: ${e.message}` }))
       })
   }, [ready, turn.streaming, turn.messages, dialog, themeCtx, newSession, gw, pickEikon, editTitle,
-      applyTitle, toast, info, sid, switchSession, session, runCompress, rewind, renderer,
-      attachClipboard, goToTab, queue.length, goalHook])
+      applyTitle, toast, info, sid, title, switchSession, session, runCompress, rewind, renderer,
+      attachClipboard, goToTab, queue.length, goalHook, skin])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback(async (raw: string) => {
@@ -683,12 +741,21 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // (system messages, session.info, toasts, completion, side channels)
   // is orthogonal to the stream and must pass the interrupt gate.
   const STREAM_EVENTS = useRef(new Set<GatewayEvent["type"]>([
+    "message.start",
     "message.delta", "reasoning.delta", "reasoning.available", "thinking.delta",
     "tool.start", "tool.progress", "tool.generating",
   ])).current
 
   const handle = useCallback((ev: GatewayEvent) => {
-    if (interrupted.current && STREAM_EVENTS.has(ev.type)) return
+    // The agent's stream-retry loop (run_agent._call) classifies the
+    // force-closed httpx socket from an interrupt as a transient drop
+    // and emits "Reconnecting…" lifecycle status before the top-of-loop
+    // interrupt guard catches it. Drain those (and any ghost stream
+    // events from the clear_interrupt race) until the next user send.
+    if (interrupted.current) {
+      if (STREAM_EVENTS.has(ev.type)) return
+      if (ev.type === "status.update" && ev.payload?.kind === "lifecycle") return
+    }
     const action = mapEvent(ev, {
       onReady: () => {
         session.boot(launchRef.current).then((r) => {
@@ -714,7 +781,6 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       },
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => {
-        interrupted.current = false
         setStatus("")
         spawnHistory.flush(gw, sidRef.current)
         goalHook.check(sidRef.current)
@@ -754,6 +820,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       return
     }
     flush()
+    if (action.kind === "error") setErrorPulse(true)
     dispatch(action)
   }, [session, dialog, toast, gw, flush, goalHook])
 
@@ -787,11 +854,21 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       onSelect: () => newSession() },
     { title: "Compress Session", value: "compress", action: "session.compress", category: "Session",
       onSelect: () => runCompress() },
-    { title: "Undo Last Turn", value: "undo", action: "session.undo", category: "Session",
+    { title: "Undo Last Turn", value: "undo", description: "Pop last user+assistant pair", category: "Session",
       onSelect: () => session.undo() },
     { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
       onSelect: () => session.branch() },
   ]), [cmd, dialog, themeCtx, session, gw, toast, newSession, pickEikon, info, sid, runCompress])
+
+  const doInterrupt = useCallback(() => {
+    interrupted.current = true
+    // Drop any 16ms-batched deltas that haven't hit the reducer yet —
+    // flushing them would append post-interrupt text.
+    const d = deltas.current
+    if (d.timer) { clearTimeout(d.timer); d.timer = null }
+    d.text = ""; d.think = ""
+    session.interrupt()
+  }, [session])
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({
@@ -810,15 +887,12 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       setSplash(false); summoned.current = false
       return true
     },
-    onInterrupt: () => {
-      interrupted.current = true
-      // Drop any 16ms-batched deltas that haven't hit the reducer yet —
-      // flushing them would append post-interrupt text.
-      const d = deltas.current
-      if (d.timer) { clearTimeout(d.timer); d.timer = null }
-      d.text = ""; d.think = ""
-      session.interrupt()
-    },
+    onInterrupt: doInterrupt,
+    // queue.flush is just an interrupt — the drain effect auto-fires
+    // the head once turn.streaming flips false.
+    queued: queue.length,
+    onFlushQueue: doInterrupt,
+    onQuit: () => quit(renderer, sid, title),
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,
@@ -959,7 +1033,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
               <Sidebar agentState={agentState} info={info} usage={usage} eikon={eikon} profile={activeProfileName()}
                        title={title}
                        cloud={tab === 0 && cloud} pulse={turn.streaming}
-                       onAvatar={onAvatar} />
+                       onAvatar={onAvatar} onAvatarHold={onAvatarHold} />
             </Profiler>
           ) : null}
         </box>

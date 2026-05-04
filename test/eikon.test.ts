@@ -60,6 +60,25 @@ describe("parseEikon", () => {
     expect(e.meta.version).toBe(99)
     expect(e.states.get("idle")!.frames).toHaveLength(1)
   })
+
+  test("loop_from: absent → 0, explicit clamped to [0,count], loop:false → count", () => {
+    const mk = (decl: object) => [
+      JSON.stringify({ eikon: 1, name: "x", width: 1, height: 1 }),
+      JSON.stringify({ state: "s", fps: 4, frame_count: 3, ...decl }),
+      JSON.stringify({ f: 0, data: "." }),
+      JSON.stringify({ f: 1, data: "." }),
+      JSON.stringify({ f: 2, data: "." }),
+    ].join("\n")
+    expect(parseEikon(mk({})).states.get("s")!.loopFrom).toBe(0)
+    expect(parseEikon(mk({ loop_from: 2 })).states.get("s")!.loopFrom).toBe(2)
+    expect(parseEikon(mk({ loop_from: 3 })).states.get("s")!.loopFrom).toBe(3)   // hold
+    expect(parseEikon(mk({ loop_from: 99 })).states.get("s")!.loopFrom).toBe(3)  // clamp
+    expect(parseEikon(mk({ loop_from: -5 })).states.get("s")!.loopFrom).toBe(0)  // clamp
+    expect(parseEikon(mk({ loop: false })).states.get("s")!.loopFrom).toBe(3)    // alias
+    expect(parseEikon(mk({ loop: true })).states.get("s")!.loopFrom).toBe(0)
+    // loop:false wins over loop_from (deprecated alias, but unambiguous intent)
+    expect(parseEikon(mk({ loop: false, loop_from: 1 })).states.get("s")!.loopFrom).toBe(3)
+  })
 })
 
 describe("listEikons", () => {

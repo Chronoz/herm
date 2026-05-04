@@ -49,21 +49,6 @@ function locate(t: Harness, needle: string) {
 }
 
 describe("MessageList", () => {
-  test("empty-state shows splash, keybind help, and a tip", async () => {
-    const t: Harness = await mountNode(
-      <box flexDirection="column" width="100%" height="100%">
-        <MessageList messages={[]} streaming={false} />
-      </box>,
-      { width: 100, height: 30 },
-    )
-    await until(t, () => t.frame().includes("H E R M"))
-    const f = t.frame()
-    expect(f).toContain("Type a message below to begin.")
-    expect(f).toContain("Prompt history")
-    expect(f).toContain("─── tip ───")
-    t.destroy()
-  })
-
   test("renders gutter + header + trail badge; body is text-only", async () => {
     const t: Harness = await mountNode(
       <box flexDirection="column" width="100%" height="100%">

@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "sisyphusBgDark": "#202020",
+    "sisyphusPanelDark": "#282828",
+    "sisyphusElemDark": "#2F2F2F",
+    "sisyphusTextDark": "#D3D3D3",
+    "sisyphusMutedDark": "#4A4A4A",
+    "sisyphusPrimaryDark": "#F5F5F5",
+    "sisyphusAccentDark": "#E7E7E7",
+    "sisyphusSecondaryDark": "#D3D3D3",
+    "sisyphusBorderDark": "#B7B7B7",
+    "sisyphusBorderSubtleDark": "#656565",
+    "sisyphusBgLight": "#F8F8F8",
+    "sisyphusPanelLight": "#EFEFEF",
+    "sisyphusElemLight": "#E4E4E4",
+    "sisyphusTextLight": "#1A1A1A",
+    "sisyphusMutedLight": "#5A5A5A",
+    "sisyphusPrimaryLight": "#9C9C9C",
+    "sisyphusAccentLight": "#8E8E8E",
+    "sisyphusSecondaryLight": "#7A7A7A",
+    "sisyphusBorderLight": "#D0D0D0",
+    "sisyphusBorderSubtleLight": "#E0E0E0",
+    "sisyphusOkDark": "#919191",
+    "sisyphusErrorDark": "#E7E7E7",
+    "sisyphusWarnDark": "#B7B7B7",
+    "sisyphusOkLight": "#919191",
+    "sisyphusErrorLight": "#A7A7A7",
+    "sisyphusWarnLight": "#777777"
+  },
+  "theme": {
+    "primary": {
+      "dark": "sisyphusPrimaryDark",
+      "light": "sisyphusPrimaryLight"
+    },
+    "secondary": {
+      "dark": "sisyphusSecondaryDark",
+      "light": "sisyphusSecondaryLight"
+    },
+    "accent": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "error": {
+      "dark": "sisyphusErrorDark",
+      "light": "sisyphusErrorLight"
+    },
+    "warning": {
+      "dark": "sisyphusWarnDark",
+      "light": "sisyphusWarnLight"
+    },
+    "success": {
+      "dark": "sisyphusOkDark",
+      "light": "sisyphusOkLight"
+    },
+    "info": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "text": {
+      "dark": "sisyphusTextDark",
+      "light": "sisyphusTextLight"
+    },
+    "textMuted": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "background": {
+      "dark": "sisyphusBgDark",
+      "light": "sisyphusBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "sisyphusPanelDark",
+      "light": "sisyphusPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "sisyphusElemDark",
+      "light": "sisyphusElemLight"
+    },
+    "border": {
+      "dark": "sisyphusBorderDark",
+      "light": "sisyphusBorderLight"
+    },
+    "borderActive": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "sisyphusBorderSubtleDark",
+      "light": "sisyphusBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "sisyphusOkDark",
+      "light": "sisyphusOkLight"
+    },
+    "diffRemoved": {
+      "dark": "sisyphusErrorDark",
+      "light": "sisyphusErrorLight"
+    },
+    "diffContext": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "sisyphusOkDark",
+      "light": "sisyphusOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "sisyphusErrorDark",
+      "light": "sisyphusErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#343434",
+      "light": "#E9E9E9"
+    },
+    "diffRemovedBg": {
+      "dark": "#444444",
+      "light": "#ECECEC"
+    },
+    "diffContextBg": {
+      "dark": "sisyphusPanelDark",
+      "light": "sisyphusPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#2B2B2B",
+      "light": "#F0F0F0"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#343434",
+      "light": "#F2F2F2"
+    },
+    "markdownText": {
+      "dark": "sisyphusTextDark",
+      "light": "sisyphusTextLight"
+    },
+    "markdownHeading": {
+      "dark": "sisyphusPrimaryDark",
+      "light": "sisyphusPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "sisyphusSecondaryDark",
+      "light": "sisyphusSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "sisyphusSecondaryDark",
+      "light": "sisyphusSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "sisyphusPrimaryDark",
+      "light": "sisyphusPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "sisyphusBorderDark",
+      "light": "sisyphusBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "sisyphusTextDark",
+      "light": "sisyphusTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "markdownImage": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "sisyphusTextDark",
+      "light": "sisyphusTextLight"
+    },
+    "syntaxComment": {
+      "dark": "sisyphusMutedDark",
+      "light": "sisyphusMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "sisyphusPrimaryDark",
+      "light": "sisyphusPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "sisyphusTextDark",
+      "light": "sisyphusTextLight"
+    },
+    "syntaxString": {
+      "dark": "sisyphusOkDark",
+      "light": "sisyphusOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "sisyphusAccentDark",
+      "light": "sisyphusAccentLight"
+    },
+    "syntaxType": {
+      "dark": "sisyphusSecondaryDark",
+      "light": "sisyphusSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "sisyphusSecondaryDark",
+      "light": "sisyphusSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "sisyphusTextDark",
+      "light": "sisyphusTextLight"
+    }
+  }
+}

@@ -170,16 +170,9 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
   }, [gw])
 
   const submit = () => {
-    // While streaming, slash/at popovers are suppressed; anything
-    // typed is a plain prompt to enqueue.
-    if (live.current.props.streaming) {
-      const text = live.current.input.trim()
-      if (!text || !live.current.props.ready) return
-      hist.push(text)
-      write("")
-      live.current.props.onEnqueue?.(text)
-      return
-    }
+    // Popover accept runs first — slash commands and @-ref completion
+    // stay live while streaming so /steer, /stop, tab jumps, and queued
+    // /cmd prompts all resolve against the catalog.
     const a = live.current.at
     if (a.open) return atAccept()
     const p = live.current.pop
@@ -189,6 +182,13 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       return
     }
     const text = live.current.input.trim()
+    if (live.current.props.streaming) {
+      if (!text || !live.current.props.ready) return
+      hist.push(text)
+      write("")
+      live.current.props.onEnqueue?.(text)
+      return
+    }
     const hasAtt = (live.current.props.attachments?.length ?? 0) > 0
     if (!text && !hasAtt) { live.current.props.onEmptyEnter?.(); return }
     if (!live.current.props.ready) return
@@ -228,7 +228,6 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     historyDown: () => { if (multi()) return false; hist.down(); return true },
   }), [hist.up, hist.down, pop.setCursor, write])
 
-  const active = props.focused && !props.streaming
   const label = !props.ready ? "Connecting..."
     : props.streaming ? (props.status || "Generating...")
     : "Ready"
@@ -241,7 +240,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
 
   return (
     <box flexDirection="column" position="relative">
-      {active && pop.open ? (
+      {props.focused && pop.open ? (
         <box position="absolute" bottom={lift} left={0} right={0}>
           <SlashPopover
             commands={pop.popover!}
@@ -250,7 +249,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
             onSelect={select}
           />
         </box>
-      ) : active && at.open ? (
+      ) : props.focused && at.open ? (
         <box position="absolute" bottom={lift} left={0} right={0}>
           <AtRefPopover
             items={at.items}
@@ -304,7 +303,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
       <box
         border
         borderStyle="single"
-        borderColor={active ? theme.borderActive : theme.border}
+        borderColor={props.focused ? theme.borderActive : theme.border}
         flexDirection="row"
         position="relative"
       >
@@ -329,7 +328,7 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           focusedBackgroundColor="transparent"
           flexGrow={1}
         />
-        {pop.ghost && active && rows === 1 ? (
+        {pop.ghost && props.focused && rows === 1 ? (
           <box position="absolute" top={0} left={2 + input.length} height={1}>
             <text fg={theme.textMuted}>{pop.ghost}</text>
           </box>
@@ -341,6 +340,10 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           <span fg={dot}>● </span>
           <span fg={theme.textMuted}>{label}</span>
         </text>
+        <box flexGrow={1} />
+        {props.streaming && (props.queue?.length ?? 0) > 0 ? (
+          <text fg={theme.textMuted}>{keys.print("queue.flush")} to send queued now</text>
+        ) : null}
       </box>
     </box>
   )

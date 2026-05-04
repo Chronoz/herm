@@ -31,7 +31,10 @@ const def = (chord: string, desc: string, scope: Scope): Def => ({ chord, desc, 
 export const DEFAULTS = {
   // ── global ──────────────────────────────────────────────────────
   "leader":            def("ctrl+x",               "Leader prefix",                      "global"),
-  "app.exit":          def("ctrl+c",               "Quit (or copy selection)",           "global"),
+  "app.exit":          def("ctrl+c",               "Quit",                               "global"),
+  // Same chord as app.exit, disjoint on buffer-empty. oc parity:
+  // input_clear + app_exit both bind ctrl+c and dispatch sequentially.
+  "input.clear":       def("ctrl+c",               "Clear input",                        "global"),
   "app.suspend":       def("ctrl+z",               "Suspend to shell",                   "global"),
   "app.redraw":        def("ctrl+l",               "Clear & force-repaint terminal",     "global"), // ☨
   "app.sidebar":       def("<leader>b",            "Toggle sidebar",                     "global"),
@@ -43,10 +46,9 @@ export const DEFAULTS = {
   "editor.open":       def("<leader>e,ctrl+g",     "Open $EDITOR on prompt",             "global"),
   "reply.copy":        def("<leader>y,ctrl+y",     "Copy last assistant reply",          "global"),
   "clipboard.attach":  def("alt+v",                "Attach clipboard image",             "global"), // ø input_paste=ctrl+v
-  // "queue.pop":         def("ctrl+u",               "Pop last queued prompt",             "global"), // ☨ k: need to think about this more. defer
+  "queue.flush":       def("<leader>u",            "Interrupt and send queued now",      "global"), // ☨
   "session.interrupt": def("escape",               "Interrupt (double-tap while streaming)", "global"),
   "session.new":       def("<leader>n",            "New session",                        "global"),
-  "session.undo":      def("<leader>u",            "Undo last turn",                     "global"),
   "session.compress":  def("<leader>c",            "Compress context",                   "global"),
   "session.timeline":  def("<leader>g",            "Session timeline",                   "global"),
   "theme.pick":        def("<leader>t",            "Switch theme",                       "global"),

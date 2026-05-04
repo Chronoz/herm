@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "monoBgDark": "#1F1F1F",
+    "monoPanelDark": "#272727",
+    "monoElemDark": "#2E2E2E",
+    "monoTextDark": "#c9d1d9",
+    "monoMutedDark": "#444444",
+    "monoPrimaryDark": "#e6edf3",
+    "monoAccentDark": "#aaaaaa",
+    "monoSecondaryDark": "#888888",
+    "monoBorderDark": "#555555",
+    "monoBorderSubtleDark": "#555555",
+    "monoBgLight": "#F8F8F8",
+    "monoPanelLight": "#EFEFEF",
+    "monoElemLight": "#E4E4E4",
+    "monoTextLight": "#1A1A1A",
+    "monoMutedLight": "#5A5A5A",
+    "monoPrimaryLight": "#6D96B9",
+    "monoAccentLight": "#727272",
+    "monoSecondaryLight": "#505050",
+    "monoBorderLight": "#D0D0D0",
+    "monoBorderSubtleLight": "#E0E0E0",
+    "monoOkDark": "#888888",
+    "monoErrorDark": "#cccccc",
+    "monoWarnDark": "#999999",
+    "monoOkLight": "#888888",
+    "monoErrorLight": "#8C8C8C",
+    "monoWarnLight": "#999999"
+  },
+  "theme": {
+    "primary": {
+      "dark": "monoPrimaryDark",
+      "light": "monoPrimaryLight"
+    },
+    "secondary": {
+      "dark": "monoSecondaryDark",
+      "light": "monoSecondaryLight"
+    },
+    "accent": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "error": {
+      "dark": "monoErrorDark",
+      "light": "monoErrorLight"
+    },
+    "warning": {
+      "dark": "monoWarnDark",
+      "light": "monoWarnLight"
+    },
+    "success": {
+      "dark": "monoOkDark",
+      "light": "monoOkLight"
+    },
+    "info": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "text": {
+      "dark": "monoTextDark",
+      "light": "monoTextLight"
+    },
+    "textMuted": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "background": {
+      "dark": "monoBgDark",
+      "light": "monoBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "monoPanelDark",
+      "light": "monoPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "monoElemDark",
+      "light": "monoElemLight"
+    },
+    "border": {
+      "dark": "monoBorderDark",
+      "light": "monoBorderLight"
+    },
+    "borderActive": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "monoBorderSubtleDark",
+      "light": "monoBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "monoOkDark",
+      "light": "monoOkLight"
+    },
+    "diffRemoved": {
+      "dark": "monoErrorDark",
+      "light": "monoErrorLight"
+    },
+    "diffContext": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "monoOkDark",
+      "light": "monoOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "monoErrorDark",
+      "light": "monoErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#323232",
+      "light": "#E7E7E7"
+    },
+    "diffRemovedBg": {
+      "dark": "#3E3E3E",
+      "light": "#E8E8E8"
+    },
+    "diffContextBg": {
+      "dark": "monoPanelDark",
+      "light": "monoPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#2A2A2A",
+      "light": "#EFEFEF"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#303030",
+      "light": "#EFEFEF"
+    },
+    "markdownText": {
+      "dark": "monoTextDark",
+      "light": "monoTextLight"
+    },
+    "markdownHeading": {
+      "dark": "monoPrimaryDark",
+      "light": "monoPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "monoSecondaryDark",
+      "light": "monoSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "monoSecondaryDark",
+      "light": "monoSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "monoPrimaryDark",
+      "light": "monoPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "monoBorderDark",
+      "light": "monoBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "monoTextDark",
+      "light": "monoTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "markdownImage": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "monoTextDark",
+      "light": "monoTextLight"
+    },
+    "syntaxComment": {
+      "dark": "monoMutedDark",
+      "light": "monoMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "monoPrimaryDark",
+      "light": "monoPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "monoTextDark",
+      "light": "monoTextLight"
+    },
+    "syntaxString": {
+      "dark": "monoOkDark",
+      "light": "monoOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "monoAccentDark",
+      "light": "monoAccentLight"
+    },
+    "syntaxType": {
+      "dark": "monoSecondaryDark",
+      "light": "monoSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "monoSecondaryDark",
+      "light": "monoSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "monoTextDark",
+      "light": "monoTextLight"
+    }
+  }
+}

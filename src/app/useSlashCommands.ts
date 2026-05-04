@@ -44,16 +44,18 @@ export function useSlashCommands() {
     }
 
     const sub = new Map(Object.entries(res.sub ?? {}).map(([k, v]) => [bare(k), v]))
+    const local = new Map(LOCAL_COMMANDS.map(c => [c.name, c]))
 
     const remote: SlashCommand[] = (res.pairs ?? []).map(([raw, desc]) => {
       const name = bare(raw)
+      const l = local.get(name)
       return {
         name,
         description: desc,
         category: cat.get(name) ?? (name.includes(":") ? "Skills" : "Command"),
         aliases: alias.get(name) ?? [],
-        argsHint: "",
-        subcommands: sub.get(name) ?? [],
+        argsHint: l?.argsHint ?? "",
+        subcommands: sub.get(name) ?? l?.subcommands ?? [],
         source: "command" as const,
         target: LOCAL_NAMES.has(name) ? ("local" as const) : ("gateway" as const),
       }

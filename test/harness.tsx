@@ -158,6 +158,10 @@ async function render(node: ReactNode, gw: MockGateway, opts: Opts): Promise<Har
   const setup = await testRender(node, {
     width: opts.width ?? 160,
     height: opts.height ?? 48,
+    // Match index.tsx — we own Ctrl+C routing; the default handler
+    // schedules renderer.destroy() on nextTick and the following
+    // settle() renders against a freed native ptr (segfault).
+    exitOnCtrlC: false,
     // Raw-mode ESC is ambiguous (could prefix an arrow); kitty protocol
     // disambiguates so pressEscape() fires a single clean keypress.
     kittyKeyboard: true,

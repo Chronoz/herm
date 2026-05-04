@@ -75,35 +75,10 @@ export function resolveTheme(
 
 /**
  * Compute herm pillar tokens.
- * hermAvatar and hermBody default to accent.
- * hermBodyText is auto-computed for legibility against hermBody.
+ * hermAvatar defaults to accent — used for the eikon glyphs and pillar border.
  */
 function resolveHermTokens(accent: RGBA): HermTokens {
-  const text = contrastText(accent);
-  return {
-    hermAvatar: accent,
-    hermBody: accent,
-    hermBodyText: text,
-    hermBodyTextMuted: mix(text, accent, 0.45),
-  };
-}
-
-/** Linear mix a→b by t (0=a, 1=b). */
-function mix(a: RGBA, b: RGBA, t: number): RGBA {
-  const l = (x: number, y: number) => x + (y - x) * t;
-  return RGBA.fromValues(l(a.r, b.r), l(a.g, b.g), l(a.b, b.b), 1);
-}
-
-/**
- * Pick black or white text for maximum legibility on a background.
- * Uses WCAG relative luminance formula.
- */
-function contrastText(bg: RGBA): RGBA {
-  // RGBA stores 0-1 floats
-  const lum = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b;
-  return lum > 0.5
-    ? RGBA.fromInts(0, 0, 0)       // dark text on light bg
-    : RGBA.fromInts(255, 255, 255); // light text on dark bg
+  return { hermAvatar: accent };
 }
 
 /** Convert ANSI 256-color code to RGBA */

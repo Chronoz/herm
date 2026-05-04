@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "warmlightmodeBgDark": "#101014",
+    "warmlightmodePanelDark": "#18181F",
+    "warmlightmodeElemDark": "#1F1F28",
+    "warmlightmodeTextDark": "#E6E6E6",
+    "warmlightmodeMutedDark": "#9A9A9A",
+    "warmlightmodePrimaryDark": "#9D681D",
+    "warmlightmodeAccentDark": "#CE661C",
+    "warmlightmodeSecondaryDark": "#9D681D",
+    "warmlightmodeBorderDark": "#A17A17",
+    "warmlightmodeBorderSubtleDark": "#806949",
+    "warmlightmodeBgLight": "#F5F0E8",
+    "warmlightmodePanelLight": "#EBE6DF",
+    "warmlightmodeElemLight": "#E1DDD5",
+    "warmlightmodeTextLight": "#2C1810",
+    "warmlightmodeMutedLight": "#8B7355",
+    "warmlightmodePrimaryLight": "#5C3D11",
+    "warmlightmodeAccentLight": "#8B4513",
+    "warmlightmodeSecondaryLight": "#5C3D11",
+    "warmlightmodeBorderLight": "#8B6914",
+    "warmlightmodeBorderSubtleLight": "#A0845C",
+    "warmlightmodeOkDark": "#2E7D32",
+    "warmlightmodeErrorDark": "#C62828",
+    "warmlightmodeWarnDark": "#E65100",
+    "warmlightmodeOkLight": "#2E7D32",
+    "warmlightmodeErrorLight": "#C62828",
+    "warmlightmodeWarnLight": "#E65100"
+  },
+  "theme": {
+    "primary": {
+      "dark": "warmlightmodePrimaryDark",
+      "light": "warmlightmodePrimaryLight"
+    },
+    "secondary": {
+      "dark": "warmlightmodeSecondaryDark",
+      "light": "warmlightmodeSecondaryLight"
+    },
+    "accent": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "error": {
+      "dark": "warmlightmodeErrorDark",
+      "light": "warmlightmodeErrorLight"
+    },
+    "warning": {
+      "dark": "warmlightmodeWarnDark",
+      "light": "warmlightmodeWarnLight"
+    },
+    "success": {
+      "dark": "warmlightmodeOkDark",
+      "light": "warmlightmodeOkLight"
+    },
+    "info": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "text": {
+      "dark": "warmlightmodeTextDark",
+      "light": "warmlightmodeTextLight"
+    },
+    "textMuted": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "background": {
+      "dark": "warmlightmodeBgDark",
+      "light": "warmlightmodeBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "warmlightmodePanelDark",
+      "light": "warmlightmodePanelLight"
+    },
+    "backgroundElement": {
+      "dark": "warmlightmodeElemDark",
+      "light": "warmlightmodeElemLight"
+    },
+    "border": {
+      "dark": "warmlightmodeBorderDark",
+      "light": "warmlightmodeBorderLight"
+    },
+    "borderActive": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "warmlightmodeBorderSubtleDark",
+      "light": "warmlightmodeBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "warmlightmodeOkDark",
+      "light": "warmlightmodeOkLight"
+    },
+    "diffRemoved": {
+      "dark": "warmlightmodeErrorDark",
+      "light": "warmlightmodeErrorLight"
+    },
+    "diffContext": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "warmlightmodeOkDark",
+      "light": "warmlightmodeOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "warmlightmodeErrorDark",
+      "light": "warmlightmodeErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#152419",
+      "light": "#D7DFCD"
+    },
+    "diffRemovedBg": {
+      "dark": "#311418",
+      "light": "#EED2CB"
+    },
+    "diffContextBg": {
+      "dark": "warmlightmodePanelDark",
+      "light": "warmlightmodePanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#131B17",
+      "light": "#E5E7D9"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#221216",
+      "light": "#F1E0D9"
+    },
+    "markdownText": {
+      "dark": "warmlightmodeTextDark",
+      "light": "warmlightmodeTextLight"
+    },
+    "markdownHeading": {
+      "dark": "warmlightmodePrimaryDark",
+      "light": "warmlightmodePrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "warmlightmodeSecondaryDark",
+      "light": "warmlightmodeSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "warmlightmodeSecondaryDark",
+      "light": "warmlightmodeSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "warmlightmodePrimaryDark",
+      "light": "warmlightmodePrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "warmlightmodeBorderDark",
+      "light": "warmlightmodeBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "warmlightmodeTextDark",
+      "light": "warmlightmodeTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "markdownImage": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "warmlightmodeTextDark",
+      "light": "warmlightmodeTextLight"
+    },
+    "syntaxComment": {
+      "dark": "warmlightmodeMutedDark",
+      "light": "warmlightmodeMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "warmlightmodePrimaryDark",
+      "light": "warmlightmodePrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "warmlightmodeTextDark",
+      "light": "warmlightmodeTextLight"
+    },
+    "syntaxString": {
+      "dark": "warmlightmodeOkDark",
+      "light": "warmlightmodeOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "warmlightmodeAccentDark",
+      "light": "warmlightmodeAccentLight"
+    },
+    "syntaxType": {
+      "dark": "warmlightmodeSecondaryDark",
+      "light": "warmlightmodeSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "warmlightmodeSecondaryDark",
+      "light": "warmlightmodeSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "warmlightmodeTextDark",
+      "light": "warmlightmodeTextLight"
+    }
+  }
+}

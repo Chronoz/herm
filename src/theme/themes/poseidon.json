@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "poseidonBgDark": "#0F2440",
+    "poseidonPanelDark": "#122B4C",
+    "poseidonElemDark": "#153259",
+    "poseidonTextDark": "#EAF7FF",
+    "poseidonMutedDark": "#496884",
+    "poseidonPrimaryDark": "#A9DFFF",
+    "poseidonAccentDark": "#5DB8F5",
+    "poseidonSecondaryDark": "#A9DFFF",
+    "poseidonBorderDark": "#2A6FB9",
+    "poseidonBorderSubtleDark": "#496884",
+    "poseidonBgLight": "#F8F8F8",
+    "poseidonPanelLight": "#EFEFEF",
+    "poseidonElemLight": "#E4E4E4",
+    "poseidonTextLight": "#1A1A1A",
+    "poseidonMutedLight": "#5A5A5A",
+    "poseidonPrimaryLight": "#009AF5",
+    "poseidonAccentLight": "#0D85D5",
+    "poseidonSecondaryLight": "#009AF5",
+    "poseidonBorderLight": "#D0D0D0",
+    "poseidonBorderSubtleLight": "#E0E0E0",
+    "poseidonOkDark": "#4caf50",
+    "poseidonErrorDark": "#ef5350",
+    "poseidonWarnDark": "#ffa726",
+    "poseidonOkLight": "#4caf50",
+    "poseidonErrorLight": "#ef5350",
+    "poseidonWarnLight": "#A56200"
+  },
+  "theme": {
+    "primary": {
+      "dark": "poseidonPrimaryDark",
+      "light": "poseidonPrimaryLight"
+    },
+    "secondary": {
+      "dark": "poseidonSecondaryDark",
+      "light": "poseidonSecondaryLight"
+    },
+    "accent": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "error": {
+      "dark": "poseidonErrorDark",
+      "light": "poseidonErrorLight"
+    },
+    "warning": {
+      "dark": "poseidonWarnDark",
+      "light": "poseidonWarnLight"
+    },
+    "success": {
+      "dark": "poseidonOkDark",
+      "light": "poseidonOkLight"
+    },
+    "info": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "text": {
+      "dark": "poseidonTextDark",
+      "light": "poseidonTextLight"
+    },
+    "textMuted": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "background": {
+      "dark": "poseidonBgDark",
+      "light": "poseidonBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "poseidonPanelDark",
+      "light": "poseidonPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "poseidonElemDark",
+      "light": "poseidonElemLight"
+    },
+    "border": {
+      "dark": "poseidonBorderDark",
+      "light": "poseidonBorderLight"
+    },
+    "borderActive": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "poseidonBorderSubtleDark",
+      "light": "poseidonBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "poseidonOkDark",
+      "light": "poseidonOkLight"
+    },
+    "diffRemoved": {
+      "dark": "poseidonErrorDark",
+      "light": "poseidonErrorLight"
+    },
+    "diffContext": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "poseidonOkDark",
+      "light": "poseidonOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "poseidonErrorDark",
+      "light": "poseidonErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#1A3D43",
+      "light": "#DEEDDF"
+    },
+    "diffRemovedBg": {
+      "dark": "#372C43",
+      "light": "#F7DFDF"
+    },
+    "diffContextBg": {
+      "dark": "poseidonPanelDark",
+      "light": "poseidonPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#153242",
+      "light": "#EAF2EB"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#252942",
+      "light": "#F7EBEB"
+    },
+    "markdownText": {
+      "dark": "poseidonTextDark",
+      "light": "poseidonTextLight"
+    },
+    "markdownHeading": {
+      "dark": "poseidonPrimaryDark",
+      "light": "poseidonPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "poseidonSecondaryDark",
+      "light": "poseidonSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "poseidonSecondaryDark",
+      "light": "poseidonSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "poseidonPrimaryDark",
+      "light": "poseidonPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "poseidonBorderDark",
+      "light": "poseidonBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "poseidonTextDark",
+      "light": "poseidonTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "markdownImage": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "poseidonTextDark",
+      "light": "poseidonTextLight"
+    },
+    "syntaxComment": {
+      "dark": "poseidonMutedDark",
+      "light": "poseidonMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "poseidonPrimaryDark",
+      "light": "poseidonPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "poseidonTextDark",
+      "light": "poseidonTextLight"
+    },
+    "syntaxString": {
+      "dark": "poseidonOkDark",
+      "light": "poseidonOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "poseidonAccentDark",
+      "light": "poseidonAccentLight"
+    },
+    "syntaxType": {
+      "dark": "poseidonSecondaryDark",
+      "light": "poseidonSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "poseidonSecondaryDark",
+      "light": "poseidonSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "poseidonTextDark",
+      "light": "poseidonTextLight"
+    }
+  }
+}

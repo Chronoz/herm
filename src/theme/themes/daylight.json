@@ -1,0 +1,233 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "daylightBgDark": "#101014",
+    "daylightPanelDark": "#18181F",
+    "daylightElemDark": "#1F1F28",
+    "daylightTextDark": "#E6E6E6",
+    "daylightMutedDark": "#9A9A9A",
+    "daylightPrimaryDark": "#233662",
+    "daylightAccentDark": "#597FE9",
+    "daylightSecondaryDark": "#18BAAD",
+    "daylightBorderDark": "#3C74ED",
+    "daylightBorderSubtleDark": "#4F5B6D",
+    "daylightBgLight": "#E5EDF8",
+    "daylightPanelLight": "#DCE4EE",
+    "daylightElemLight": "#D3DAE4",
+    "daylightTextLight": "#111827",
+    "daylightMutedLight": "#475569",
+    "daylightPrimaryLight": "#0F172A",
+    "daylightAccentLight": "#1D4ED8",
+    "daylightSecondaryLight": "#0F766E",
+    "daylightBorderLight": "#2563EB",
+    "daylightBorderSubtleLight": "#64748B",
+    "daylightOkDark": "#15803D",
+    "daylightErrorDark": "#B91C1C",
+    "daylightWarnDark": "#B45309",
+    "daylightOkLight": "#15803D",
+    "daylightErrorLight": "#B91C1C",
+    "daylightWarnLight": "#B45309"
+  },
+  "theme": {
+    "primary": {
+      "dark": "daylightPrimaryDark",
+      "light": "daylightPrimaryLight"
+    },
+    "secondary": {
+      "dark": "daylightSecondaryDark",
+      "light": "daylightSecondaryLight"
+    },
+    "accent": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "error": {
+      "dark": "daylightErrorDark",
+      "light": "daylightErrorLight"
+    },
+    "warning": {
+      "dark": "daylightWarnDark",
+      "light": "daylightWarnLight"
+    },
+    "success": {
+      "dark": "daylightOkDark",
+      "light": "daylightOkLight"
+    },
+    "info": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "text": {
+      "dark": "daylightTextDark",
+      "light": "daylightTextLight"
+    },
+    "textMuted": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "background": {
+      "dark": "daylightBgDark",
+      "light": "daylightBgLight"
+    },
+    "backgroundPanel": {
+      "dark": "daylightPanelDark",
+      "light": "daylightPanelLight"
+    },
+    "backgroundElement": {
+      "dark": "daylightElemDark",
+      "light": "daylightElemLight"
+    },
+    "border": {
+      "dark": "daylightBorderDark",
+      "light": "daylightBorderLight"
+    },
+    "borderActive": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "borderSubtle": {
+      "dark": "daylightBorderSubtleDark",
+      "light": "daylightBorderSubtleLight"
+    },
+    "diffAdded": {
+      "dark": "daylightOkDark",
+      "light": "daylightOkLight"
+    },
+    "diffRemoved": {
+      "dark": "daylightErrorDark",
+      "light": "daylightErrorLight"
+    },
+    "diffContext": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "diffHunkHeader": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "diffHighlightAdded": {
+      "dark": "daylightOkDark",
+      "light": "daylightOkLight"
+    },
+    "diffHighlightRemoved": {
+      "dark": "daylightErrorDark",
+      "light": "daylightErrorLight"
+    },
+    "diffAddedBg": {
+      "dark": "#11241B",
+      "light": "#C6DDDC"
+    },
+    "diffRemovedBg": {
+      "dark": "#2E1215",
+      "light": "#DECED7"
+    },
+    "diffContextBg": {
+      "dark": "daylightPanelDark",
+      "light": "daylightPanelLight"
+    },
+    "diffLineNumber": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "#101B18",
+      "light": "#D4E4E9"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "#211115",
+      "light": "#E1DCE6"
+    },
+    "markdownText": {
+      "dark": "daylightTextDark",
+      "light": "daylightTextLight"
+    },
+    "markdownHeading": {
+      "dark": "daylightPrimaryDark",
+      "light": "daylightPrimaryLight"
+    },
+    "markdownLink": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "markdownLinkText": {
+      "dark": "daylightSecondaryDark",
+      "light": "daylightSecondaryLight"
+    },
+    "markdownCode": {
+      "dark": "daylightSecondaryDark",
+      "light": "daylightSecondaryLight"
+    },
+    "markdownBlockQuote": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "markdownEmph": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "markdownStrong": {
+      "dark": "daylightPrimaryDark",
+      "light": "daylightPrimaryLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "daylightBorderDark",
+      "light": "daylightBorderLight"
+    },
+    "markdownListItem": {
+      "dark": "daylightTextDark",
+      "light": "daylightTextLight"
+    },
+    "markdownListEnumeration": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "markdownImage": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "markdownImageText": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "markdownCodeBlock": {
+      "dark": "daylightTextDark",
+      "light": "daylightTextLight"
+    },
+    "syntaxComment": {
+      "dark": "daylightMutedDark",
+      "light": "daylightMutedLight"
+    },
+    "syntaxKeyword": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "syntaxFunction": {
+      "dark": "daylightPrimaryDark",
+      "light": "daylightPrimaryLight"
+    },
+    "syntaxVariable": {
+      "dark": "daylightTextDark",
+      "light": "daylightTextLight"
+    },
+    "syntaxString": {
+      "dark": "daylightOkDark",
+      "light": "daylightOkLight"
+    },
+    "syntaxNumber": {
+      "dark": "daylightAccentDark",
+      "light": "daylightAccentLight"
+    },
+    "syntaxType": {
+      "dark": "daylightSecondaryDark",
+      "light": "daylightSecondaryLight"
+    },
+    "syntaxOperator": {
+      "dark": "daylightSecondaryDark",
+      "light": "daylightSecondaryLight"
+    },
+    "syntaxPunctuation": {
+      "dark": "daylightTextDark",
+      "light": "daylightTextLight"
+    }
+  }
+}

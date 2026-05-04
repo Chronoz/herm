@@ -16,7 +16,6 @@ export function redraw(renderer: {
   renderer.requestRender()
 }
 import { useRef, useEffect, type RefObject } from "react"
-import { copySelection } from "../utils/clipboard"
 import { editInEditor } from "../utils/editor"
 import { useKeys, conflicts } from "../keys"
 import { print as chordPrint } from "../keys/chord"
@@ -44,6 +43,9 @@ type Opts = {
   onEscape?: () => boolean
   onInterrupt: () => void
   onInterruptNotice: () => void
+  queued: number
+  onFlushQueue: () => void
+  onQuit: () => void
   onCopyLast: () => void
   onAttachClipboard: () => void
   /** Remove the last pending attachment (backspace on empty composer). */
@@ -67,9 +69,10 @@ export function useAppKeys(o: Opts) {
   // hit here is user-introduced — warn but honor the override.
   useEffect(() => {
     const found = conflicts(keys.table)
-      // Same chord, disjoint modes — dialogOpen gate below makes these
-      // mutually exclusive, not a real collision.
+      // Same chord, disjoint modes — the guards below make these
+      // mutually exclusive, not real collisions.
       .filter(c => !(c.a === "session.interrupt" && c.b === "dialog.cancel"))
+      .filter(c => !(c.a === "app.exit" && c.b === "input.clear"))
     if (found.length === 0) return
     const first = found[0]
     o.onNotice(
@@ -81,16 +84,15 @@ export function useAppKeys(o: Opts) {
   useKeyboard((key) => {
     const c = o.composer.current
 
-    if (keys.match("app.exit", key)) {
-      if (copySelection(renderer)) return
-      // destroy() tears down the renderer but does NOT exit the process
-      // — under `bun --watch` (or with CONTROL/PERF servers up) the
-      // event loop stays alive and the user is stranded on the main
-      // screen with no prompt. exit(0) fires the `exit` hook in
-      // terminal-reset which flushes the mode-reset blob synchronously.
-      renderer.destroy()
-      process.exit(0)
+    // oc parity: input_clear (ctrl+c) with non-empty buffer clears and
+    // consumes; app_exit (also ctrl+c) fires on the next press. Selection
+    // copy is NOT on ctrl+c — drag-select already copies on mouseup.
+    if (keys.match("input.clear", key) && c && !c.isEmpty()) {
+      c.set("")
+      key.stopPropagation()
+      return
     }
+    if (keys.match("app.exit", key)) return o.onQuit()
 
     if (keys.match("app.suspend", key)) {
       renderer.suspend()
@@ -127,6 +129,16 @@ export function useAppKeys(o: Opts) {
     // handles Esc-to-close; tabs/composer/interrupt all sit behind the
     // overlay and shouldn't move.
     if (o.dialogOpen) return
+
+    // Interrupt the turn so the drain effect fires the queued head now.
+    // Only meaningful mid-stream with something queued; otherwise fall
+    // through (leader was already consumed, so no stray "u" reaches the
+    // textarea).
+    if (keys.match("queue.flush", key) && o.streaming && o.queued > 0) {
+      o.onFlushQueue()
+      key.stopPropagation()
+      return
+    }
 
     // Inline prompt gets first refusal on nav/answer keys. It only
     // claims the narrow set it cares about (←/→/↑/↓/Enter/Esc/1-9);
@@ -177,7 +189,7 @@ export function useAppKeys(o: Opts) {
     // Popover owns up/down/tab/escape while open; stopPropagation keeps the
     // textarea renderable from also moving the cursor on the same keypress.
     // Structural — popover nav is composer-state, not a catalog action.
-    if (!o.streaming && c?.popOpen()) {
+    if (c?.popOpen()) {
       if (key.name === "escape") return c.popCancel()
       if (key.name === "up") { c.popNav(-1); key.stopPropagation(); return }
       if (key.name === "down") { c.popNav(1); key.stopPropagation(); return }

@@ -9,16 +9,16 @@ import { useListKeys } from "../keys"
 import { useTheme } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar"
+import { BUNDLED_EIKON_DIR } from "../components/avatar/bundled"
 import { listEikons, parseEikon, type ParsedEikon } from "../components/avatar/eikon"
 
 const trunc = (s: string, n: number) => s.length <= n ? s : s.slice(0, n - 1) + "…"
 
-// Default search path for .eikon avatars: $HERMES_HOME/eikons.
-// If nothing is found the picker shows an empty state — see README
-// "Avatars (.eikon)" for where to drop files.
+// Bundled avatars (assets/eikons/) first so a fresh install shows
+// something; user-dropped files in $HERMES_HOME/eikons follow.
 const defaultDirs = (): string[] => {
   const hermesHome = process.env.HERMES_HOME || join(homedir(), ".hermes")
-  return [join(hermesHome, "eikons")]
+  return [BUNDLED_EIKON_DIR, join(hermesHome, "eikons")]
 }
 
 export const EikonPickerDialog = (props: {

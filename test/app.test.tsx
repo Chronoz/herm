@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test, spyOn } from "bun:test"
 import { act } from "react"
 import { mount, until, MockGateway } from "./harness"
 import * as prefs from "../src/utils/preferences"
+import * as exit from "../src/app/exit"
 import { DOUBLE_TAB_MS } from "../src/app/useAppKeys"
 import type { GatewayEvent } from "../src/utils/gateway-types"
 
@@ -67,6 +68,31 @@ describe("app", () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Keybinding conflict"))
     expect(t.frame()).toMatch(/R → .*list\.refresh.*agents\.kill|R → .*agents\.kill.*list\.refresh/)
+    t.destroy()
+  })
+
+  test("Ctrl+C: non-empty buffer clears; empty buffer quits (oc parity)", async () => {
+    const q = spyOn(exit, "quit").mockImplementation((() => {}) as never)
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("draft text") })
+    await t.settle()
+    expect(t.frame()).toContain("> draft text")
+
+    act(() => t.keys.pressKey("c", { ctrl: true }))
+    await t.settle()
+    expect(t.frame()).not.toContain("draft text")
+    expect(t.frame()).toContain("Message Hermes")
+    expect(q).not.toHaveBeenCalled()
+
+    act(() => t.keys.pressKey("c", { ctrl: true }))
+    await t.settle()
+    expect(q).toHaveBeenCalledTimes(1)
+    // sid arg threaded from session state.
+    expect(q.mock.calls[0]?.[1]).toBe("test-sid")
+
+    q.mockRestore()
     t.destroy()
   })
 
@@ -738,7 +764,7 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("queue: Enter while streaming stacks; drains one per idle; click chip edits", async () => {
+  test("queue: Enter while streaming stacks; drains one per idle; <leader>u flushes", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
@@ -748,6 +774,7 @@ describe("app", () => {
     await t.settle()
     act(() => t.gw.push({ type: "message.start" }))
     await until(t, () => t.frame().includes("Type to queue"))
+    expect(t.frame()).not.toContain("send queued now")
 
     // Queue two follow-ups while streaming.
     for (const msg of ["follow up a", "follow up b"]) {
@@ -757,6 +784,8 @@ describe("app", () => {
     }
     await until(t, () => t.frame().includes("⏸ 2. follow up b"))
     expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(1)
+    // Hint appears once something is queued.
+    expect(t.frame()).toContain("Ctrl+X U to send queued now")
 
     // Turn 1 completes → exactly one queued item drains.
     act(() => t.gw.push({ type: "message.complete", payload: { text: "r1", usage: { input: 1, output: 1, total: 2 } } }))
@@ -767,22 +796,29 @@ describe("app", () => {
     expect(t.frame()).not.toContain("⏸ 2.")        // one chip left
     expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
 
-    // Click the chip → dequeues into composer (removes chip, seeds input).
-    const rows = t.frame().split("\n")
-    const y = rows.findIndex(l => l.includes("⏸ 1."))
-    await act(async () => { await t.mouse.pressDown(rows[y].indexOf("⏸"), y) })
+    // <leader>u flushes: interrupt fires, drain effect submits head on
+    // the following message.complete.
+    act(() => t.keys.pressKey("x", { ctrl: true }))
+    await t.settle()
+    await act(async () => { await t.keys.typeText("u") })
+    await until(t, () => t.gw.calls.some(c => c.method === "session.interrupt"))
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "r2", usage: { input: 1, output: 1, total: 2 } } }))
+    await until(t, () => t.gw.calls.filter(c => c.method === "prompt.submit").length === 3)
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("follow up b")
+    act(() => t.gw.push({ type: "message.start" }))
     await until(t, () => !t.frame().includes("⏸ 1."))
-    expect(t.frame()).toContain("> follow up b")
+    expect(t.frame()).not.toContain("send queued now")
 
-    // Ctrl+U no longer pops — it's the textarea's kill-to-line-start now.
+    // Ctrl+U is still the textarea's kill-to-line-start (distinct from <leader>u).
+    await act(async () => { await t.keys.typeText("scratch") })
     act(() => t.keys.pressKey("u", { ctrl: true }))
     await t.settle()
-    expect(t.frame()).not.toContain("> follow up b")
+    expect(t.frame()).not.toContain("> scratch")
 
-    // Turn 2 completes with empty queue → no further submit.
-    act(() => t.gw.push({ type: "message.complete", payload: { text: "r2", usage: { input: 1, output: 1, total: 2 } } }))
+    // Turn 3 completes with empty queue → no further submit.
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "r3", usage: { input: 1, output: 1, total: 2 } } }))
     await until(t, () => t.frame().includes("Ready"))
-    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
+    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(3)
     t.destroy()
   })
 
@@ -947,8 +983,24 @@ describe("app", () => {
     // the assistant right-side gutter (content on the left, bar on the right).
     expect(f).toMatch(/interrupted\s+│/)
 
-    // Latch clears on completion: next turn's tool.start is NOT dropped.
+    // Latch survives completion: the worker thread's stream-retry except
+    // handler emits lifecycle "Reconnecting…" after message.complete; a
+    // lost clear_interrupt race can fire a whole orphan stream. All gated.
+    act(() => {
+      t.gw.push({ type: "status.update", payload: { kind: "lifecycle", text: "⚠️ Connection dropped. Reconnecting…" } })
+      t.gw.push({ type: "message.start" })
+      t.gw.push({ type: "tool.start", payload: { tool_id: "g", name: "zz_ghost_tool", context: "" } })
+    })
+    await t.settle()
+    expect(t.frame()).not.toContain("Reconnecting")
+    expect(t.frame()).not.toContain("zz_ghost_tool")
+    expect(t.frame()).not.toContain("Generating")  // message.start was dropped
+
+    // Next user send reopens the gate: this turn's tool.start renders.
     // Tool parts surface in the cloud with a humanised label.
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("prompt.submit") !== undefined)
     act(() => t.gw.push({ type: "message.start" }))
     act(() => t.gw.push({ type: "tool.start", payload: { tool_id: "y", name: "read_file", context: "" } }))
     await until(t, () => t.frame().includes("Reading file"))

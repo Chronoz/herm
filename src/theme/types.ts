@@ -82,14 +82,8 @@ export type ThemeCurrent = {
 
 /** Herm-specific tokens — the sidebar "pillar" identity */
 export type HermTokens = {
-  /** Avatar (bust) color — top of the herm */
+  /** Avatar (bust) glyph color — top of the herm; also the pillar border */
   readonly hermAvatar: RGBA;
-  /** Body (pillar) background — bottom of the herm */
-  readonly hermBody: RGBA;
-  /** Auto-computed text color for legibility on hermBody */
-  readonly hermBodyText: RGBA;
-  /** Dimmed hermBodyText — labels/secondary content on the pillar */
-  readonly hermBodyTextMuted: RGBA;
 };
 
 /** Internal resolved theme with extra tracking + herm tokens */
