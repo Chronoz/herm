@@ -1,3 +1,10 @@
+# [1.0.0-dev.5](https://github.com/liftaris/herm/compare/v1.0.0-dev.4...v1.0.0-dev.5) (2026-05-04)
+
+
+### Features
+
+* **avatar:** bundled eikons + skin-matched auto-load (herm-tji.4 §A/§C) ([17c2cad](https://github.com/liftaris/herm/commit/17c2cad6a184b79461f45cab8c84e4107ee7b5ee))
+
 # [1.0.0-dev.4](https://github.com/liftaris/herm/compare/v1.0.0-dev.3...v1.0.0-dev.4) (2026-05-03)
 
 
