@@ -177,7 +177,7 @@ export function useAppKeys(o: Opts) {
     // Popover owns up/down/tab/escape while open; stopPropagation keeps the
     // textarea renderable from also moving the cursor on the same keypress.
     // Structural — popover nav is composer-state, not a catalog action.
-    if (!o.streaming && c?.popOpen()) {
+    if (c?.popOpen()) {
       if (key.name === "escape") return c.popCancel()
       if (key.name === "up") { c.popNav(-1); key.stopPropagation(); return }
       if (key.name === "down") { c.popNav(1); key.stopPropagation(); return }

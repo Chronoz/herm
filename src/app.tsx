@@ -579,14 +579,18 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           return
       }
     }
-    if (c.target !== "gateway" || !ready || turn.streaming) return
+    if (c.target !== "gateway" || !ready) return
     const jump = TAB_SLASH[c.name]
     if (jump !== undefined && !arg) { goToTab(jump); return }
+    const full = `/${c.name}${arg ? " " + arg : ""}`
+    // slash.exec owns the persistent HermesCLI subprocess; mid-stream it
+    // races the agent turn. Enqueue as `/cmd arg` and let the drain path
+    // (send → resolveSlash → slash) dispatch once idle.
+    if (turn.streaming) { setQueue(q => [...q, full]); return }
     // slash.exec runs in a persistent HermesCLI subprocess; commands that
     // it rejects (skills, quick_commands, plugins, pending-input cmds)
     // fall through to command.dispatch, which returns a typed payload.
     // Upstream Ink does the same (see createSlashHandler.ts).
-    const full = `/${c.name}${arg ? " " + arg : ""}`
     dispatch({ kind: "user", text: full })
     gw.request<{ output?: string; warning?: string }>("slash.exec", { command: full })
       .then(res => {

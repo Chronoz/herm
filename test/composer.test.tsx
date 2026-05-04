@@ -313,6 +313,37 @@ describe("composer", () => {
     t.destroy()
   })
 
+  test("slash popover live while streaming; Enter fires onSlash, not onEnqueue", async () => {
+    const ref = createRef<ComposerHandle>()
+    const slashed: SlashCommand[] = []
+    const queued: string[] = []
+    const t: Harness = await mountNode(
+      <box flexDirection="column" flexGrow={1} width="100%" height="100%">
+        <box flexGrow={1} />
+        <Composer
+          ref={ref} focused ready streaming queue={[]} cmds={LOCAL_COMMANDS}
+          onSend={() => {}} onSlash={c => slashed.push(c)}
+          onEnqueue={m => queued.push(m)}
+        />
+      </box>,
+      { width: 120, height: 30 },
+    )
+    await until(t, () => t.frame().includes("Type to queue"))
+
+    await act(async () => { await t.keys.typeText("/steer") })
+    await t.settle()
+    expect(ref.current?.popOpen()).toBe(true)
+    // Popover renders its matched entry above the input.
+    expect(t.frame().split("\n").filter(l => l.includes("steer")).length).toBeGreaterThan(1)
+
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(slashed.map(c => c.name)).toEqual(["steer"])
+    expect(queued).toEqual([])
+    expect(ref.current?.value()).toBe("")
+    t.destroy()
+  })
+
   test("paste: short multi-line inserts verbatim; ≥5 lines → paste.collapse placeholder", async () => {
     const { t, ref } = await setup()
 
