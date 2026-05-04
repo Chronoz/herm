@@ -340,6 +340,10 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           <span fg={dot}>● </span>
           <span fg={theme.textMuted}>{label}</span>
         </text>
+        <box flexGrow={1} />
+        {props.streaming && (props.queue?.length ?? 0) > 0 ? (
+          <text fg={theme.textMuted}>{keys.print("queue.flush")} to send queued now</text>
+        ) : null}
       </box>
     </box>
   )

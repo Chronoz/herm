@@ -44,6 +44,8 @@ type Opts = {
   onEscape?: () => boolean
   onInterrupt: () => void
   onInterruptNotice: () => void
+  queued: number
+  onFlushQueue: () => void
   onCopyLast: () => void
   onAttachClipboard: () => void
   /** Remove the last pending attachment (backspace on empty composer). */
@@ -127,6 +129,16 @@ export function useAppKeys(o: Opts) {
     // handles Esc-to-close; tabs/composer/interrupt all sit behind the
     // overlay and shouldn't move.
     if (o.dialogOpen) return
+
+    // Interrupt the turn so the drain effect fires the queued head now.
+    // Only meaningful mid-stream with something queued; otherwise fall
+    // through (leader was already consumed, so no stray "u" reaches the
+    // textarea).
+    if (keys.match("queue.flush", key) && o.streaming && o.queued > 0) {
+      o.onFlushQueue()
+      key.stopPropagation()
+      return
+    }
 
     // Inline prompt gets first refusal on nav/answer keys. It only
     // claims the narrow set it cares about (←/→/↑/↓/Enter/Esc/1-9);

@@ -846,11 +846,21 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       onSelect: () => newSession() },
     { title: "Compress Session", value: "compress", action: "session.compress", category: "Session",
       onSelect: () => runCompress() },
-    { title: "Undo Last Turn", value: "undo", action: "session.undo", category: "Session",
+    { title: "Undo Last Turn", value: "undo", description: "Pop last user+assistant pair", category: "Session",
       onSelect: () => session.undo() },
     { title: "Branch Session", value: "branch", description: "Fork the current conversation", category: "Session",
       onSelect: () => session.branch() },
   ]), [cmd, dialog, themeCtx, session, gw, toast, newSession, pickEikon, info, sid, runCompress])
+
+  const doInterrupt = useCallback(() => {
+    interrupted.current = true
+    // Drop any 16ms-batched deltas that haven't hit the reducer yet —
+    // flushing them would append post-interrupt text.
+    const d = deltas.current
+    if (d.timer) { clearTimeout(d.timer); d.timer = null }
+    d.text = ""; d.think = ""
+    session.interrupt()
+  }, [session])
 
   // ── Keyboard ──────────────────────────────────────────────────────
   useAppKeys({
@@ -869,15 +879,11 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       setSplash(false); summoned.current = false
       return true
     },
-    onInterrupt: () => {
-      interrupted.current = true
-      // Drop any 16ms-batched deltas that haven't hit the reducer yet —
-      // flushing them would append post-interrupt text.
-      const d = deltas.current
-      if (d.timer) { clearTimeout(d.timer); d.timer = null }
-      d.text = ""; d.think = ""
-      session.interrupt()
-    },
+    onInterrupt: doInterrupt,
+    // queue.flush is just an interrupt — the drain effect auto-fires
+    // the head once turn.streaming flips false.
+    queued: queue.length,
+    onFlushQueue: doInterrupt,
     onInterruptNotice: () => dispatch({ kind: "interrupt.notice", text: "Press Escape again to interrupt" }),
     onCopyLast: () => { copyLast() },
     onAttachClipboard: attachClipboard,

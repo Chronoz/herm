@@ -738,7 +738,7 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("queue: Enter while streaming stacks; drains one per idle; click chip edits", async () => {
+  test("queue: Enter while streaming stacks; drains one per idle; <leader>u flushes", async () => {
     const t = await mount()
     await until(t, () => t.frame().includes("Ready"))
 
@@ -748,6 +748,7 @@ describe("app", () => {
     await t.settle()
     act(() => t.gw.push({ type: "message.start" }))
     await until(t, () => t.frame().includes("Type to queue"))
+    expect(t.frame()).not.toContain("send queued now")
 
     // Queue two follow-ups while streaming.
     for (const msg of ["follow up a", "follow up b"]) {
@@ -757,6 +758,8 @@ describe("app", () => {
     }
     await until(t, () => t.frame().includes("⏸ 2. follow up b"))
     expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(1)
+    // Hint appears once something is queued.
+    expect(t.frame()).toContain("Ctrl+X U to send queued now")
 
     // Turn 1 completes → exactly one queued item drains.
     act(() => t.gw.push({ type: "message.complete", payload: { text: "r1", usage: { input: 1, output: 1, total: 2 } } }))
@@ -767,22 +770,29 @@ describe("app", () => {
     expect(t.frame()).not.toContain("⏸ 2.")        // one chip left
     expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
 
-    // Click the chip → dequeues into composer (removes chip, seeds input).
-    const rows = t.frame().split("\n")
-    const y = rows.findIndex(l => l.includes("⏸ 1."))
-    await act(async () => { await t.mouse.pressDown(rows[y].indexOf("⏸"), y) })
+    // <leader>u flushes: interrupt fires, drain effect submits head on
+    // the following message.complete.
+    act(() => t.keys.pressKey("x", { ctrl: true }))
+    await t.settle()
+    await act(async () => { await t.keys.typeText("u") })
+    await until(t, () => t.gw.calls.some(c => c.method === "session.interrupt"))
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "r2", usage: { input: 1, output: 1, total: 2 } } }))
+    await until(t, () => t.gw.calls.filter(c => c.method === "prompt.submit").length === 3)
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("follow up b")
+    act(() => t.gw.push({ type: "message.start" }))
     await until(t, () => !t.frame().includes("⏸ 1."))
-    expect(t.frame()).toContain("> follow up b")
+    expect(t.frame()).not.toContain("send queued now")
 
-    // Ctrl+U no longer pops — it's the textarea's kill-to-line-start now.
+    // Ctrl+U is still the textarea's kill-to-line-start (distinct from <leader>u).
+    await act(async () => { await t.keys.typeText("scratch") })
     act(() => t.keys.pressKey("u", { ctrl: true }))
     await t.settle()
-    expect(t.frame()).not.toContain("> follow up b")
+    expect(t.frame()).not.toContain("> scratch")
 
-    // Turn 2 completes with empty queue → no further submit.
-    act(() => t.gw.push({ type: "message.complete", payload: { text: "r2", usage: { input: 1, output: 1, total: 2 } } }))
+    // Turn 3 completes with empty queue → no further submit.
+    act(() => t.gw.push({ type: "message.complete", payload: { text: "r3", usage: { input: 1, output: 1, total: 2 } } }))
     await until(t, () => t.frame().includes("Ready"))
-    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(2)
+    expect(t.gw.calls.filter(c => c.method === "prompt.submit").length).toBe(3)
     t.destroy()
   })
 
