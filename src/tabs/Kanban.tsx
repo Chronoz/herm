@@ -3,6 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import {
   board, detail, assignees, tailLog, q, STATUSES,
+  currentBoard, listBoards, resetKanban,
   type Task, type Status, type Detail,
 } from "../utils/hermes-kanban"
 import { useKeys } from "../keys"
@@ -171,6 +172,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   const dims = useTerminalDimensions()
   const keys = useKeys()
 
+  const [slug, setSlug] = useState(currentBoard)
   const [data, setData] = useState(() => board())
   const [col, setCol] = useState(0)
   const [row, setRow] = useState(0)
@@ -206,16 +208,68 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   const cur = cols[Math.min(col, cols.length - 1)]
   const task = cur?.tasks[Math.min(row, (cur?.tasks.length ?? 1) - 1)]
 
-  // `shell.exec → hermes kanban <verb>`. Non-zero → toast the CLI's
-  // own stderr (cycle detected, unknown id, etc). reload on success.
+  // `shell.exec → hermes kanban --board <slug> <verb>`. --board pins
+  // every write to the board herm is *displaying*, so a concurrent
+  // `hermes kanban boards switch` in another shell can't make reads
+  // and writes disagree (upstream 5ec6baa40). Non-zero → toast the
+  // CLI's own stderr (cycle detected, unknown id, etc). reload on ok.
   const sh = useCallback((argv: string, ok?: string) =>
-    gw.request<Sh>("shell.exec", { command: `hermes kanban ${argv}` }).then(r => {
+    gw.request<Sh>("shell.exec", { command: `hermes kanban --board ${q(slug)} ${argv}` }).then(r => {
       if (r.code !== 0) throw new Error((r.stderr || r.stdout || `exit ${r.code}`).trim())
       if (ok) toast.show({ variant: "success", message: ok })
       load()
       return r.stdout
     }).catch((e: Error) => void toast.show({ variant: "error", message: trunc(e.message, 120) })),
-  [gw, toast, load])
+  [gw, toast, load, slug])
+
+  const rebind = useCallback(() => {
+    resetKanban()
+    setSlug(currentBoard())
+    setCol(0); setRow(0); setPane(null)
+    load()
+  }, [load])
+
+  // `boards switch` goes through the top-level CLI (not --board
+  // scoped). After the switch rewrites <root>/kanban/current,
+  // resetKanban() re-resolves the slug and reopens the RO handle.
+  const boards = useCallback(() => {
+    const list = listBoards()
+    dialog.replace(
+      <DialogSelect title="Switch board" current={slug}
+        placeholder="Search boards…"
+        options={list.map(b => ({
+          title: b.name, value: b.slug,
+          description: b.slug === "default" ? "legacy ~/.hermes/kanban.db" : b.slug,
+        }))}
+        footer={<text fg={theme.textMuted}>Enter switch · B new board · Esc cancel</text>}
+        onKey={k => {
+          if (k.raw !== "B") return false
+          dialog.clear()
+          void openTextPrompt(dialog, { title: "New board", label: "Slug (a-z, 0-9, -_)" })
+            .then(v => {
+              if (!v) return
+              return gw.request<Sh>("shell.exec",
+                  { command: `hermes kanban boards create ${q(v)}` })
+                .then(r => r.code === 0
+                  ? gw.request<Sh>("shell.exec", { command: `hermes kanban boards switch ${q(v)}` })
+                      .then(() => { toast.show({ variant: "success", message: `Board '${v}' created` }); rebind() })
+                  : Promise.reject(new Error((r.stderr || r.stdout).trim())))
+                .catch((e: Error) => toast.show({ variant: "error", message: trunc(e.message, 120) }))
+            })
+          return true
+        }}
+        onSelect={o => {
+          dialog.clear()
+          if (o.value === slug) return
+          void gw.request<Sh>("shell.exec",
+              { command: `hermes kanban boards switch ${q(o.value)}` })
+            .then(r => r.code === 0
+              ? (toast.show({ variant: "success", message: `Board → ${o.value}` }), rebind())
+              : Promise.reject(new Error((r.stderr || r.stdout).trim())))
+            .catch((e: Error) => toast.show({ variant: "error", message: trunc(e.message, 120) }))
+        }} />,
+    )
+  }, [dialog, gw, toast, theme, slug, rebind])
 
   // ── Actions ────────────────────────────────────────────────────────
 
@@ -307,8 +361,9 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     { key: "u", title: "Unblock",       when: t => t?.status === "blocked", run: t => void unblock(t!) },
     { key: "d", title: "Archive",       when: t => !!t,              run: t => void archive(t!) },
     { key: "l", title: "Worker log",    when: t => !!t,              run: t => showLog(t!) },
+    { key: "b", title: "Boards",        when: () => true,            run: () => boards() },
     { key: "D", title: "Dispatch",      when: () => true,            run: () => void dispatch() },
-  ], [create, assign, comment, unblock, archive, showLog, dispatch])
+  ], [create, assign, comment, unblock, archive, showLog, boards, dispatch])
 
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
@@ -340,7 +395,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   return (
     <box flexDirection="row" flexGrow={1}>
       <TabShell
-        title={`Kanban · ${total} task${total === 1 ? "" : "s"}${running ? ` · ${running} running` : ""}`}
+        title={`Kanban · ${slug} · ${total} task${total === 1 ? "" : "s"}${running ? ` · ${running} running` : ""}`}
         hint={hint}
       >
         <box flexDirection="row" flexGrow={1} gap={1}>
@@ -356,8 +411,11 @@ export const Kanban = memo((props: { focused?: boolean }) => {
         </box>
         {total === 0 && (
           <box flexDirection="column" marginTop={1}>
-            <text fg={theme.textMuted}>no tasks — board at ~/.hermes/kanban.db</text>
-            <text fg={theme.textMuted}>press <span fg={theme.accent}>n</span> to create one</text>
+            <text fg={theme.textMuted}>no tasks on board '{slug}'</text>
+            <text fg={theme.textMuted}>
+              press <span fg={theme.accent}>n</span> to create one
+              {"  ·  "}<span fg={theme.accent}>b</span> to switch board
+            </text>
           </box>
         )}
       </TabShell>

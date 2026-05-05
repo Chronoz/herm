@@ -1,19 +1,26 @@
-// Window onto the shared ~/.hermes/kanban.db.
+// Window onto the kanban board(s) under ~/.hermes/.
 //
 // Kanban is deliberately profile-agnostic (the board IS the
 // coordination primitive between profiles), so this reads the
-// HERMES_HOME-relative path and shows every tenant's tasks.
+// HERMES_HOME-relative paths and shows every tenant's tasks.
+//
+// Upstream 5ec6baa40 introduced multi-project boards. Resolution
+// chain mirrors hermes_cli/kanban_db.py:
+//   HERMES_KANBAN_BOARD env → <root>/kanban/current file → "default".
+// The 'default' board keeps its legacy DB path <root>/kanban.db and
+// legacy logs dir <root>/kanban/logs/; every other board lives at
+// <root>/kanban/boards/<slug>/{kanban.db,logs/}.
 //
 // Reads are sidecar SQLite (WAL lets us read alongside the
 // dispatcher's IMMEDIATE write txns). Writes route through
-// `shell.exec → hermes kanban <verb>` so upstream kanban_db.py owns
-// the state machine: recompute_ready, cycle detection, event log,
-// notify subscriptions. herm is the operator surface for that CLI —
-// create/assign/comment/unblock/archive/dispatch — not a competing
-// implementation.
+// `shell.exec → hermes kanban --board <slug> <verb>` so upstream
+// kanban_db.py owns the state machine: recompute_ready, cycle
+// detection, event log, notify subscriptions. herm is the operator
+// surface for that CLI — create/assign/comment/unblock/archive/
+// dispatch/switch — not a competing implementation.
 
 import { Database } from "bun:sqlite"
-import { existsSync, readdirSync, statSync, openSync, readSync, closeSync } from "node:fs"
+import { existsSync, readdirSync, statSync, openSync, readSync, closeSync, readFileSync } from "node:fs"
 import { hermesPath } from "./hermes-home"
 
 export const STATUSES = ["triage", "todo", "ready", "running", "blocked", "done"] as const
@@ -32,14 +39,63 @@ export type Detail = Task & {
   comments: Array<{ author: string; body: string; at: number }>
 }
 
+export type Board = { slug: string; name: string }
+
+const DEFAULT = "default"
+const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
+
+/** Active board slug. Re-resolved on resetKanban() so a profile
+ *  switch or `hermes kanban boards switch` picks up without restart. */
+const resolve = (): string => {
+  const env = (process.env.HERMES_KANBAN_BOARD ?? "").trim().toLowerCase()
+  if (SLUG.test(env)) return env
+  try {
+    const txt = readFileSync(hermesPath("kanban/current"), "utf-8").trim().toLowerCase()
+    if (SLUG.test(txt)) return txt
+  } catch {}
+  return DEFAULT
+}
+
+let slug = resolve()
 let ro: Database | null | undefined
+
+export const currentBoard = () => slug
+
+/** default keeps legacy <root>/kanban.db; others live under boards/<slug>/. */
+const dbPath = (s: string) =>
+  hermesPath(s === DEFAULT ? "kanban.db" : `kanban/boards/${s}/kanban.db`)
+
+const logsDir = (s: string) =>
+  hermesPath(s === DEFAULT ? "kanban/logs" : `kanban/boards/${s}/logs`)
+
 const db = (): Database | null => {
   if (ro !== undefined) return ro
-  try { ro = new Database(hermesPath("kanban.db"), { readonly: true }) }
+  try { ro = new Database(dbPath(slug), { readonly: true }) }
   catch { ro = null }
   return ro
 }
-export const resetKanban = () => { ro?.close(); ro = undefined }
+
+/** Close the cached RO handle and re-resolve the active board.
+ *  Call after a board switch, profile rehome, or test seeding. */
+export const resetKanban = () => { ro?.close(); ro = undefined; slug = resolve() }
+
+/** Enumerate boards on disk. 'default' always first; others sorted. */
+export function listBoards(): Board[] {
+  const out = new Map<string, string>([[DEFAULT, "Default"]])
+  const dir = hermesPath("kanban/boards")
+  if (existsSync(dir))
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory() || !SLUG.test(e.name)) continue
+      let name = e.name
+      try {
+        const meta = JSON.parse(readFileSync(`${dir}/${e.name}/board.json`, "utf-8"))
+        if (typeof meta?.display_name === "string") name = meta.display_name
+      } catch {}
+      out.set(e.name, name)
+    }
+  return [...out].map(([s, name]) => ({ slug: s, name }))
+    .sort((a, b) => a.slug === DEFAULT ? -1 : b.slug === DEFAULT ? 1 : a.slug.localeCompare(b.slug))
+}
 
 // completed_at / started_at / created_at → updated_at proxy. The
 // tasks table has no updated_at; newest-of-the-three is close enough
@@ -126,10 +182,10 @@ export function assignees(): string[] {
   return [...seen].sort()
 }
 
-/** Tail of the worker log at ~/.hermes/kanban/logs/<id>.log. Mirrors
+/** Tail of the worker log for the active board. Mirrors
  *  kanban_db.read_worker_log's seek-from-end + skip-partial-line. */
 export function tailLog(id: string, bytes = 16_384): string | null {
-  const path = hermesPath(`kanban/logs/${id}.log`)
+  const path = `${logsDir(slug)}/${id}.log`
   if (!existsSync(path)) return null
   try {
     const size = statSync(path).size
