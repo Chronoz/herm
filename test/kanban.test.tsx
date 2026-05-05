@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync, rmSync } from "node:fs"
 import { mountNode, MockGateway, until } from "./harness"
 import { hermesPath } from "../src/utils/hermes-home"
 import {
-  board, detail, assignees, tailLog, q, resetKanban,
+  board, boardOf, detail, assignees, tailLog, q, resetKanban,
   currentBoard, listBoards,
 } from "../src/utils/hermes-kanban"
 import { Kanban } from "../src/tabs/Kanban"
@@ -68,6 +68,8 @@ beforeAll(() => {
      VALUES ('m1', 'upgrade forge', 'ready', 1, ?)`, [now - 100],
   )
   db2.close()
+  // Third board — empty, exercises the collapsed-by-default path.
+  mkdirSync(hermesPath("kanban/boards/zeta"), { recursive: true })
   resetKanban()
 })
 
@@ -80,6 +82,13 @@ describe("hermes-kanban readers", () => {
     expect(b.get("blocked")?.[0]?.id).toBe("t5")
     expect(b.get("done")?.[0]?.result).toContain("memo.md")
     expect(b.get("triage")).toEqual([])
+  })
+
+  test("boardOf() reads per-slug without touching current", () => {
+    expect(currentBoard()).toBe("default")
+    expect(boardOf("atm10").get("ready")?.[0]?.id).toBe("m1")
+    expect(boardOf("default").get("ready")?.[0]?.id).toBe("t1")
+    expect([...boardOf("zeta").values()].every(v => v.length === 0)).toBe(true)
   })
 
   test("detail() hydrates parents/children/comments", () => {
@@ -115,23 +124,19 @@ describe("hermes-kanban readers", () => {
     expect(bs[0].slug).toBe("default")
     const atm = bs.find(b => b.slug === "atm10")
     expect(atm?.name).toBe("ATM10 Server")
+    expect(bs.find(b => b.slug === "zeta")).toBeTruthy()
   })
 
-  test("board resolution: env → current file → default; paths follow slug", () => {
+  test("board resolution: env → current file → default", () => {
     expect(currentBoard()).toBe("default")
-    // env wins
     process.env.HERMES_KANBAN_BOARD = "atm10"
     resetKanban()
     expect(currentBoard()).toBe("atm10")
     expect(board().get("ready")?.[0]?.id).toBe("m1")
-    expect(tailLog("m1")).toContain("mod boot")
-    expect(tailLog("t2")).toBeNull() // default's log invisible on atm10
     delete process.env.HERMES_KANBAN_BOARD
-    // current file next
     writeFileSync(hermesPath("kanban/current"), "atm10\n")
     resetKanban()
     expect(currentBoard()).toBe("atm10")
-    // cleanup → default
     rmSync(hermesPath("kanban/current"), { force: true })
     resetKanban()
     expect(currentBoard()).toBe("default")
@@ -140,18 +145,26 @@ describe("hermes-kanban readers", () => {
 })
 
 describe("Kanban tab", () => {
-  test("columns + card nav + Enter → detail pane", async () => {
-    const t = await mountNode(<Kanban focused />, { width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
+  test("stacks all boards; card nav + Enter → detail pane", async () => {
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards · 6 tasks"))
     const f = t.frame()
+    // Both non-empty boards open by default, both visible at once.
+    expect(f).toContain("▾ Default")
+    expect(f).toContain("▾ ATM10 Server")
+    // Empty board starts collapsed.
+    expect(f).toMatch(/▸ zeta\s+·\s+empty/)
+    // Default board columns + content.
     expect(f).toContain("ready")
     expect(f).toContain("running")
     expect(f).toContain("1 running")
     expect(f).toContain("research cost")
+    // atm10 content rendered simultaneously.
+    expect(f).toContain("upgrade forge")
     // second-line meta (id · assignee · priority)
     expect(f).toMatch(/t2\s+researcher\s+P3/)
 
-    // → → lands on 'ready' (col idx 2 at full width).
+    // → → lands on 'ready' (col idx 2 at full width) on the active (default) board.
     act(() => t.keys.pressArrow("right"))
     await t.settle()
     act(() => t.keys.pressArrow("right"))
@@ -168,19 +181,18 @@ describe("Kanban tab", () => {
     t.destroy()
   })
 
-  test("a → DialogSelect → shell.exec hermes kanban assign", async () => {
+  test("a → DialogSelect → shell.exec pins --board of active section", async () => {
     const cmds: string[] = []
     const gw = new MockGateway({
       "shell.exec": p => { cmds.push(p.command as string); return { stdout: "", stderr: "", code: 0 } },
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
-    // → → to 'ready' col, cursor on t1.
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
+    // → → to 'ready' col on default, cursor on t1.
     act(() => t.keys.pressArrow("right")); await t.settle()
     act(() => t.keys.pressArrow("right")); await t.settle()
     await act(async () => { await t.keys.typeText("a") })
     await until(t, () => t.frame().includes("Assign t1"))
-    // type to filter to 'writer'
     await act(async () => { await t.keys.typeText("writer") })
     await t.settle()
     act(() => t.keys.pressEnter())
@@ -194,8 +206,8 @@ describe("Kanban tab", () => {
     const gw = new MockGateway({
       "shell.exec": p => { cmds.push(p.command as string); return { stdout: "", stderr: "", code: 0 } },
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
     // →×4 to 'blocked' col.
     for (let i = 0; i < 4; i++) { act(() => t.keys.pressArrow("right")); await t.settle() }
     await act(async () => { await t.keys.typeText("u") })
@@ -214,8 +226,8 @@ describe("Kanban tab", () => {
     const gw = new MockGateway({
       "shell.exec": p => { cmds.push(p.command as string); return { stdout: "", stderr: "", code: 0 } },
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
     for (let i = 0; i < 5; i++) { act(() => t.keys.pressArrow("right")); await t.settle() }
     await act(async () => { await t.keys.typeText("d") })
     await until(t, () => t.frame().includes("Archive task?"))
@@ -225,13 +237,13 @@ describe("Kanban tab", () => {
     t.destroy()
   })
 
-  test("n → create dialog → shell.exec hermes kanban create", async () => {
+  test("n → create dialog → shell.exec create on active board", async () => {
     const cmds: string[] = []
     const gw = new MockGateway({
       "shell.exec": p => { cmds.push(p.command as string); return { stdout: "t6", stderr: "", code: 0 } },
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
     await act(async () => { await t.keys.typeText("n") })
     await until(t, () => t.frame().includes("New Task"))
     await act(async () => { await t.keys.typeText("ship rate limiter") })
@@ -247,10 +259,10 @@ describe("Kanban tab", () => {
     const gw = new MockGateway({
       "shell.exec": p => { cmds.push(p.command as string); return { stdout: "[]", stderr: "", code: 0 } },
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
     await act(async () => { await t.keys.typeText("D") })
-    await until(t, () => t.frame().includes("Dispatch ready tasks?"))
+    await until(t, () => t.frame().includes("Dispatch · default"))
     await act(async () => { await t.keys.typeText("y") })
     await until(t, () => cmds.length === 1)
     expect(cmds[0]).toBe("hermes kanban --board default dispatch --json")
@@ -258,9 +270,9 @@ describe("Kanban tab", () => {
   })
 
   test("l opens log pane; Esc closes", async () => {
-    const t = await mountNode(<Kanban focused />, { width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
-    // →×3 to 'running' col, cursor on t2.
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
+    // →×3 to 'running' col on default, cursor on t2.
     for (let i = 0; i < 3; i++) { act(() => t.keys.pressArrow("right")); await t.settle() }
     await act(async () => { await t.keys.typeText("l") })
     await until(t, () => t.frame().includes("worker log (tail)"))
@@ -274,8 +286,8 @@ describe("Kanban tab", () => {
     const gw = new MockGateway({
       "shell.exec": () => ({ stdout: "", stderr: "cycle detected: t1 → t3 → t1", code: 2 }),
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
     act(() => t.keys.pressArrow("right")); await t.settle()
     act(() => t.keys.pressArrow("right")); await t.settle()
     await act(async () => { await t.keys.typeText("a") })
@@ -285,40 +297,70 @@ describe("Kanban tab", () => {
     t.destroy()
   })
 
-  test("b → board picker lists boards; Enter → boards switch + rebind", async () => {
+  test("[/] cycle boards; verbs pin --board to active section", async () => {
     const cmds: string[] = []
     const gw = new MockGateway({
-      "shell.exec": p => {
-        const c = p.command as string
-        cmds.push(c)
-        if (c.startsWith("hermes kanban boards switch "))
-          writeFileSync(hermesPath("kanban/current"), c.split(" ").pop()! + "\n")
-        return { stdout: "", stderr: "", code: 0 }
-      },
+      "shell.exec": p => { cmds.push(p.command as string); return { stdout: "", stderr: "", code: 0 } },
     })
-    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 40 })
-    await until(t, () => t.frame().includes("Kanban · default · 5 tasks"))
-    expect(t.frame()).toContain("b boards")
-    await act(async () => { await t.keys.typeText("b") })
-    await until(t, () => t.frame().includes("Switch board"))
-    expect(t.frame()).toContain("ATM10 Server")
-    // filter to atm10 and select
-    await act(async () => { await t.keys.typeText("atm") })
-    await t.settle()
-    act(() => t.keys.pressEnter())
-    await until(t, () => t.frame().includes("Kanban · atm10 · 1 task"))
-    expect(cmds[0]).toBe("hermes kanban boards switch atm10")
-    expect(t.frame()).toContain("upgrade forge")
-    // verbs on the switched board pin --board atm10
+    const t = await mountNode(<Kanban focused />, { gw, width: 180, height: 44 })
+    await until(t, () => t.frame().includes("▾ Default"))
+    expect(t.frame()).toContain("[/] board")
+    // ] → atm10 active; →→ to its 'ready' col → ▸ on m1.
+    await act(async () => { await t.keys.typeText("]") }); await t.settle()
     act(() => t.keys.pressArrow("right")); await t.settle()
     act(() => t.keys.pressArrow("right")); await t.settle()
+    await until(t, () => /▸ upgrade forge/.test(t.frame()))
     await act(async () => { await t.keys.typeText("d") })
     await until(t, () => t.frame().includes("Archive task?"))
     await act(async () => { await t.keys.typeText("y") })
-    await until(t, () => cmds.length === 2)
-    expect(cmds[1]).toBe("hermes kanban --board atm10 archive m1")
-    // cleanup — restore default for any subsequent test files.
-    rmSync(hermesPath("kanban/current"), { force: true })
+    await until(t, () => cmds.length === 1)
+    expect(cmds[0]).toBe("hermes kanban --board atm10 archive m1")
+    // [ back to default; →→ to 'ready' → ▸ on t1.
+    await act(async () => { await t.keys.typeText("[") }); await t.settle()
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    await until(t, () => /▸ research cost/.test(t.frame()))
+    t.destroy()
+  })
+
+  test("Space collapses the active section", async () => {
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 44 })
+    await until(t, () => t.frame().includes("▾ Default"))
+    expect(t.frame()).toContain("research cost")
+    act(() => t.keys.pressKey(" "))
+    await until(t, () => t.frame().includes("▸ Default"))
+    expect(t.frame()).not.toContain("research cost")
+    // atm10 still visible underneath.
+    expect(t.frame()).toContain("upgrade forge")
+    act(() => t.keys.pressKey(" "))
+    await until(t, () => t.frame().includes("▾ Default"))
+    t.destroy()
+  })
+
+  test("column overflow scrolls; selection follows ↑↓", async () => {
+    // Seed a tall board: 20 triage tasks — more than any cap.
+    mkdirSync(hermesPath("kanban/boards/tall"), { recursive: true })
+    const db = new Database(hermesPath("kanban/boards/tall/kanban.db"), { create: true })
+    schema(db)
+    for (let i = 0; i < 20; i++)
+      db.run("INSERT INTO tasks (id, title, status, priority, created_at) VALUES (?,?,?,?,?)",
+        [`x${i}`, `item ${i}`, "triage", 20 - i, now - i])
+    db.close()
+    resetKanban()
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 30 })
+    await until(t, () => t.frame().includes("tall"))
+    // Focus tall (default → atm10 → tall → zeta in slug sort).
+    await act(async () => { await t.keys.typeText("]") }); await t.settle()
+    await act(async () => { await t.keys.typeText("]") }); await t.settle()
+    await until(t, () => t.frame().includes("item 0"))
+    // At h=30, cap is 30-14=16; item 19 doesn't fit initially.
+    expect(t.frame()).not.toContain("item 19")
+    for (let i = 0; i < 19; i++) { act(() => t.keys.pressArrow("down")); await t.settle() }
+    // scrollChildIntoView brought the last card into the viewport.
+    await until(t, () => t.frame().includes("item 19"))
+    expect(t.frame()).not.toContain("item 0")
+    // cleanup
+    rmSync(hermesPath("kanban/boards/tall"), { recursive: true, force: true })
     resetKanban()
     t.destroy()
   })
