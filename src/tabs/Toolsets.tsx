@@ -207,7 +207,7 @@ export const Toolsets = memo((props: { focused?: boolean }) => {
   const follow = useFollow("ts");
 
   const keys = useListKeys({
-    active: !!props.focused && dialog.stack.length === 0,
+    active: () => !!props.focused && !dialog.open(),
     count, setSel, ...follow.opts,
     onToggle: toggle,
     onRefresh: () => { load(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }) },

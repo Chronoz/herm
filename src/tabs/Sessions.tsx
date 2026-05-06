@@ -692,7 +692,7 @@ export const Sessions = memo((props: Props) => {
 
   const keys = useKeys()
   useKeyboard((key) => {
-    if (!props.focused || dialog.stack.length > 0) return
+    if (!props.focused || dialog.open()) return
     if (searching) {
       if (key.name === "escape") { setSearching(false); setQuery(""); setResults([]); setSearchSel(0); return }
       if (key.name === "backspace") return setQuery(p => p.slice(0, -1))

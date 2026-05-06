@@ -420,7 +420,7 @@ export const Context = memo(({ messages = NO_MESSAGES as Message[], info, focuse
   }
   const keys = useKeys()
   useKeyboard((key) => {
-    if (!focused || dialog.stack.length > 0) return
+    if (!focused || dialog.open()) return
     if (handleListKey(keys, key, {
       count: segs.length, setSel,
       onActivate: () => {

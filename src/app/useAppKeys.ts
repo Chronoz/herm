@@ -34,7 +34,7 @@ type Opts = {
   focusRegion: Region
   setFocusRegion: (r: Region | ((r: Region) => Region)) => void
   streaming: boolean
-  dialogOpen: boolean
+  dialogOpen: () => boolean
   composer: RefObject<ComposerHandle | null>
   /** Offer the key to a pending inline prompt card. Return true to
    *  consume + stopPropagation; false to fall through to the shell. */
@@ -128,7 +128,7 @@ export function useAppKeys(o: Opts) {
     // everything except process-level escapes above. DialogProvider
     // handles Esc-to-close; tabs/composer/interrupt all sit behind the
     // overlay and shouldn't move.
-    if (o.dialogOpen) return
+    if (o.dialogOpen()) return
 
     // Interrupt the turn so the drain effect fires the queued head now.
     // Only meaningful mid-stream with something queued; otherwise fall

@@ -385,6 +385,30 @@ describe("Kanban tab", () => {
     t.destroy()
   })
 
+  test("dialog open ⇒ underlying tab ignores nav keys", async () => {
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 48 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
+    // →→ to 'ready' on Default; open detail on t1.
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    act(() => t.keys.pressEnter())
+    await until(t, () => /Assignee\s+researcher/.test(t.frame()))
+    // N → create-child popup.
+    await act(async () => { await t.keys.typeText("N") })
+    await until(t, () => t.frame().includes("child of t1"))
+    // ↑↑↓ after the popup has painted. If the underlying handler
+    // leaked, the first ↑ would move tier=filter and the
+    // detail-follows effect would close the side pane.
+    act(() => t.keys.pressArrow("up")); await t.settle()
+    act(() => t.keys.pressArrow("up")); await t.settle()
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    act(() => t.keys.pressEscape())
+    await until(t, () => !t.frame().includes("child of t1"))
+    expect(t.frame()).toMatch(/Assignee\s+researcher/)
+    expect(t.frame()).toMatch(/Children\s+t3/)
+    t.destroy()
+  })
+
   test("status chip tri-state: include → only that col; exclude → drops it", async () => {
     const t = await mountNode(<Kanban focused />, { width: 180, height: 48 })
     await until(t, () => t.frame().includes("Kanban · 3 boards"))

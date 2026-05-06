@@ -243,7 +243,7 @@ export const Cron = memo((props: { focused?: boolean }) => {
 
   const follow = useFollow("cron");
   const keys = useListKeys({
-    active: !!props.focused && dialog.stack.length === 0,
+    active: () => !!props.focused && !dialog.open(),
     count: jobs.length, setSel, ...follow.opts,
     onToggle: toggle,
     onDelete: remove,

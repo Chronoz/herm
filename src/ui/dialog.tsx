@@ -9,7 +9,7 @@
  *   dialog.clear()
  */
 
-import { createContext, useContext, useState, useCallback, useMemo } from "react"
+import { createContext, useContext, useState, useCallback, useMemo, useRef } from "react"
 import type { ReactNode } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import { RGBA } from "@opentui/core"
@@ -25,6 +25,14 @@ export type DialogContext = {
   readonly replace: (element: ReactNode, onClose?: () => void) => void
   readonly clear: () => void
   readonly stack: ReadonlyArray<DialogEntry>
+  /** Scheduling-independent open probe. `stack.length > 0` is only
+   *  reliable once React has committed the provider's setState; a
+   *  keypress arriving between replace() and that commit would read
+   *  stack=[] (stale closure in the tab's useKeyboard) and leak
+   *  through. `open()` reads a ref set synchronously inside
+   *  replace()/clear(), so key-guards are correct from the same
+   *  microtask the dialog was requested in. */
+  readonly open: () => boolean
 }
 
 const Ctx = createContext<DialogContext | null>(null)
@@ -33,12 +41,17 @@ const BACKDROP = RGBA.fromInts(0, 0, 0, 150)
 
 export const DialogProvider = ({ children }: { children: ReactNode }) => {
   const [stack, setStack] = useState<DialogEntry[]>([])
+  // Mirror of stack.length > 0, written synchronously from the
+  // setters so callers observing through open() never see a gap.
+  const gate = useRef(false)
 
   const replace = useCallback((element: ReactNode, onClose?: () => void) => {
+    gate.current = true
     setStack([{ element, onClose }])
   }, [])
 
   const clear = useCallback(() => {
+    gate.current = false
     setStack(prev => {
       const top = prev[prev.length - 1]
       if (top?.onClose) top.onClose()
@@ -46,13 +59,17 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
+  const open = useCallback(() => gate.current, [])
+
   const keys = useKeys()
   useKeyboard((key) => {
     if (stack.length === 0) return
     if (keys.match("dialog.cancel", key)) clear()
   })
 
-  const value = useMemo<DialogContext>(() => ({ replace, clear, stack }), [replace, clear, stack])
+  const value = useMemo<DialogContext>(
+    () => ({ replace, clear, stack, open }),
+    [replace, clear, stack, open])
   const top = stack.length > 0 ? stack[stack.length - 1] : undefined
 
   return (

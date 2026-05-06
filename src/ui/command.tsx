@@ -85,7 +85,7 @@ export const CommandProvider = ({ children }: { children: ReactNode }) => {
   }, [all, dialog, keys])
 
   useKeyboard((key) => {
-    if (!enabled.current || dialog.stack.length > 0) return
+    if (!enabled.current || dialog.open()) return
     if (keys.match("palette.open", key)) return open()
     for (const c of all()) {
       if (c.action && keys.match(c.action, key)) return c.onSelect()

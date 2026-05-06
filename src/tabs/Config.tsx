@@ -344,7 +344,7 @@ export const Config = memo((props: { focused?: boolean }) => {
 
   const keys = useKeys();
   useKeyboard((key) => {
-    if (!props.focused || dialog.stack.length > 0) return;
+    if (!props.focused || dialog.open()) return;
     if (key.name === "tab" && !editing && !searching) {
       setMode(m => m === "form" ? "yaml" : "form");
       return;
