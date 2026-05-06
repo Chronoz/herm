@@ -4,10 +4,31 @@
 // $HERMES_HOME/eikons are listed alongside these in the picker.
 
 import { existsSync } from "fs"
-import { join } from "path"
+import { join, dirname } from "path"
 
-/** <repo>/assets/eikons — resolved from this file, survives cwd. */
-export const BUNDLED_EIKON_DIR = join(import.meta.dir, "../../../assets/eikons")
+// In dev, import.meta.dir is src/components/avatar/ and assets/ sits
+// three dirs up at the repo root. In the published bundle every
+// module collapses into dist/index.js, so import.meta.dir is the
+// install root and assets/ sits right beside it (copied there by
+// build.ts). Walk up from here until assets/eikons is found —
+// hitting dist/ first in the built layout, <repo>/ in dev.
+const locate = () => {
+  let d = import.meta.dir
+  for (let i = 0; i < 5; i++) {
+    const p = join(d, "assets/eikons")
+    if (existsSync(p)) return p
+    const up = dirname(d)
+    if (up === d) break
+    d = up
+  }
+  // Unreachable in a correct install; return the dev path so the
+  // picker's "No .eikon files found" state renders instead of
+  // crashing on a bogus readdir.
+  return join(import.meta.dir, "../../../assets/eikons")
+}
+
+/** Shipped avatar directory — resolved for both dev and built layouts. */
+export const BUNDLED_EIKON_DIR = locate()
 
 /** Path to the bundled eikon for a skin name, if one ships with herm. */
 export function bundledEikonPath(name: string | undefined): string | undefined {
