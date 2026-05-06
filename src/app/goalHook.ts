@@ -1,9 +1,14 @@
 // Goal-completion hook. Polls state_meta['goal:<sid>'] after each turn
 // and, on transition to status=done, performs the onGoalDone pref
-// action. The judge that *writes* that status lives elsewhere:
-//   - hermes_cli cli.py / gateway/run.py today
-//   - herm's own drive loop once option-B lands (herm-2ku)
-// This module is the reactor, not the driver.
+// action. The judge that *writes* that status lives in stock
+// tui_gateway/server.py (the post-turn Ralph loop); this module is the
+// reactor, not the driver.
+//
+// Setting/controlling the goal goes through the slash-worker
+// (slash.exec → HermesCLI._handle_goal_command → GoalManager), NOT via
+// shell.exec + `python3 -c` — that pattern is on tools/approval.py's
+// DANGEROUS_PATTERNS list and tui_gateway's shell.exec handler hard-
+// rejects it with a 4005 before it ever runs.
 
 import type { DialogContext } from "../ui/dialog"
 import type { Gateway } from "./gateway"
@@ -13,36 +18,29 @@ import { io } from "../io"
 
 type Toast = { show: (o: { variant: "success"; title?: string; message: string; duration?: number }) => void }
 type ShellResult = { stdout: string; stderr: string; code: number }
+type SlashResult = { output?: string; warning?: string }
 
 export type GoalHook = {
   /** Called from onTurnComplete. Reads goal state, fires if done. */
   check: (sid: string) => void
-  /** Drive GoalManager via shell.exec — verbs map to goals.py methods.
-   *  Returns a one-line status string for the transcript. */
-  cmd: (sid: string, verb: string, arg: string) => Promise<string>
+  /** Route /goal through the slash-worker. Returns cleaned output for
+   *  the transcript plus whether this was a fresh set (caller kicks
+   *  off the loop by sending the goal text as a prompt — parity with
+   *  the CLI's _pending_input.put(goal)). */
+  cmd: (arg: string) => Promise<{ line: string; kick: string | null }>
 }
 
 const SECONDS = 10
 const SUSPEND = process.platform === "darwin" ? "pmset sleepnow" : "systemctl suspend"
+const VERBS = new Set(["status", "pause", "resume", "clear", "stop", "done"])
+
+// _handle_goal_command prints via _cprint with _DIM/_RST interpolated
+// into the string before the worker's lambda swap, so the ANSI bytes
+// are in the captured buffer. Strip them for the transcript.
+const ANSI = /\x1b\[[0-9;]*m/g
 
 const run = (cmd: string) =>
   Bun.spawn(["sh", "-c", cmd], { stdout: "ignore", stderr: "ignore" })
-
-// shell.exec inherits the gateway subprocess env (HERMES_HOME +
-// PYTHONPATH=<agent-root>), so hermes_cli.goals resolves and writes to
-// the same state.db the io reader polls. JSON.stringify handles the
-// inner python string literal (", \, \n); shQuote handles the outer
-// sh -c arg so goal text can't inject.
-const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-
-const PY: Record<string, (a: string) => string> = {
-  set:    a => `m.set(${JSON.stringify(a)}); print(m.status_line())`,
-  done:   a => `m.mark_done(${JSON.stringify(a || "marked via herm")}); print("✓ marked done")`,
-  pause:  () => `m.pause(); print(m.status_line())`,
-  resume: () => `m.resume(); print(m.status_line())`,
-  clear:  () => `m.clear(); print("cleared")`,
-  status: () => `print(m.status_line())`,
-}
 
 // Latch per sid+goal so repeated done-polls don't re-fire. Module
 // scope — switching sessions naturally keys out of it, and profile
@@ -76,16 +74,21 @@ export function makeGoalHook(gw: Gateway, dialog: DialogContext, toast: Toast): 
         act(s.goal)
       }).catch(() => {})
     },
-    cmd: async (sid: string, verb: string, arg: string) => {
-      const body = PY[verb] ?? (arg || verb ? PY.set : PY.status)
-      // Non-verb first token = start of goal text.
-      const text = PY[verb] ? arg : [verb, arg].filter(Boolean).join(" ")
-      const py = `from hermes_cli.goals import GoalManager; m=GoalManager(${JSON.stringify(sid)}); ${body(text)}`
-      const r = await gw.request<ShellResult>("shell.exec", {
-        command: `python3 -c ${shQuote(py)}`,
-      })
-      if (r.code !== 0) throw new Error((r.stderr || r.stdout || `exit ${r.code}`).trim())
-      return r.stdout.trim() || "ok"
+    cmd: async (arg: string) => {
+      const trimmed = arg.trim()
+      const first = trimmed.split(/\s+/, 1)[0]?.toLowerCase() ?? ""
+      // Non-verb (and non-empty) first token ⇒ this is a fresh goal
+      // set; the caller should kick the loop off by submitting the
+      // goal text as the first prompt. Verbs + bare `/goal` just
+      // report/mutate state.
+      const kick = trimmed && !VERBS.has(first) ? trimmed : null
+      const r = await gw.request<SlashResult>("slash.exec",
+        { command: `/goal${trimmed ? " " + trimmed : ""}` })
+      const line = (r.output ?? "").replace(ANSI, "").trim() || "ok"
+      return { line, kick }
     },
   }
 }
+
+// Exposed for tests — keep type surface minimal.
+export type { ShellResult }

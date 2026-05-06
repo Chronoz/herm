@@ -77,43 +77,63 @@ describe("countdown dialog", () => {
   })
 })
 
-// ─── goalHook.cmd → shell.exec dispatch ──────────────────────────────
+// ─── goalHook.cmd → slash.exec dispatch ──────────────────────────────
 
 describe("goalHook.cmd", () => {
   const mk = () => {
     const calls: string[] = []
     const gw = new MockGateway({
-      "shell.exec": (p) => { calls.push(String(p.command)); return { stdout: "⊙ ok", stderr: "", code: 0 } },
+      "slash.exec": (p) => { calls.push(String(p.command)); return { output: "  ⊙ Goal set (20-turn budget): x\n  \x1b[2mAfter each turn…\x1b[22m" } },
     })
-    const dialog = { replace: () => {}, clear: () => {}, stack: [] as const }
+    const dialog = { replace: () => {}, clear: () => {}, stack: [] as const, open: () => false }
     const toast = { show: () => {} }
     const hook = makeGoalHook(gw, dialog, toast)
     return { hook, calls }
   }
 
-  test("verb routes to correct GoalManager method; sid stringified", async () => {
+  test("verbs pass through to /goal <verb>; no kick", async () => {
     const { hook, calls } = mk()
-    await hook.cmd("sid-x", "done", "")
-    expect(calls[0]).toContain(`GoalManager("sid-x")`)
-    expect(calls[0]).toContain("m.mark_done(")
-    await hook.cmd("sid-x", "pause", "")
-    expect(calls[1]).toContain("m.pause()")
-    await hook.cmd("sid-x", "", "")
-    expect(calls[2]).toContain("m.status_line()")
+    for (const v of ["status", "pause", "resume", "clear", "done"]) {
+      const r = await hook.cmd(v)
+      expect(r.kick).toBeNull()
+    }
+    expect(calls).toEqual([
+      "/goal status", "/goal pause", "/goal resume", "/goal clear", "/goal done",
+    ])
   })
 
-  test("non-verb first token = goal text → set(); shell-safe", async () => {
+  test("bare /goal → status; no kick", async () => {
     const { hook, calls } = mk()
-    await hook.cmd("s", "ship", "the thing")
-    expect(calls[0]).toContain(`m.set("ship the thing")`)
-    // $(), `, ' in goal text must survive sh -c intact into python argv.
-    await hook.cmd("s", "echo", "$(rm -rf /) `id` it's")
-    const c = calls[1]
-    expect(c.startsWith("python3 -c '")).toBe(true)
-    expect(c.endsWith("'")).toBe(true)
-    // Inside single quotes sh does NO expansion; our only escape is '\''
-    // for embedded quotes. Reconstruct what sh hands python -c:
-    const inner = c.slice("python3 -c '".length, -1).split(`'\\''`).join("'")
-    expect(inner).toContain(`m.set("echo $(rm -rf /) \`id\` it's")`)
+    const r = await hook.cmd("")
+    expect(calls[0]).toBe("/goal")
+    expect(r.kick).toBeNull()
+  })
+
+  test("free text → set; kick = goal text; ANSI stripped from output", async () => {
+    const { hook, calls } = mk()
+    const r = await hook.cmd("ship the $(thing)")
+    expect(calls[0]).toBe("/goal ship the $(thing)")
+    expect(r.kick).toBe("ship the $(thing)")
+    // _DIM/_RST stripped; lines trimmed.
+    expect(r.line).toContain("⊙ Goal set")
+    expect(r.line).not.toContain("\x1b[")
+  })
+
+  // Regression guard: the original implementation smuggled goal text
+  // through shell.exec → `python3 -c '…'`, which tui_gateway's
+  // shell.exec handler hard-rejects via detect_dangerous_command
+  // ("script execution via -e/-c flag"). No shell.exec, ever.
+  test("never dispatches shell.exec", async () => {
+    let touched = false
+    const gw = new MockGateway({
+      "slash.exec": () => ({ output: "ok" }),
+      "shell.exec": () => { touched = true; return { stdout: "", stderr: "", code: 0 } },
+    })
+    const hook = makeGoalHook(gw,
+      { replace: () => {}, clear: () => {}, stack: [] as const, open: () => false },
+      { show: () => {} })
+    await hook.cmd("anything")
+    await hook.cmd("done")
+    expect(touched).toBe(false)
   })
 })
