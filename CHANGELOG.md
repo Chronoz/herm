@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/liftaris/herm/compare/v1.2.0...v1.2.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **goal:** route /goal via slash-worker instead of shell.exec python -c ([d3809bd](https://github.com/liftaris/herm/commit/d3809bd1c099c73d0855f1cdd76859c55ce3dcc2))
+
 # [1.2.0](https://github.com/liftaris/herm/compare/v1.1.0...v1.2.0) (2026-05-06)
 
 
