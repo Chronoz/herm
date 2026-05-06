@@ -224,17 +224,21 @@ describe("Kanban tab", () => {
     // Start in grid — Space does nothing (Default stays open).
     act(() => t.keys.pressKey(" ")); await t.settle()
     expect(t.frame()).toContain("▾ Default")
-    // ↑ to filter tier (row 0 → filter). Space toggles first chip (analyst).
+    // ↑ to filter tier. Space cycles first chip (analyst): off→in→ex→off.
     act(() => t.keys.pressArrow("up")); await t.settle()
     await until(t, () => t.frame().includes("←→ chip"))
     act(() => t.keys.pressKey(" "))
     await until(t, () => t.frame().includes("1/5 task"))
-    // Only analyst's task remains in columns.
+    // include: only analyst's task survives the who group.
     expect(t.frame()).toContain("synthesize")
     expect(t.frame()).not.toContain("research cost")
-    // Toggle off restores full view.
     act(() => t.keys.pressKey(" "))
-    await until(t, () => !t.frame().includes("1/5 task"))
+    await until(t, () => t.frame().includes("4/5 task"))
+    // exclude: everyone except analyst.
+    expect(t.frame()).not.toContain("synthesize")
+    expect(t.frame()).toContain("research cost")
+    act(() => t.keys.pressKey(" "))
+    await until(t, () => !/\d\/5 task/.test(t.frame()))
     // ↑ to head. Space collapses.
     act(() => t.keys.pressArrow("up")); await t.settle()
     await until(t, () => t.frame().includes("Space fold"))
@@ -381,23 +385,55 @@ describe("Kanban tab", () => {
     t.destroy()
   })
 
-  test("status chip hides its column; header shows N/M", async () => {
+  test("status chip tri-state: include → only that col; exclude → drops it", async () => {
     const t = await mountNode(<Kanban focused />, { width: 180, height: 48 })
     await until(t, () => t.frame().includes("Kanban · 3 boards"))
-    // ↑ to filter tier; → past assignees(3)+pri(3)+triage onto status: todo.
+    // Lines between Default's header and ATM10's header.
+    const slice = () => {
+      const ls = t.frame().split("\n")
+      const a = ls.findIndex(l => l.includes("▾ Default"))
+      const b = ls.findIndex(l => l.includes("ATM10 Server"))
+      return ls.slice(a, b).join("\n")
+    }
+    // ↑ to filter tier; → past who(3)+pri(3)+triage onto status: todo.
     act(() => t.keys.pressArrow("up")); await t.settle()
     for (let i = 0; i < 7; i++) { act(() => t.keys.pressArrow("right")); await t.settle() }
-    expect(t.frame()).toContain("todo  1")
+    expect(slice()).toContain("todo  1")
+    // 1st Space → include: only todo column remains on Default.
     act(() => t.keys.pressKey(" "))
-    // Default's todo column gone; atm10's (todo  0) unaffected.
-    await until(t, () => !t.frame().includes("todo  1"))
-    expect(t.frame()).not.toContain("synthesize")
-    expect(t.frame()).toContain("4/5 task")
+    await until(t, () => t.frame().includes("1/5 task"))
+    expect(slice()).not.toContain("ready  1")
+    expect(slice()).toContain("todo  1")
+    expect(slice()).toContain("synthesize")
+    // 2nd Space → exclude: todo column gone; others back.
+    act(() => t.keys.pressKey(" "))
+    await until(t, () => t.frame().includes("4/5 task"))
+    expect(slice()).not.toContain("todo  1")
+    expect(slice()).toContain("ready  1")
+    expect(slice()).not.toContain("synthesize")
+    // atm10's mask is independent — its todo col is still there.
     expect(t.frame()).toContain("todo  0")
-    // Toggle back on.
+    // 3rd Space → off.
     act(() => t.keys.pressKey(" "))
-    await until(t, () => t.frame().includes("todo  1"))
-    expect(t.frame()).toContain("synthesize")
+    await until(t, () => !/\d\/5 task/.test(t.frame()))
+    expect(slice()).toContain("todo  1")
+    t.destroy()
+  })
+
+  test("detail pane follows selection while open", async () => {
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 48 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
+    // → to 'todo' (t3), Enter opens detail.
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    act(() => t.keys.pressEnter())
+    await until(t, () => /Assignee\s+analyst/.test(t.frame()))
+    // → to 'ready' (t1) — pane rehydrates without another Enter.
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    await until(t, () => /Assignee\s+researcher/.test(t.frame()))
+    expect(t.frame()).toMatch(/Children\s+t3/)
+    // ↑ leaves grid → pane closes.
+    act(() => t.keys.pressArrow("up")); await t.settle()
+    await until(t, () => !/Assignee\s+researcher/.test(t.frame()))
     t.destroy()
   })
 

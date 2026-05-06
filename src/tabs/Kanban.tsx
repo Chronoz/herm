@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import { RGBA, TextAttributes, type BorderSides, type ScrollBoxRenderable } from "@opentui/core"
+import type { BorderSides, ScrollBoxRenderable } from "@opentui/core"
 import {
   boardOf, detailOf, tailLogOf, assignees, q, STATUSES,
   currentBoard, listBoards, resetKanban,
@@ -13,6 +13,7 @@ import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { DialogSelect } from "../ui/dialog-select"
 import { Ticker } from "../ui/ticker"
+import { FilterChip, cycle, type Tri } from "../ui/filter-chip"
 import { openConfirm } from "../dialogs/confirm"
 import { openTextPrompt } from "../dialogs/text-prompt"
 import { openCreateTask } from "../dialogs/new-task"
@@ -57,38 +58,43 @@ const HEAD: Record<Status, string> = {
 }
 
 // ── Filter chips ────────────────────────────────────────────────────
-// who/pri are additive (none active ⇒ pass all; activate ⇒ show
-// only those). status is subtractive (all active by default;
-// deactivate ⇒ hide that column). The two modes render differently
-// so the default state — zero who, zero pri, all status — reads as
-// quiet rather than "six filters on".
+// Each chip cycles off → include → exclude → off. Per-group
+// semantics: a group with no `in` chips passes everything not
+// `ex`'d; once any chip is `in`, the group passes ONLY `in` values
+// (minus `ex`'d — though in/ex are mutually exclusive per chip, so
+// that edge is moot). Same machinery for who/pri/status — status
+// `ex` additionally drops the column itself.
 
 type Chip =
   | { kind: "who"; v: string }
   | { kind: "pri"; v: number }
   | { kind: "status"; v: Status }
-type Mask = { who: Set<string>; pri: Set<number>; status: Set<Status> }
+type Mask = {
+  who: Map<string, Tri>; pri: Map<number, Tri>; status: Map<Status, Tri>
+}
 
-const EMPTY: Mask = { who: new Set(), pri: new Set(), status: new Set(STATUSES) }
+const EMPTY: Mask = { who: new Map(), pri: new Map(), status: new Map() }
 
 const chipId = (c: Chip) =>
   c.kind === "who" ? `who:${c.v}` : c.kind === "pri" ? `pri:${c.v}` : `st:${c.v}`
 const chipLabel = (c: Chip) =>
   c.kind === "who" ? c.v : c.kind === "pri" ? `P${c.v}` : HEAD[c.v]
-const chipOn = (c: Chip, m: Mask) =>
-  c.kind === "who" ? m.who.has(c.v)
-  : c.kind === "pri" ? m.pri.has(c.v)
-  : m.status.has(c.v)
+const triOf = (c: Chip, m: Mask): Tri =>
+  c.kind === "who" ? m.who.get(c.v) ?? "off"
+  : c.kind === "pri" ? m.pri.get(c.v) ?? "off"
+  : m.status.get(c.v) ?? "off"
 
+/** True when `v` survives the group. Absence ⇒ "off". */
+function admits<V>(g: Map<V, Tri>, v: V): boolean {
+  const t = g.get(v)
+  if (t === "ex") return false
+  if (t === "in") return true
+  for (const s of g.values()) if (s === "in") return false
+  return true
+}
 const pass = (t: Task, m: Mask) =>
-  (m.who.size === 0 || (t.assignee != null && m.who.has(t.assignee)))
-  && (m.pri.size === 0 || m.pri.has(t.priority))
-
-/** Halfway between two theme tokens — used for the zebra stripe so
- *  odd rows sit visibly between `backgroundPanel` (even) and
- *  `backgroundElement` (selection) on every theme. */
-const mix = (a: RGBA, b: RGBA, t: number) =>
-  RGBA.fromValues(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1)
+  admits(m.who, t.assignee ?? null as unknown as string)
+  && admits(m.pri, t.priority)
 
 // ── Card ────────────────────────────────────────────────────────────
 // Title + bottom rule. The Ticker is always mounted; `active` gates
@@ -98,26 +104,26 @@ const mix = (a: RGBA, b: RGBA, t: number) =>
 // leaving a row marqueeing after the pointer left.
 
 const Card = memo((p: {
-  id: string; t: Task; on: boolean; hov: boolean; odd: boolean; stripe: RGBA
+  id: string; t: Task; on: boolean; hov: boolean
   onHover: () => void; onPick: () => void
 }) => {
   const theme = useTheme().theme
-  const fg = p.on ? theme.accent : p.hov ? theme.text : theme.text
-  const bg = p.on ? theme.backgroundElement : p.odd ? p.stripe : undefined
   return (
     <box id={p.id} height={2} flexDirection="row" paddingLeft={1}
          border={RULE} borderStyle="single" borderColor={theme.borderSubtle}
-         backgroundColor={bg}
+         backgroundColor={p.on ? theme.backgroundElement : undefined}
          onMouseDown={p.onPick}
          onMouseMove={p.onHover}>
-      <Ticker active={p.on || p.hov} fg={fg}>{p.t.title}</Ticker>
+      <Ticker active={p.on || p.hov} fg={p.on ? theme.accent : theme.text}>
+        {p.t.title}
+      </Ticker>
     </box>
   )
 })
 
 const Column = memo((p: {
   slug: string; status: Status; tasks: Task[]; on: boolean; sel: number
-  stripe: RGBA; onPick: (i: number) => void
+  onPick: (i: number) => void
 }) => {
   const theme = useTheme().theme
   const box = useRef<ScrollBoxRenderable | null>(null)
@@ -148,7 +154,7 @@ const Column = memo((p: {
         <box flexDirection="column" width="100%">
           {p.tasks.map((t, i) => (
             <Card key={t.id} id={id(i)} t={t} on={p.on && i === p.sel}
-                  hov={i === hov} odd={i % 2 === 1} stripe={p.stripe}
+                  hov={i === hov}
                   onHover={() => { if (hov !== i) setHov(i) }}
                   onPick={() => p.onPick(i)} />
           ))}
@@ -161,40 +167,16 @@ const Column = memo((p: {
 const FilterBar = memo((p: {
   chips: Chip[]; mask: Mask; on: boolean; sel: number
   onPick: (i: number) => void
-}) => {
-  const theme = useTheme().theme
-  return (
-    <box height={1} flexDirection="row" flexWrap="no-wrap" overflow="hidden" marginBottom={1}>
-      {p.chips.map((c, i) => {
-        const on = chipOn(c, p.mask)
-        const cur = p.on && i === p.sel
-        const sub = c.kind === "status"
-        // Additive chips light up accent when on (they're the
-        // exception). Subtractive chips are quiet when on (the
-        // default) and struck-through when off — "this column is
-        // hidden" reads as a removed label, not a highlighted one.
-        const bg = !sub && on ? theme.accent
-          : cur ? theme.backgroundElement : undefined
-        const fg = !sub && on ? theme.background
-          : cur ? theme.accent
-          : sub && on ? theme.text
-          : sub ? theme.borderSubtle
-          : theme.textMuted
-        const gap = i > 0 && p.chips[i - 1].kind !== c.kind ? 3 : 1
-        return (
-          <box key={chipId(c)} height={1} flexShrink={0} marginLeft={gap}
-               paddingLeft={1} paddingRight={1}
-               backgroundColor={bg} onMouseDown={() => p.onPick(i)}>
-            <text fg={fg}
-              attributes={sub && !on ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE}>
-              {chipLabel(c)}
-            </text>
-          </box>
-        )
-      })}
-    </box>
-  )
-})
+}) => (
+  <box height={1} flexDirection="row" flexWrap="no-wrap" overflow="hidden" marginBottom={1}>
+    {p.chips.map((c, i) => (
+      <FilterChip key={chipId(c)} label={chipLabel(c)}
+        state={triOf(c, p.mask)} selected={p.on && i === p.sel}
+        gap={i > 0 && p.chips[i - 1].kind !== c.kind ? 3 : 1}
+        onMouseDown={() => p.onPick(i)} />
+    ))}
+  </box>
+))
 
 type ColSpec = { status: Status; tasks: Task[] }
 type Section = {
@@ -274,10 +256,6 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   const dims = useTerminalDimensions()
   const keys = useKeys()
 
-  const stripe = useMemo(
-    () => mix(theme.backgroundPanel, theme.backgroundElement, 0.5),
-    [theme])
-
   const [boards, setBoards] = useState<Board[]>(listBoards)
   const [data, setData] = useState<Map<string, Map<Status, Task[]>>>(
     () => new Map(boards.map(b => [b.slug, boardOf(b.slug)])),
@@ -328,7 +306,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
       ]
       const m = maskOf(b.slug)
       const cols = STATUSES
-        .filter(s => m.status.has(s))
+        .filter(s => admits(m.status, s))
         .map(s => ({ status: s, tasks: (d.get(s) ?? []).filter(t => pass(t, m)) }))
         .filter(c => wide || c.tasks.length > 0)
       const shown = cols.reduce((a, c) => a + c.tasks.length, 0)
@@ -355,6 +333,19 @@ export const Kanban = memo((props: { focused?: boolean }) => {
 
   const grand = sections.reduce((a, s) => a + s.total, 0)
   const running = sections.reduce((a, s) => a + s.running, 0)
+
+  // Detail pane follows the grid cursor while open. Enter still
+  // toggles it; once open, ←→↑↓ rehydrate it to whatever is under
+  // the cursor so the side pane reads as a live inspector instead
+  // of a pinned snapshot. Leaving the grid tier closes it — there's
+  // nothing sensible to show for head/filter.
+  useEffect(() => {
+    if (pane?.kind !== "detail") return
+    if (!task) { setPane(null); return }
+    if (pane.slug === at && pane.d.id === task.id) return
+    const d = detailOf(at, task.id)
+    setPane(d ? { kind: "detail", slug: at, d } : null)
+  }, [task?.id, at, tier])
 
   useEffect(() => {
     if (!props.focused || running === 0) return
@@ -409,13 +400,14 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   const flip = useCallback((c: Chip) =>
     setMasks(m => {
       const cur = m.get(at) ?? EMPTY
-      const who = new Set(cur.who), pri = new Set(cur.pri), status = new Set(cur.status)
-      if (c.kind === "who") who.has(c.v) ? who.delete(c.v) : who.add(c.v)
-      else if (c.kind === "pri") pri.has(c.v) ? pri.delete(c.v) : pri.add(c.v)
-      else status.has(c.v) ? status.delete(c.v) : status.add(c.v)
-      const next = new Map(m); next.set(at, { who, pri, status })
+      const who = new Map(cur.who), pri = new Map(cur.pri), status = new Map(cur.status)
+      const g = c.kind === "who" ? who : c.kind === "pri" ? pri : status
+      const next = cycle((g as Map<unknown, Tri>).get(c.v) ?? "off")
+      next === "off" ? (g as Map<unknown, Tri>).delete(c.v)
+        : (g as Map<unknown, Tri>).set(c.v, next)
+      const out = new Map(m); out.set(at, { who, pri, status })
       setRow(0)
-      return next
+      return out
     }), [at])
 
   const toggle = useCallback((s: string) =>
@@ -621,7 +613,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
               const on = s.board.slug === at
               const secOpen = open.has(s.board.slug)
               const m = maskOf(s.board.slug)
-              const filt = m.who.size + m.pri.size + (STATUSES.length - m.status.size)
+              const filt = m.who.size + m.pri.size + m.status.size
               return (
                 <box key={s.board.slug} id={`kb-sec-${s.board.slug}`}
                      flexDirection="column" flexShrink={0} marginBottom={1}>
@@ -653,7 +645,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
                           <box flexDirection="row" height={s.cap} gap={1}>
                             {s.cols.map((c, ci) => (
                               <Column key={c.status} slug={s.board.slug} status={c.status}
-                                      tasks={c.tasks} stripe={stripe}
+                                      tasks={c.tasks}
                                       on={on && tier === "grid" && ci === clampCol}
                                       sel={on ? row : 0}
                                       onPick={ri => onPick(s.board.slug, ci, ri, c.tasks[ri].id)} />
