@@ -1,3 +1,19 @@
+# [1.0.0-dev.8](https://github.com/liftaris/herm/compare/v1.0.0-dev.7...v1.0.0-dev.8) (2026-05-06)
+
+
+### Bug Fixes
+
+* **dialog:** scheduling-independent open() gate for tab key-guards ([a393e31](https://github.com/liftaris/herm/commit/a393e3161b72051287413d9b1044d36ff77616dd))
+* **kanban:** multi-board support — read/write always target same board ([4817222](https://github.com/liftaris/herm/commit/4817222689bf5ba75833992ccce7937e6308d726))
+
+
+### Features
+
+* **kanban:** status chips, cross-board ↑↓, row rules; ticker end-dwell ([693b5bf](https://github.com/liftaris/herm/commit/693b5bf53cbcf40cfe3a7e0d93af7a656e242dd4))
+* **kanban:** tiered nav, filter chips, zebra rows, marquee titles ([be333fa](https://github.com/liftaris/herm/commit/be333fa7890bf6e614deede162bb386e98ceb7e2))
+* **kanban:** tri-state FilterChip, detail follows selection, drop stripe ([70aab41](https://github.com/liftaris/herm/commit/70aab41049dc429898278a257658d0f6e78b2808))
+* **kanban:** unified multi-board view ([bbb4824](https://github.com/liftaris/herm/commit/bbb48242333a0bc521be6798db51d448aa2d33f5))
+
 # [1.0.0-dev.7](https://github.com/liftaris/herm/compare/v1.0.0-dev.6...v1.0.0-dev.7) (2026-05-04)
 
 
