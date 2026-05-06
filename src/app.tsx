@@ -442,12 +442,15 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           return
         }
         case "goal": {
-          const [verb = "", ...rest] = arg.trim().split(/\s+/)
-          goalHook.cmd(sid, verb, rest.join(" "))
-            .then(line => {
-              dispatch({ kind: "system", text: line })
-              // `done` fires the hook without waiting on a turn.
-              if (verb === "done") goalHook.check(sid)
+          goalHook.cmd(arg)
+            .then(r => {
+              dispatch({ kind: "system", text: r.line })
+              // CLI's _handle_goal_command kicks the loop off via
+              // _pending_input.put(goal); the slash-worker's CLI has
+              // no input loop, so herm does the equivalent: submit
+              // the goal text as the first prompt. tui_gateway's
+              // post-turn Ralph hook takes over from there.
+              if (r.kick) void sendRef.current(r.kick)
             })
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
           return
