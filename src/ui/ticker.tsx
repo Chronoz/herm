@@ -5,12 +5,13 @@
 //      the component can't slice it, so it animates the text node's
 //      native scrollX instead of rebuilding a substring each tick.
 //   2. Because scrollX is driven via ref (not React state), there's
-//      exactly one React render regardless of scroll position. At
-//      35ms/char that's 0 extra renders vs Marquee's ~28/s.
+//      exactly one React render regardless of scroll position.
 //
-// The trade-off: no gap-and-loop. When scrollX hits maxScrollX the
-// animation reverses back to 0 (ping-pong). Cheaper than duplicating
-// the span tree to fake a seamless loop.
+// Motion is ping-pong with a dwell at each end: hold → scroll to
+// max → endHold → scroll back to 0 → endHold → …. Defaults are the
+// "readable" profile (180ms/cell, 600ms initial hold, 3s at each
+// end) — tuned for reading a long label, not glancing. Callers that
+// want the fast transcript-preview feel pass speed/hold explicitly.
 
 import { useEffect, useRef, type ReactNode } from "react"
 import type { TextRenderable } from "@opentui/core"
@@ -18,38 +19,49 @@ import * as prefs from "../utils/preferences"
 
 export const Ticker = (p: {
   active: boolean
-  /** ms per cell (default 35 — fast). */
+  /** ms per cell (default 180 — readable). */
   speed?: number
-  /** ms to sit still before scrolling (default 150). */
+  /** ms to sit still before the first scroll (default 600). */
   hold?: number
+  /** ms to dwell at each end before reversing (default 3000). */
+  endHold?: number
   fg?: import("@opentui/core").RGBA
   children: ReactNode
 }) => {
   const ref = useRef<TextRenderable | null>(null)
 
   const animate = prefs.get("animations") !== false && p.active
+  const speed = p.speed ?? 180
+  const hold = p.hold ?? 600
+  const endHold = p.endHold ?? 3000
+
   useEffect(() => {
     const node = ref.current
     if (!node) return
     if (!animate) { node.scrollX = 0; return }
     let dir = 1
-    let id: ReturnType<typeof setInterval> | undefined
-    const hold = setTimeout(() => {
-      id = setInterval(() => {
-        const max = node.maxScrollX
-        if (max <= 0) return
-        const next = node.scrollX + dir
-        if (next >= max) { dir = -1; node.scrollX = max; return }
-        if (next <= 0)   { dir =  1; node.scrollX = 0;   return }
-        node.scrollX = next
-      }, p.speed ?? 35)
-    }, p.hold ?? 150)
+    let tick: ReturnType<typeof setInterval> | undefined
+    let wait: ReturnType<typeof setTimeout> | undefined
+    const step = () => {
+      const max = node.maxScrollX
+      if (max <= 0) return
+      node.scrollX = Math.max(0, Math.min(max, node.scrollX + dir))
+      const end = dir > 0 ? node.scrollX >= max : node.scrollX <= 0
+      if (!end) return
+      // Dwell, then reverse. Re-arming via setTimeout (rather than
+      // counting skipped ticks) means the dwell is exact even when
+      // `speed` and `endHold` don't divide evenly.
+      if (tick) { clearInterval(tick); tick = undefined }
+      dir = -dir
+      wait = setTimeout(() => { tick = setInterval(step, speed) }, endHold)
+    }
+    wait = setTimeout(() => { tick = setInterval(step, speed) }, hold)
     return () => {
-      clearTimeout(hold)
-      if (id) clearInterval(id)
+      if (wait) clearTimeout(wait)
+      if (tick) clearInterval(tick)
       if (ref.current) ref.current.scrollX = 0
     }
-  }, [animate, p.speed, p.hold])
+  }, [animate, speed, hold, endHold])
 
   return (
     <box flexGrow={1} flexShrink={1} minWidth={0} height={1} overflow="hidden">

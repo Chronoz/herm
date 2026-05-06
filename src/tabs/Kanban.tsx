@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import { RGBA, type ScrollBoxRenderable } from "@opentui/core"
+import { RGBA, TextAttributes, type BorderSides, type ScrollBoxRenderable } from "@opentui/core"
 import {
   boardOf, detailOf, tailLogOf, assignees, q, STATUSES,
   currentBoard, listBoards, resetKanban,
@@ -26,15 +26,16 @@ import { ago, trunc } from "../ui/fmt"
 // header + filter-chip bar + capped-height row of status columns).
 // Reads are sidecar SQLite per board. Every write routes through
 // `shell.exec → hermes kanban --board <slug> <verb>` so kanban_db.py
-// owns the state machine (recompute_ready, link-cycle guard,
-// task_events, notify subs) and herm can't drift.
+// owns the state machine.
 //
 // Focus model — one cursor, three tiers per board:
 //   head    the ▾/▸ line            Space folds the board
 //   filter  chip bar                ←→ chip, Space toggles
 //   grid    columns × rows          ←→ col, ↑↓ row
-// Tab/Shift+Tab walk boards (head of next/prev). ↑↓ step between
-// tiers when at an edge; Space is context-sensitive.
+// ↑↓ walk the whole vertical stack — head → filter → every row →
+// next board's head → … — so holding ↓ reads top-to-bottom across
+// all boards. Tab/⇧Tab is the accelerator: jump straight to the
+// next/prev board's head without stepping through rows.
 //
 //   Tab/⇧Tab board        ←→↑↓ nav            Enter detail
 //   Space    fold / chip  Esc close pane      r reload
@@ -48,6 +49,7 @@ type Tier = "head" | "filter" | "grid"
 // Column scrollbars hidden — the column border + ↑↓ are enough
 // signal at kanban card density; the bar steals a col per status.
 const NOBAR = { visible: false } as const
+const RULE: BorderSides[] = ["bottom"]
 
 const HEAD: Record<Status, string> = {
   triage: "triage", todo: "todo", ready: "ready",
@@ -55,65 +57,77 @@ const HEAD: Record<Status, string> = {
 }
 
 // ── Filter chips ────────────────────────────────────────────────────
-// A chip is either an assignee name present on the board or a
-// priority bucket. Active chips OR within a group and AND between
-// groups: {builder, reviewer} ∩ {P3}. A group with zero active chips
-// passes everything (the common case).
+// who/pri are additive (none active ⇒ pass all; activate ⇒ show
+// only those). status is subtractive (all active by default;
+// deactivate ⇒ hide that column). The two modes render differently
+// so the default state — zero who, zero pri, all status — reads as
+// quiet rather than "six filters on".
 
-type Chip = { kind: "who"; v: string } | { kind: "pri"; v: number }
-type Mask = { who: Set<string>; pri: Set<number> }
+type Chip =
+  | { kind: "who"; v: string }
+  | { kind: "pri"; v: number }
+  | { kind: "status"; v: Status }
+type Mask = { who: Set<string>; pri: Set<number>; status: Set<Status> }
 
-const chipId = (c: Chip) => c.kind === "who" ? `who:${c.v}` : `pri:${c.v}`
-const chipLabel = (c: Chip) => c.kind === "who" ? c.v : `P${c.v}`
+const EMPTY: Mask = { who: new Set(), pri: new Set(), status: new Set(STATUSES) }
+
+const chipId = (c: Chip) =>
+  c.kind === "who" ? `who:${c.v}` : c.kind === "pri" ? `pri:${c.v}` : `st:${c.v}`
+const chipLabel = (c: Chip) =>
+  c.kind === "who" ? c.v : c.kind === "pri" ? `P${c.v}` : HEAD[c.v]
+const chipOn = (c: Chip, m: Mask) =>
+  c.kind === "who" ? m.who.has(c.v)
+  : c.kind === "pri" ? m.pri.has(c.v)
+  : m.status.has(c.v)
+
 const pass = (t: Task, m: Mask) =>
   (m.who.size === 0 || (t.assignee != null && m.who.has(t.assignee)))
   && (m.pri.size === 0 || m.pri.has(t.priority))
 
 /** Halfway between two theme tokens — used for the zebra stripe so
  *  odd rows sit visibly between `backgroundPanel` (even) and
- *  `backgroundElement` (selection) on every theme, light or dark. */
+ *  `backgroundElement` (selection) on every theme. */
 const mix = (a: RGBA, b: RGBA, t: number) =>
   RGBA.fromValues(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1)
 
 // ── Card ────────────────────────────────────────────────────────────
-// One-line: title only, zebra-striped. The selected/hovered card
-// marquees via <Ticker> when the title overflows; inactive cards
-// truncate with wrapMode="none" (no `…` so the marquee and static
-// row show the same leading text).
+// Title + bottom rule. The Ticker is always mounted; `active` gates
+// its interval. This avoids the conditional-mount path where the
+// inner renderable is swapped while the mouse is over it — OpenTUI's
+// last-hovered tracking could miss the stale element's onMouseOut,
+// leaving a row marqueeing after the pointer left.
 
 const Card = memo((p: {
-  id: string; t: Task; on: boolean; odd: boolean; stripe: RGBA
-  onPick: () => void; onHover: () => void
+  id: string; t: Task; on: boolean; hov: boolean; odd: boolean; stripe: RGBA
+  onHover: () => void; onPick: () => void
 }) => {
   const theme = useTheme().theme
-  const [hov, setHov] = useState(false)
-  const fg = p.on ? theme.accent : theme.text
+  const fg = p.on ? theme.accent : p.hov ? theme.text : theme.text
   const bg = p.on ? theme.backgroundElement : p.odd ? p.stripe : undefined
   return (
-    <box id={p.id} height={1} flexDirection="row" paddingLeft={1}
+    <box id={p.id} height={2} flexDirection="row" paddingLeft={1}
+         border={RULE} borderStyle="single" borderColor={theme.borderSubtle}
          backgroundColor={bg}
          onMouseDown={p.onPick}
-         onMouseMove={() => { if (!hov) { setHov(true); p.onHover() } }}
-         onMouseOut={() => setHov(false)}>
-      {p.on || hov
-        ? <Ticker active fg={fg}>{p.t.title}</Ticker>
-        : <box flexGrow={1} minWidth={0} height={1} overflow="hidden">
-            <text wrapMode="none" fg={fg}>{p.t.title}</text>
-          </box>}
+         onMouseMove={p.onHover}>
+      <Ticker active={p.on || p.hov} fg={fg}>{p.t.title}</Ticker>
     </box>
   )
 })
 
 const Column = memo((p: {
   slug: string; status: Status; tasks: Task[]; on: boolean; sel: number
-  stripe: RGBA; onPick: (i: number) => void; onHover: (i: number) => void
+  stripe: RGBA; onPick: (i: number) => void
 }) => {
   const theme = useTheme().theme
   const box = useRef<ScrollBoxRenderable | null>(null)
+  // Column-level hover index. Lifting it here (instead of per-card
+  // local state) means only ONE card can read hov=true at a time,
+  // and the column's onMouseOut reliably clears it when the pointer
+  // leaves the column — covering the case where a fast exit skips
+  // the old card's own out event.
+  const [hov, setHov] = useState(-1)
   const id = (i: number) => `kb-${p.slug}-${p.status}-${i}`
-  // Keep the selected card in view. Fires on ↑↓ and when ←→ moves
-  // focus onto this column (p.on flips true) so a column previously
-  // scrolled away snaps to row 0.
   useEffect(() => {
     if (p.on && p.tasks.length > 0) box.current?.scrollChildIntoView(id(p.sel))
   }, [p.on, p.sel, p.tasks.length])
@@ -122,7 +136,8 @@ const Column = memo((p: {
     : p.status === "done" ? theme.textMuted : theme.primary
   return (
     <box flexDirection="column" flexGrow={1} flexBasis={0} minWidth={18}
-         border borderColor={p.on ? theme.primary : theme.border}>
+         border borderColor={p.on ? theme.primary : theme.border}
+         onMouseOut={() => setHov(-1)}>
       <box height={1} paddingLeft={1}>
         <text>
           <span fg={tint}><strong>{HEAD[p.status]}</strong></span>
@@ -133,8 +148,9 @@ const Column = memo((p: {
         <box flexDirection="column" width="100%">
           {p.tasks.map((t, i) => (
             <Card key={t.id} id={id(i)} t={t} on={p.on && i === p.sel}
-                  odd={i % 2 === 1} stripe={p.stripe}
-                  onPick={() => p.onPick(i)} onHover={() => p.onHover(i)} />
+                  hov={i === hov} odd={i % 2 === 1} stripe={p.stripe}
+                  onHover={() => { if (hov !== i) setHov(i) }}
+                  onPick={() => p.onPick(i)} />
           ))}
         </box>
       </scrollbox>
@@ -148,17 +164,29 @@ const FilterBar = memo((p: {
 }) => {
   const theme = useTheme().theme
   return (
-    <box height={1} flexDirection="row" flexWrap="no-wrap" overflow="hidden"
-         marginBottom={p.chips.length > 0 ? 1 : 0}>
+    <box height={1} flexDirection="row" flexWrap="no-wrap" overflow="hidden" marginBottom={1}>
       {p.chips.map((c, i) => {
-        const on = c.kind === "who" ? p.mask.who.has(c.v) : p.mask.pri.has(c.v)
+        const on = chipOn(c, p.mask)
         const cur = p.on && i === p.sel
+        const sub = c.kind === "status"
+        // Additive chips light up accent when on (they're the
+        // exception). Subtractive chips are quiet when on (the
+        // default) and struck-through when off — "this column is
+        // hidden" reads as a removed label, not a highlighted one.
+        const bg = !sub && on ? theme.accent
+          : cur ? theme.backgroundElement : undefined
+        const fg = !sub && on ? theme.background
+          : cur ? theme.accent
+          : sub && on ? theme.text
+          : sub ? theme.borderSubtle
+          : theme.textMuted
+        const gap = i > 0 && p.chips[i - 1].kind !== c.kind ? 3 : 1
         return (
-          <box key={chipId(c)} height={1} flexShrink={0} marginRight={1}
+          <box key={chipId(c)} height={1} flexShrink={0} marginLeft={gap}
                paddingLeft={1} paddingRight={1}
-               backgroundColor={on ? theme.accent : cur ? theme.backgroundElement : undefined}
-               onMouseDown={() => p.onPick(i)}>
-            <text fg={on ? theme.background : cur ? theme.accent : theme.textMuted}>
+               backgroundColor={bg} onMouseDown={() => p.onPick(i)}>
+            <text fg={fg}
+              attributes={sub && !on ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE}>
               {chipLabel(c)}
             </text>
           </box>
@@ -280,42 +308,39 @@ export const Kanban = memo((props: { focused?: boolean }) => {
   }, [])
   useEffect(load, [load])
 
-  const maskOf = (s: string): Mask =>
-    masks.get(s) ?? { who: new Set(), pri: new Set() }
+  const maskOf = (s: string): Mask => masks.get(s) ?? EMPTY
 
   const wide = dims.width >= 160
-  // Per-section column height cap. 3 = column border(2)+header. A
-  // single open board can fill the tab; with several open, the outer
-  // scrollbox handles overflow.
+  // Per-section column height cap. 3 = column border(2)+header,
+  // 2 per card (title + bottom rule).
   const maxH = Math.max(8, dims.height - 16)
   const sections = useMemo<Section[]>(() => {
     const built = boards.map(b => {
       const d = data.get(b.slug) ?? new Map<Status, Task[]>()
       const flat = STATUSES.flatMap(s => d.get(s) ?? [])
       const total = flat.length
-      // Chips: only assignees actually present on this board; only
-      // priority buckets actually present. An empty chip row hides.
-      const who = [...new Set(flat.map(t => t.assignee).filter((a): a is string => !!a))].sort()
+      const who = [...new Set(flat.map(t => t.assignee).filter((v): v is string => !!v))].sort()
       const pri = [...new Set(flat.map(t => t.priority).filter(n => n > 0))].sort((a, z) => z - a)
       const chips: Chip[] = [
         ...who.map(v => ({ kind: "who", v } as const)),
         ...pri.map(v => ({ kind: "pri", v } as const)),
+        ...STATUSES.map(v => ({ kind: "status", v } as const)),
       ]
       const m = maskOf(b.slug)
-      const masked = STATUSES.map(s => ({ status: s, tasks: (d.get(s) ?? []).filter(t => pass(t, m)) }))
-      const shown = masked.reduce((a, c) => a + c.tasks.length, 0)
-      const cols = wide || shown === 0 ? masked : masked.filter(c => c.tasks.length > 0)
-      const tall = masked.reduce((a, c) => Math.max(a, c.tasks.length), 0)
+      const cols = STATUSES
+        .filter(s => m.status.has(s))
+        .map(s => ({ status: s, tasks: (d.get(s) ?? []).filter(t => pass(t, m)) }))
+        .filter(c => wide || c.tasks.length > 0)
+      const shown = cols.reduce((a, c) => a + c.tasks.length, 0)
+      const tall = cols.reduce((a, c) => Math.max(a, c.tasks.length), 0)
       return {
         board: b, cols, chips, total, shown,
         running: d.get("running")?.length ?? 0,
-        cap: Math.min(maxH, Math.max(5, 3 + tall)),
+        cap: Math.min(maxH, Math.max(5, 3 + 2 * tall)),
       }
     })
-    // Non-empty boards first, then empties; each group keeps the
-    // listBoards() order (default → alpha). Stable partition so
-    // Tab order doesn't reshuffle when a board transiently empties
-    // during a refresh — only changes on a real total flip.
+    // Non-empty boards first; empties sink. Stable partition so Tab
+    // order doesn't reshuffle on a transient refresh-to-zero.
     return [...built.filter(s => s.total > 0), ...built.filter(s => s.total === 0)]
   }, [boards, data, masks, wide, maxH])
 
@@ -341,8 +366,6 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     outer.current?.scrollChildIntoView(`kb-sec-${at}`)
   }, [at, open])
 
-  // `shell.exec → hermes kanban --board <at> <verb>`. --board pins
-  // every write to the section the cursor is on.
   const sh = useCallback((argv: string, ok?: string) =>
     gw.request<Sh>("shell.exec", { command: `hermes kanban --board ${q(at)} ${argv}` }).then(r => {
       if (r.code !== 0) throw new Error((r.stderr || r.stdout || `exit ${r.code}`).trim())
@@ -352,25 +375,45 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     }).catch((e: Error) => void toast.show({ variant: "error", message: trunc(e.message, 120) })),
   [gw, toast, load, at])
 
-  // Tab/Shift+Tab land on the *head* of the target board and expand
-  // it. Landing on the head (not the grid) means the first ↓ after a
-  // Tab descends into filter → grid — a 2D path that reads as "step
-  // into this board" rather than teleporting to an arbitrary cell.
+  // ── Cross-board nav ───────────────────────────────────────────────
+  // enterTop/enterBottom land on the first/last reachable tier of
+  // the target section so ↑↓ read as one continuous vertical walk.
+  // Tab always lands at head (it's the "skip past this board"
+  // gesture, not the "continue scrolling" one).
+
+  const enterTop = (s: Section) => {
+    setAt(s.board.slug); setTier("head"); setChip(0); setRow(0)
+  }
+  const enterBottom = (s: Section) => {
+    setAt(s.board.slug); setChip(Math.max(0, s.chips.length - 1))
+    if (open.has(s.board.slug) && s.shown > 0) {
+      const nc = Math.min(col, Math.max(0, s.cols.length - 1))
+      setTier("grid"); setCol(nc)
+      setRow(Math.max(0, (s.cols[nc]?.tasks.length ?? 1) - 1))
+      return
+    }
+    if (open.has(s.board.slug)) { setTier("filter"); return }
+    setTier("head")
+  }
+  const stepBoard = (d: 1 | -1): Section | null => {
+    const n = idx + d
+    return n < 0 || n >= sections.length ? null : sections[n]
+  }
   const goBoard = useCallback((d: 1 | -1) => {
     const n = (idx + d + sections.length) % sections.length
-    const s = sections[n].board.slug
-    setAt(s); setTier("head"); setCol(0); setRow(0); setChip(0)
-    setOpen(o => o.has(s) ? o : new Set(o).add(s))
+    const s = sections[n]
+    setAt(s.board.slug); setTier("head"); setCol(0); setRow(0); setChip(0)
+    setOpen(o => o.has(s.board.slug) ? o : new Set(o).add(s.board.slug))
   }, [idx, sections])
 
   const flip = useCallback((c: Chip) =>
     setMasks(m => {
-      const cur = m.get(at) ?? { who: new Set<string>(), pri: new Set<number>() }
-      const who = new Set(cur.who), pri = new Set(cur.pri)
+      const cur = m.get(at) ?? EMPTY
+      const who = new Set(cur.who), pri = new Set(cur.pri), status = new Set(cur.status)
       if (c.kind === "who") who.has(c.v) ? who.delete(c.v) : who.add(c.v)
-      else pri.has(c.v) ? pri.delete(c.v) : pri.add(c.v)
-      const next = new Map(m)
-      next.set(at, { who, pri })
+      else if (c.kind === "pri") pri.has(c.v) ? pri.delete(c.v) : pri.add(c.v)
+      else status.has(c.v) ? status.delete(c.v) : status.add(c.v)
+      const next = new Map(m); next.set(at, { who, pri, status })
       setRow(0)
       return next
     }), [at])
@@ -487,39 +530,40 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     { key: "D", title: "Dispatch",      when: () => true,            run: () => void dispatch() },
   ], [create, assign, comment, unblock, archive, showLog, newBoard, dispatch])
 
-  // ↑↓ tier walk. `down` from head skips filter when there are no
-  // chips; `down` past the last row does nothing (the next board is
-  // Tab's job, not ↓'s — keeps column scroll and board nav on
-  // separate muscles).
-  const hasChips = (sec?.chips.length ?? 0) > 0
-  const upTier = () => {
-    if (tier === "grid") return row > 0 ? setRow(r => r - 1)
-      : setTier(hasChips ? "filter" : "head")
-    if (tier === "filter") return setTier("head")
-  }
-  const downTier = () => {
-    if (tier === "head") return setTier(hasChips ? "filter" : "grid")
-    if (tier === "filter") { setTier("grid"); setRow(0); return }
-    return setRow(r => Math.min((cur?.tasks.length ?? 1) - 1, r + 1))
-  }
+  const isOpen = open.has(at)
 
   useKeyboard((key) => {
     if (!props.focused || dialog.stack.length > 0) return
     if (key.name === "escape" && pane) return setPane(null)
     if (keys.match("list.refresh", key)) return load()
-    // Shell's double-Tab-to-composer sees both taps first (global
-    // listeners, mount order). We only get singles that weren't the
-    // second tap of a pair — exactly the ones that should walk
-    // boards. No stopPropagation: shell needs to observe the tap to
-    // arm its window.
+    // Tab = jump. Shell's double-Tab-to-composer fires first (mount
+    // order) and swallows the completing tap; singles land here.
     if (key.name === "tab") return goBoard(key.shift ? -1 : 1)
     if (key.name === "space" || key.name === " ") {
       if (tier === "head") return toggle(at)
       if (tier === "filter" && sec?.chips[chip]) return flip(sec.chips[chip])
       return
     }
-    if (key.name === "up") return upTier()
-    if (key.name === "down") return downTier()
+    if (key.name === "down") {
+      if (tier === "head") {
+        if (isOpen) return setTier("filter")
+        const n = stepBoard(1); return n ? enterTop(n) : undefined
+      }
+      if (tier === "filter") {
+        if (sec && sec.shown > 0) { setTier("grid"); setRow(0); return }
+        const n = stepBoard(1); return n ? enterTop(n) : undefined
+      }
+      if (row < (cur?.tasks.length ?? 1) - 1) return setRow(r => r + 1)
+      const n = stepBoard(1); return n ? enterTop(n) : undefined
+    }
+    if (key.name === "up") {
+      if (tier === "head") {
+        const p = stepBoard(-1); return p ? enterBottom(p) : undefined
+      }
+      if (tier === "filter") return setTier("head")
+      if (row > 0) return setRow(r => r - 1)
+      return setTier("filter")
+    }
     if (key.name === "left") {
       if (tier === "filter") return setChip(c => Math.max(0, c - 1))
       if (tier === "grid") return setCol(c => { const n = Math.max(0, c - 1); setRow(0); return n })
@@ -544,7 +588,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
 
   const hint = useMemo(() => {
     const t = task
-    const nav = tier === "head" ? "Space fold"
+    const nav = tier === "head" ? "↑↓ nav  Space fold"
       : tier === "filter" ? "←→ chip  Space toggle"
       : "←→↑↓ nav  Enter detail"
     return ["Tab board", nav,
@@ -564,9 +608,6 @@ export const Kanban = memo((props: { focused?: boolean }) => {
     const d = detailOf(s, id)
     if (d) setPane({ kind: "detail", slug: s, d })
   }, [])
-  const onHover = useCallback((s: string, ci: number, ri: number) => {
-    setAt(s); setTier("grid"); setCol(ci); setRow(ri)
-  }, [])
 
   return (
     <box flexDirection="row" flexGrow={1}>
@@ -578,16 +619,16 @@ export const Kanban = memo((props: { focused?: boolean }) => {
           <box flexDirection="column" width="100%">
             {sections.map(s => {
               const on = s.board.slug === at
-              const isOpen = open.has(s.board.slug)
+              const secOpen = open.has(s.board.slug)
               const m = maskOf(s.board.slug)
-              const filt = m.who.size + m.pri.size
+              const filt = m.who.size + m.pri.size + (STATUSES.length - m.status.size)
               return (
                 <box key={s.board.slug} id={`kb-sec-${s.board.slug}`}
                      flexDirection="column" flexShrink={0} marginBottom={1}>
                   <box height={1} onMouseDown={() => onHead(s.board.slug)}
                        backgroundColor={on && tier === "head" ? theme.backgroundElement : undefined}>
                     <text>
-                      <span fg={on ? theme.accent : theme.textMuted}>{isOpen ? "▾ " : "▸ "}</span>
+                      <span fg={on ? theme.accent : theme.textMuted}>{secOpen ? "▾ " : "▸ "}</span>
                       <span fg={on ? theme.primary : theme.text}><strong>{s.board.name}</strong></span>
                       <span fg={theme.textMuted}>
                         {s.total === 0 ? "  ·  empty"
@@ -595,7 +636,7 @@ export const Kanban = memo((props: { focused?: boolean }) => {
                       </span>
                     </text>
                   </box>
-                  {isOpen ? (
+                  {secOpen ? (
                     s.total === 0 ? (
                       <box height={1} marginLeft={2}>
                         <text fg={theme.textMuted}>
@@ -604,22 +645,25 @@ export const Kanban = memo((props: { focused?: boolean }) => {
                       </box>
                     ) : (
                       <>
-                        {s.chips.length > 0 ? (
-                          <FilterBar chips={s.chips} mask={m}
-                            on={on && tier === "filter"}
-                            sel={on ? Math.min(chip, s.chips.length - 1) : -1}
-                            onPick={i => onChip(s.board.slug, i, s.chips[i])} />
-                        ) : null}
-                        <box flexDirection="row" height={s.cap} gap={1}>
-                          {s.cols.map((c, ci) => (
-                            <Column key={c.status} slug={s.board.slug} status={c.status}
-                                    tasks={c.tasks} stripe={stripe}
-                                    on={on && tier === "grid" && ci === clampCol}
-                                    sel={on ? row : 0}
-                                    onHover={ri => onHover(s.board.slug, ci, ri)}
-                                    onPick={ri => onPick(s.board.slug, ci, ri, c.tasks[ri].id)} />
-                          ))}
-                        </box>
+                        <FilterBar chips={s.chips} mask={m}
+                          on={on && tier === "filter"}
+                          sel={on ? Math.min(chip, s.chips.length - 1) : -1}
+                          onPick={i => onChip(s.board.slug, i, s.chips[i])} />
+                        {s.cols.length > 0 ? (
+                          <box flexDirection="row" height={s.cap} gap={1}>
+                            {s.cols.map((c, ci) => (
+                              <Column key={c.status} slug={s.board.slug} status={c.status}
+                                      tasks={c.tasks} stripe={stripe}
+                                      on={on && tier === "grid" && ci === clampCol}
+                                      sel={on ? row : 0}
+                                      onPick={ri => onPick(s.board.slug, ci, ri, c.tasks[ri].id)} />
+                            ))}
+                          </box>
+                        ) : (
+                          <box height={1} marginLeft={2}>
+                            <text fg={theme.textMuted}>all columns hidden</text>
+                          </box>
+                        )}
                       </>
                     )
                   ) : null}

@@ -158,12 +158,14 @@ describe("Kanban tab", () => {
     const lines = f.split("\n")
     expect(lines.findIndex(l => l.includes("ATM10 Server")))
       .toBeLessThan(lines.findIndex(l => l.includes("zeta")))
-    // Filter chip row on default: every distinct assignee + priority.
+    // Filter chip row on default: assignees, priorities, then status.
     const chipLine = lines.find(l => /\banalyst\b/.test(l) && /\bP3\b/.test(l))!
     expect(chipLine).toContain("researcher")
     expect(chipLine).toContain("writer")
     expect(chipLine).toContain("P2")
-    // atm10 has no assignees — its chip row has priority only.
+    // Status chips always present, in STATUSES order.
+    expect(chipLine).toMatch(/triage\s+todo\s+ready\s+running\s+blocked\s+done/)
+    // atm10 has no assignees — its chip row is priority + status only.
     expect(f).not.toMatch(/ATM10 Server[\s\S]*?\n.*researcher.*\n/)
     // One-line cards: title renders, meta line does not.
     expect(f).toContain("research cost")
@@ -358,6 +360,47 @@ describe("Kanban tab", () => {
     t.destroy()
   })
 
+  test("↓ walks off the last row into the next board's head", async () => {
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 48 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
+    // Grid on default, col 0 (triage, 0 tasks). Single ↓ from an empty
+    // column's row 0 goes nowhere; nav to todo (1 task) first.
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    // row 0 → ↓ crosses into atm10 head.
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    await until(t, () => t.frame().includes("Space fold"))
+    // ↓↓ → filter → grid on atm10; → → to ready.
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    act(() => t.keys.pressArrow("down")); await t.settle()
+    act(() => t.keys.pressArrow("right")); await t.settle()
+    await until(t, () => /d archive/.test(t.frame()))
+    // ↑ back through tiers returns to default's grid (same column preserved).
+    for (let i = 0; i < 3; i++) { act(() => t.keys.pressArrow("up")); await t.settle() }
+    // atm10 head → default bottom: tier=grid, column clamped.
+    await until(t, () => /Enter detail/.test(t.frame()))
+    t.destroy()
+  })
+
+  test("status chip hides its column; header shows N/M", async () => {
+    const t = await mountNode(<Kanban focused />, { width: 180, height: 48 })
+    await until(t, () => t.frame().includes("Kanban · 3 boards"))
+    // ↑ to filter tier; → past assignees(3)+pri(3)+triage onto status: todo.
+    act(() => t.keys.pressArrow("up")); await t.settle()
+    for (let i = 0; i < 7; i++) { act(() => t.keys.pressArrow("right")); await t.settle() }
+    expect(t.frame()).toContain("todo  1")
+    act(() => t.keys.pressKey(" "))
+    // Default's todo column gone; atm10's (todo  0) unaffected.
+    await until(t, () => !t.frame().includes("todo  1"))
+    expect(t.frame()).not.toContain("synthesize")
+    expect(t.frame()).toContain("4/5 task")
+    expect(t.frame()).toContain("todo  0")
+    // Toggle back on.
+    act(() => t.keys.pressKey(" "))
+    await until(t, () => t.frame().includes("todo  1"))
+    expect(t.frame()).toContain("synthesize")
+    t.destroy()
+  })
+
   test("column overflow scrolls; selection follows ↑↓", async () => {
     mkdirSync(hermesPath("kanban/boards/tall"), { recursive: true })
     const db = new Database(hermesPath("kanban/boards/tall/kanban.db"), { create: true })
@@ -370,9 +413,10 @@ describe("Kanban tab", () => {
     const t = await mountNode(<Kanban focused />, { width: 180, height: 30 })
     try {
       await until(t, () => t.frame().includes("tall"))
-      // Tab → atm10 head, Tab → tall head, then ↓ into grid (no chips: pri=0).
+      // Tab → atm10 head, Tab → tall head, ↓↓ into grid (status chips only).
       act(() => t.keys.pressTab()); await t.settle()
       act(() => t.keys.pressTab()); await t.settle()
+      act(() => t.keys.pressArrow("down")); await t.settle()
       act(() => t.keys.pressArrow("down")); await t.settle()
       await until(t, () => t.frame().includes("item 0"))
       // maxH at h=30 is 14; item 29 doesn't fit.
