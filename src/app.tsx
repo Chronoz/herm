@@ -874,7 +874,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   useAppKeys({
     tab, tabMax: TAB_MAX, chatTab: CHAT_TAB, setTab, focusRegion, setFocusRegion,
     streaming: turn.streaming,
-    dialogOpen: dialog.stack.length > 0,
+    dialogOpen: dialog.open,
     composer,
     // Route keys to the pending inline prompt card before anything
     // else. Card returns true when the key was consumed; the shell

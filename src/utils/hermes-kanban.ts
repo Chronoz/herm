@@ -1,19 +1,26 @@
-// Window onto the shared ~/.hermes/kanban.db.
+// Window onto the kanban board(s) under ~/.hermes/.
 //
 // Kanban is deliberately profile-agnostic (the board IS the
 // coordination primitive between profiles), so this reads the
-// HERMES_HOME-relative path and shows every tenant's tasks.
+// HERMES_HOME-relative paths and shows every tenant's tasks.
 //
-// Reads are sidecar SQLite (WAL lets us read alongside the
-// dispatcher's IMMEDIATE write txns). Writes route through
-// `shell.exec → hermes kanban <verb>` so upstream kanban_db.py owns
-// the state machine: recompute_ready, cycle detection, event log,
-// notify subscriptions. herm is the operator surface for that CLI —
-// create/assign/comment/unblock/archive/dispatch — not a competing
-// implementation.
+// Upstream 5ec6baa40 introduced multi-project boards. Resolution
+// chain for the *default-active* board mirrors
+// hermes_cli/kanban_db.py:
+//   HERMES_KANBAN_BOARD env → <root>/kanban/current file → "default".
+// The 'default' board keeps its legacy DB path <root>/kanban.db and
+// legacy logs dir <root>/kanban/logs/; every other board lives at
+// <root>/kanban/boards/<slug>/{kanban.db,logs/}.
+//
+// Herm renders all boards at once; the "current" board only seeds
+// which section has focus on mount. Reads are sidecar SQLite per
+// board (WAL lets us read alongside the dispatcher's IMMEDIATE write
+// txns). Writes route through `shell.exec → hermes kanban --board
+// <slug> <verb>` so upstream kanban_db.py owns the state machine:
+// recompute_ready, cycle detection, event log, notify subscriptions.
 
 import { Database } from "bun:sqlite"
-import { existsSync, readdirSync, statSync, openSync, readSync, closeSync } from "node:fs"
+import { existsSync, readdirSync, statSync, openSync, readSync, closeSync, readFileSync } from "node:fs"
 import { hermesPath } from "./hermes-home"
 
 export const STATUSES = ["triage", "todo", "ready", "running", "blocked", "done"] as const
@@ -32,14 +39,70 @@ export type Detail = Task & {
   comments: Array<{ author: string; body: string; at: number }>
 }
 
-let ro: Database | null | undefined
-const db = (): Database | null => {
-  if (ro !== undefined) return ro
-  try { ro = new Database(hermesPath("kanban.db"), { readonly: true }) }
-  catch { ro = null }
-  return ro
+export type Board = { slug: string; name: string }
+
+const DEFAULT = "default"
+const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
+
+/** Active board slug per the CLI's resolution chain. Herm shows every
+ *  board; this only picks which section is focused on mount. */
+const resolve = (): string => {
+  const env = (process.env.HERMES_KANBAN_BOARD ?? "").trim().toLowerCase()
+  if (SLUG.test(env)) return env
+  try {
+    const txt = readFileSync(hermesPath("kanban/current"), "utf-8").trim().toLowerCase()
+    if (SLUG.test(txt)) return txt
+  } catch {}
+  return DEFAULT
 }
-export const resetKanban = () => { ro?.close(); ro = undefined }
+
+let slug = resolve()
+/** One RO handle per board slug. `null` = open attempted and failed
+ *  (no DB yet); `undefined` = not yet attempted. */
+const handles = new Map<string, Database | null>()
+
+export const currentBoard = () => slug
+
+/** default keeps legacy <root>/kanban.db; others live under boards/<slug>/. */
+const dbPath = (s: string) =>
+  hermesPath(s === DEFAULT ? "kanban.db" : `kanban/boards/${s}/kanban.db`)
+
+const logsDir = (s: string) =>
+  hermesPath(s === DEFAULT ? "kanban/logs" : `kanban/boards/${s}/logs`)
+
+const dbOf = (s: string): Database | null => {
+  if (handles.has(s)) return handles.get(s) ?? null
+  let h: Database | null = null
+  try { h = new Database(dbPath(s), { readonly: true }) } catch {}
+  handles.set(s, h)
+  return h
+}
+
+/** Close every cached RO handle and re-resolve the active board.
+ *  Call after a profile rehome, board create, or test seeding. */
+export const resetKanban = () => {
+  for (const h of handles.values()) h?.close()
+  handles.clear()
+  slug = resolve()
+}
+
+/** Enumerate boards on disk. 'default' always first; others sorted. */
+export function listBoards(): Board[] {
+  const out = new Map<string, string>([[DEFAULT, "Default"]])
+  const dir = hermesPath("kanban/boards")
+  if (existsSync(dir))
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory() || !SLUG.test(e.name)) continue
+      let name = e.name
+      try {
+        const meta = JSON.parse(readFileSync(`${dir}/${e.name}/board.json`, "utf-8"))
+        if (typeof meta?.display_name === "string") name = meta.display_name
+      } catch {}
+      out.set(e.name, name)
+    }
+  return [...out].map(([s, name]) => ({ slug: s, name }))
+    .sort((a, b) => a.slug === DEFAULT ? -1 : b.slug === DEFAULT ? 1 : a.slug.localeCompare(b.slug))
+}
 
 // completed_at / started_at / created_at → updated_at proxy. The
 // tasks table has no updated_at; newest-of-the-three is close enough
@@ -61,12 +124,13 @@ const toTask = (r: Record<string, unknown>): Task => ({
   pid: (r.worker_pid as number) ?? null,
 })
 
-/** All non-archived tasks, grouped by status column. Each column
- *  sorted by (priority desc, updated_at desc) so the dispatcher's
- *  pick-next ordering roughly matches the top of `ready`. */
-export function board(): Map<Status, Task[]> {
-  const out = new Map<Status, Task[]>(STATUSES.map(s => [s, []]))
-  const conn = db()
+/** All non-archived tasks on `s`, grouped by status column. Each
+ *  column sorted by (priority desc, updated_at desc) so the
+ *  dispatcher's pick-next ordering roughly matches the top of
+ *  `ready`. */
+export function boardOf(s: string): Map<Status, Task[]> {
+  const out = new Map<Status, Task[]>(STATUSES.map(k => [k, []]))
+  const conn = dbOf(s)
   if (!conn) return out
   try {
     const rows = conn.query(
@@ -84,8 +148,8 @@ export function board(): Map<Status, Task[]> {
   return out
 }
 
-export function detail(id: string): Detail | null {
-  const conn = db()
+export function detailOf(s: string, id: string): Detail | null {
+  const conn = dbOf(s)
   if (!conn) return null
   try {
     const row = conn.query(
@@ -106,30 +170,10 @@ export function detail(id: string): Detail | null {
   } catch { return null }
 }
 
-/** Candidate assignee names for the picker — union of profiles-on-disk
- *  and any assignee already referenced on the board (a task can be
- *  assigned to a profile that no longer exists; still show it so the
- *  operator can reassign *away* from it). `(unassigned)` is prepended
- *  at the call site. */
-export function assignees(): string[] {
-  const seen = new Set<string>()
-  const dir = hermesPath("profiles")
-  if (existsSync(dir))
-    for (const e of readdirSync(dir, { withFileTypes: true }))
-      if (e.isDirectory()) seen.add(e.name)
-  const conn = db()
-  if (conn) try {
-    for (const r of conn.query(
-      "SELECT DISTINCT assignee FROM tasks WHERE assignee IS NOT NULL AND status != 'archived'",
-    ).all() as Array<{ assignee: string }>) seen.add(r.assignee)
-  } catch {}
-  return [...seen].sort()
-}
-
-/** Tail of the worker log at ~/.hermes/kanban/logs/<id>.log. Mirrors
- *  kanban_db.read_worker_log's seek-from-end + skip-partial-line. */
-export function tailLog(id: string, bytes = 16_384): string | null {
-  const path = hermesPath(`kanban/logs/${id}.log`)
+/** Tail of the worker log. Mirrors kanban_db.read_worker_log's
+ *  seek-from-end + skip-partial-line. */
+export function tailLogOf(s: string, id: string, bytes = 16_384): string | null {
+  const path = `${logsDir(s)}/${id}.log`
   if (!existsSync(path)) return null
   try {
     const size = statSync(path).size
@@ -146,6 +190,31 @@ export function tailLog(id: string, bytes = 16_384): string | null {
     return out
   } catch { return null }
 }
+
+/** Candidate assignee names — profiles-on-disk ∪ any assignee
+ *  referenced on board `s` (a task can be assigned to a profile that
+ *  no longer exists; show it so the operator can reassign *away*). */
+export function assignees(s: string = slug): string[] {
+  const seen = new Set<string>()
+  const dir = hermesPath("profiles")
+  if (existsSync(dir))
+    for (const e of readdirSync(dir, { withFileTypes: true }))
+      if (e.isDirectory()) seen.add(e.name)
+  const conn = dbOf(s)
+  if (conn) try {
+    for (const r of conn.query(
+      "SELECT DISTINCT assignee FROM tasks WHERE assignee IS NOT NULL AND status != 'archived'",
+    ).all() as Array<{ assignee: string }>) seen.add(r.assignee)
+  } catch {}
+  return [...seen].sort()
+}
+
+// ── Current-board shims ────────────────────────────────────────────
+// Kept for callers that don't care about multi-board (rehome, tests).
+
+export const board = () => boardOf(slug)
+export const detail = (id: string) => detailOf(slug, id)
+export const tailLog = (id: string, bytes?: number) => tailLogOf(slug, id, bytes)
 
 /** POSIX single-quote for shell.exec argv building. Wraps only when
  *  the string contains shell metacharacters (keeps test assertions

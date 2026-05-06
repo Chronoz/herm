@@ -494,7 +494,7 @@ export const Agents = memo((props: Props) => {
 
   const keys = useKeys()
   useKeyboard((key) => {
-    if (!props.focused || dialog.stack.length > 0) return
+    if (!props.focused || dialog.open()) return
     if (key.name === "tab") return setPane(p => p === "profiles" ? "deleg" : "profiles")
     if (keys.match("list.refresh", key)) { loadProfiles(); loadDeleg(); toast.show({ variant: "info", message: "Reloaded", duration: 1000 }); return }
     if (pane === "profiles") {
