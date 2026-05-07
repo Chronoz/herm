@@ -4,10 +4,11 @@ import type { ParsedEikon } from "../avatar/eikon"
 import { useTheme } from "../../theme"
 import type { AvatarState } from "../avatar/states"
 import type { SessionInfo } from "../../utils/gateway-types"
+import type { GoalState } from "../../utils/sessions-db"
 import type { Usage } from "../../types/message"
-import { useGitBranch, rtrunc } from "../../utils/git"
 import { Tail } from "../chat/ThoughtCloud"
-import { ContextGauge } from "./ContextGauge"
+import type { OpenCodeActivity } from "../../app/opencode"
+import { ExecutiveSummaryCard } from "./ExecutiveSummaryCard"
 
 // The pillar body carries a compact identity block, the MCP operational
 // section, and a context-usage gauge at the bottom. Stats/Memory/Recent/
@@ -49,42 +50,25 @@ const Section = memo((props: {
   )
 })
 
-const Row = (props: { label: string; value: string; strong?: boolean }) => {
-  const theme = useTheme().theme
-  return (
-    <box height={1}>
-      <text>
-        <span fg={theme.textMuted}>{`  ${props.label.padEnd(PAD_L)}`}</span>
-        {props.strong
-          ? <span fg={theme.text}><strong>{trunc(props.value, INNER - PAD_L - 2)}</strong></span>
-          : <span fg={theme.text}>{trunc(props.value, INNER - PAD_L - 2)}</span>}
-      </text>
-    </box>
-  )
-}
-
 // ─── Main ────────────────────────────────────────────────────────────
 
 export const Sidebar = memo((props: {
   agentState?: AvatarState
   info?: SessionInfo | null
-  usage?: Usage
   eikon?: ParsedEikon
-  profile?: string
-  title?: string
   cloud?: boolean
   pulse?: boolean
   onAvatar?: () => void
   onAvatarHold?: (s: AvatarState) => void
+  goal?: GoalState | null
+  usage?: Usage
+  ocActivity?: OpenCodeActivity | null
 }) => {
   const theme = useTheme().theme
   const state = props.agentState ?? "idle"
   const info = props.info
 
   const [mcpOpen, setMcpOpen] = useState(false)
-
-  const cwd = info?.cwd ?? process.cwd()
-  const branch = useGitBranch(cwd)
 
   return (
     <box width={WIDTH} flexDirection="column">
@@ -106,16 +90,13 @@ export const Sidebar = memo((props: {
            border={["top", "left", "right"]} borderStyle="double"
            borderColor={theme.hermAvatar}>
 
-        {/* Flat identity block — Title is primary (always rendered so the
-            block doesn't reflow when `/title` fires), then Profile
-            (which IS agent lineage — each profile is an isolated
-            HERMES_HOME), then model/cwd/branch. */}
-        <Row label="Title" value={props.title || "—"} strong={!!props.title} />
-        <Row label="Profile" value={props.profile ?? "default"}
-             strong={!!props.profile && props.profile !== "default"} />
-        <Row label="Model" value={info?.model ?? "—"} />
-        {info?.cwd ? <Row label="cwd" value={info.cwd} /> : null}
-        {branch ? <Row label="Branch" value={rtrunc(branch, INNER - PAD_L - 2)} /> : null}
+        <ExecutiveSummaryCard
+          goal={props.goal}
+          usage={props.usage}
+          info={info}
+          ocActivity={props.ocActivity}
+          pulse={props.pulse}
+        />
 
         {(info?.mcp_servers?.length ?? 0) > 0 ? (() => {
           const srv = info!.mcp_servers!
@@ -142,7 +123,6 @@ export const Sidebar = memo((props: {
         })() : null}
 
         <box flexGrow={1} />
-        <ContextGauge info={info} usage={props.usage} width={INNER} />
       </box>
     </box>
   )
