@@ -8,7 +8,9 @@ import { decodePasteBytes } from "@opentui/core"
 import { useTheme } from "../../theme"
 import { useKeys, toBindings } from "../../keys"
 import { useGateway } from "../../app/gateway"
-import type { ImageAttachResponse, DropDetectResponse } from "../../utils/gateway-types"
+import type { SessionInfo, ImageAttachResponse, DropDetectResponse } from "../../utils/gateway-types"
+
+import type { Usage } from "../../types/message"
 import { looksLikePath } from "../../utils/drop"
 import type { SlashCommand } from "../../commands/slash"
 import { useSlashPopover } from "../../app/useSlashPopover"
@@ -45,6 +47,10 @@ type Props = {
   queue?: ReadonlyArray<string>
   attachments?: ReadonlyArray<ImageAttachResponse>
   cmds: ReadonlyArray<SlashCommand>
+  profile?: string
+  model?: string
+  usage?: Usage
+  info?: SessionInfo
   onSend: (text: string) => void
   onSlash: (cmd: SlashCommand) => void
   onAttach?: (r: ImageAttachResponse) => void
@@ -233,6 +239,17 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
     : "Ready"
   const dot = props.ready ? (props.streaming ? theme.warning : theme.success) : theme.error
 
+  const ctx = useMemo(() => {
+    const used = props.usage?.context_used ?? props.info?.usage?.context_used ?? props.info?.context_used ?? 0
+    const max = props.usage?.context_max ?? props.info?.usage?.context_max ?? props.info?.context_max ?? 0
+    if (!max) return null
+    const pct = Math.min(100, Math.round((used / max) * 100))
+    const w = 10
+    const filled = Math.round((pct / 100) * w)
+    const body = "\u2588".repeat(filled) + "\u2591".repeat(w - filled)
+    return { body, text: `${fmt(used)} / ${fmt(max)} (${pct}%)` }
+  }, [props.usage, props.info])
+
   // Logical-line row count (wrap-induced growth ignored; yoga sizes the
   // textarea, this only positions the absolute popover above the border).
   const rows = Math.min(MAX_ROWS, Math.max(1, input.split("\n").length))
@@ -341,8 +358,17 @@ export const Composer = memo(forwardRef<ComposerHandle, Props>((props, ref) => {
           <span fg={theme.textMuted}>{label}</span>
         </text>
         <box flexGrow={1} />
+        {props.profile || props.model || ctx ? (
+          <text>
+            {props.profile ? <span fg={theme.textMuted}>{props.profile}</span> : null}
+            {props.profile && props.model ? <span fg={theme.textMuted}> | </span> : null}
+            {props.model ? <span fg={theme.textMuted}>{props.model}</span> : null}
+            {(props.profile || props.model) && ctx ? <span fg={theme.textMuted}> | </span> : null}
+            {ctx ? <span fg={theme.textMuted}>[{ctx.body}] {ctx.text}</span> : null}
+          </text>
+        ) : null}
         {props.streaming && (props.queue?.length ?? 0) > 0 ? (
-          <text fg={theme.textMuted}>{keys.print("queue.flush")} to send queued now</text>
+          <text fg={theme.textMuted}>  {keys.print("queue.flush")} to send queued now</text>
         ) : null}
       </box>
     </box>

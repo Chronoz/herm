@@ -17,7 +17,7 @@ const CLOUD_MAX = 24
 // Heavy triple-dash — reads as thick + noncontinuous. Corners stay
 // heavy-solid so the box parses as a bubble, not a grid.
 const CLOUD: BorderCharacters = {
-  topLeft: "┏", topRight: "┓", bottomLeft: "┗", bottomRight: "┛",
+  topLeft: "╭", topRight: "╮", bottomLeft: "╰", bottomRight: "╯",
   horizontal: "┅", vertical: "┇",
   topT: "┅", bottomT: "┅", leftT: "┇", rightT: "┇", cross: "╋",
 }

@@ -12,14 +12,10 @@ import { openCountdown } from "../dialogs/countdown"
 import { io } from "../io"
 
 type Toast = { show: (o: { variant: "success"; title?: string; message: string; duration?: number }) => void }
-type ShellResult = { stdout: string; stderr: string; code: number }
 
 export type GoalHook = {
   /** Called from onTurnComplete. Reads goal state, fires if done. */
   check: (sid: string) => void
-  /** Drive GoalManager via shell.exec — verbs map to goals.py methods.
-   *  Returns a one-line status string for the transcript. */
-  cmd: (sid: string, verb: string, arg: string) => Promise<string>
 }
 
 const SECONDS = 10
@@ -27,22 +23,6 @@ const SUSPEND = process.platform === "darwin" ? "pmset sleepnow" : "systemctl su
 
 const run = (cmd: string) =>
   Bun.spawn(["sh", "-c", cmd], { stdout: "ignore", stderr: "ignore" })
-
-// shell.exec inherits the gateway subprocess env (HERMES_HOME +
-// PYTHONPATH=<agent-root>), so hermes_cli.goals resolves and writes to
-// the same state.db the io reader polls. JSON.stringify handles the
-// inner python string literal (", \, \n); shQuote handles the outer
-// sh -c arg so goal text can't inject.
-const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-
-const PY: Record<string, (a: string) => string> = {
-  set:    a => `m.set(${JSON.stringify(a)}); print(m.status_line())`,
-  done:   a => `m.mark_done(${JSON.stringify(a || "marked via herm")}); print("✓ marked done")`,
-  pause:  () => `m.pause(); print(m.status_line())`,
-  resume: () => `m.resume(); print(m.status_line())`,
-  clear:  () => `m.clear(); print("cleared")`,
-  status: () => `print(m.status_line())`,
-}
 
 // Latch per sid+goal so repeated done-polls don't re-fire. Module
 // scope — switching sessions naturally keys out of it, and profile
@@ -75,17 +55,6 @@ export function makeGoalHook(gw: Gateway, dialog: DialogContext, toast: Toast): 
         fired.set(sid, s.goal)
         act(s.goal)
       }).catch(() => {})
-    },
-    cmd: async (sid: string, verb: string, arg: string) => {
-      const body = PY[verb] ?? (arg || verb ? PY.set : PY.status)
-      // Non-verb first token = start of goal text.
-      const text = PY[verb] ? arg : [verb, arg].filter(Boolean).join(" ")
-      const py = `from hermes_cli.goals import GoalManager; m=GoalManager(${JSON.stringify(sid)}); ${body(text)}`
-      const r = await gw.request<ShellResult>("shell.exec", {
-        command: `python3 -c ${shQuote(py)}`,
-      })
-      if (r.code !== 0) throw new Error((r.stderr || r.stdout || `exit ${r.code}`).trim())
-      return r.stdout.trim() || "ok"
     },
   }
 }

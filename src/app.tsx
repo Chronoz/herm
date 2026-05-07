@@ -45,6 +45,8 @@ import { openStatus, openUsage, openProfile } from "./dialogs/info"
 import { openChafa } from "./dialogs/chafa"
 import { Splash } from "./ui/Splash"
 import { lastReal } from "./utils/sessions-db"
+import type { GoalState } from "./utils/sessions-db"
+import { io } from "./io"
 import { readChangelog } from "./utils/hermes-home"
 import { openAlert } from "./dialogs/alert"
 import { openMessage } from "./dialogs/message"
@@ -67,6 +69,7 @@ import { activeProfileName } from "./utils/hermes-profiles"
 import { rehome } from "./home/rehome"
 import { makeGoalHook } from "./app/goalHook"
 import type { Launch } from "./app/launch"
+import { parseModel, parseTask, deriveStage, buildResult, readDefaultModel, type OpenCodeActivity } from "./app/opencode"
 
 type AppProps = { initialTheme?: string; gateway?: Gateway; launch?: Launch }
 
@@ -105,7 +108,17 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const [tab, setTab] = useState(CHAT_TAB)
   const [hideSidebar, setHideSidebar] = useState(false)
   const [usage, setUsage] = useState<Usage | undefined>(undefined)
+  const [goal, setGoal] = useState<GoalState | null>(null)
   const [info, setInfo] = useState<SessionInfo | null>(null)
+  const [goalKey, setGoalKey] = useState("")
+  const goalKeyRef = useRef(goalKey); goalKeyRef.current = goalKey
+  const [ocActivity, setOcActivity] = useState<OpenCodeActivity | null>(null)
+  const ocModel = useRef<string | undefined>(undefined)
+  const ocToolId = useRef<string | undefined>(undefined)
+
+  const refreshGoal = useCallback((id: string) => {
+    io.goalState(id).then(setGoal).catch(() => setGoal(null))
+  }, [])
   const [title, setTitle] = useState("")
   const [focusRegion, setFocusRegion] = useState<"input" | "content">("input")
   const goToTab = useCallback((t: number) => {
@@ -218,6 +231,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     setStatus("")
     setTitle("")
     setAttachments([])
+    setGoalKey("")
+    setOcActivity(null)
   }, [])
 
   const newSession = useCallback(async () => {
@@ -315,6 +330,10 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     const p = eikonPath || bundledEikonPath(skin.skin?.name)
     if (p) loadEikon(p); else setEikon(undefined)
   }, [eikonPath, skin.skin?.name, loadEikon])
+
+  useEffect(() => {
+    readDefaultModel().then(m => { if (m) ocModel.current = m }).catch(() => {})
+  }, [])
 
   const pickEikon = useCallback(() => {
     openEikonPicker(dialog, (path) => preferences.set("eikonPath", path))
@@ -437,17 +456,6 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
               if (themeCtx.has(name)) themeCtx.set(name)
               preferences.set("eikonPath", undefined)
               dispatch({ kind: "system", text: `skin → ${name}` })
-            })
-            .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
-          return
-        }
-        case "goal": {
-          const [verb = "", ...rest] = arg.trim().split(/\s+/)
-          goalHook.cmd(sid, verb, rest.join(" "))
-            .then(line => {
-              dispatch({ kind: "system", text: line })
-              // `done` fires the hook without waiting on a turn.
-              if (verb === "done") goalHook.check(sid)
             })
             .catch((e: Error) => toast.show({ variant: "error", message: e.message }))
           return
@@ -606,7 +614,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
         if (res?.output) dispatch({ kind: "system", text: res.output })
       })
       .catch(() => {
-        type Dispatch = { type?: string; output?: string; target?: string; message?: string; name?: string }
+        type Dispatch = { type?: string; output?: string; target?: string; message?: string; name?: string; notice?: string }
         gw.request<Dispatch>("command.dispatch", { name: c.name, arg })
           .then(d => {
             if (d.type === "exec" || d.type === "plugin")
@@ -616,15 +624,18 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
             if ((d.type === "skill" || d.type === "send") && d.message) {
               if (d.type === "skill")
                 dispatch({ kind: "system", text: `⚡ loading skill: ${d.name ?? c.name}` })
+              if (d.type === "send" && d.notice)
+                dispatch({ kind: "system", text: d.notice })
               return void sendRef.current(d.message)
             }
             dispatch({ kind: "system", text: `/${c.name}: unknown` })
           })
           .catch((e: Error) => dispatch({ kind: "system", text: `error: ${e.message}` }))
+          .finally(() => { if (c.name === "goal") refreshGoal(goalKeyRef.current) })
       })
   }, [ready, turn.streaming, turn.messages, dialog, themeCtx, newSession, gw, pickEikon, editTitle,
       applyTitle, toast, info, sid, title, switchSession, session, runCompress, rewind, renderer,
-      attachClipboard, goToTab, queue.length, goalHook, skin])
+      attachClipboard, goToTab, queue.length, goalHook, skin, refreshGoal])
 
   // ── Send ──────────────────────────────────────────────────────────
   const send = useCallback(async (raw: string) => {
@@ -670,6 +681,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       : text
     dispatch({ kind: "user", text: withMedia })
     setAttachments([])
+    setOcActivity(null)
     gw.request("prompt.submit", { text }).catch(() => { inflight.current = false })
     setTab(CHAT_TAB)
   }, [gw, slash, attachments])
@@ -756,6 +768,55 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       if (STREAM_EVENTS.has(ev.type)) return
       if (ev.type === "status.update" && ev.payload?.kind === "lifecycle") return
     }
+    if (ev.type === "status.update" && ev.payload?.kind === "goal") {
+      refreshGoal(goalKeyRef.current)
+    }
+    if (ev.type === "tool.start" || ev.type === "tool.progress") {
+      const name = ev.payload?.name ?? ""
+      const ctx = (ev.type === "tool.start" ? ev.payload?.context : ev.payload?.preview) ?? ""
+      if (name === "terminal" && /\bopencode\b/.test(ctx)) {
+        const model = parseModel(ctx) ?? ocModel.current ?? "OpenCode"
+        const task = parseTask(ctx)
+        if (ev.type === "tool.start") ocToolId.current = ev.payload.tool_id
+        setOcActivity({ stage: "starting", task, model, startedAt: Date.now(), seen: ["starting"], status: "running" })
+      } else if (ocActivity) {
+        const stage = deriveStage(name, ctx)
+        const fallback = ocActivity.status === "blocked" || ocActivity.status === "error"
+        if (stage !== "running" && stage !== ocActivity.stage) {
+          setOcActivity(prev => {
+            if (!prev) return prev
+            const seen = prev.seen.includes(stage) ? prev.seen : [...prev.seen, stage]
+            return { ...prev, stage, seen, fallbackUsed: prev.fallbackUsed || fallback }
+          })
+        }
+      }
+    }
+    if (ev.type === "tool.complete" && ocActivity) {
+      const tied = ev.payload?.tool_id && ev.payload.tool_id === ocToolId.current
+      const err = ev.payload?.error
+      if (tied && err) {
+        setOcActivity(prev => {
+          if (!prev) return prev
+          return { ...prev, status: "error", blockedReason: err }
+        })
+      }
+    }
+    if (ev.type === "gateway.stderr" && ocActivity) {
+      const line = ev.payload?.line ?? ""
+      if (/error|fail|traceback|exception|\b[45]\d\d\b|refused|denied|unauthori/i.test(line)) {
+        setOcActivity(prev => {
+          if (!prev || prev.status === "error") return prev
+          return { ...prev, status: "blocked", blockedReason: line.slice(0, 120) }
+        })
+      }
+    }
+    if (ev.type === "message.complete" && ocActivity) {
+      setOcActivity(prev => {
+        if (!prev) return prev
+        const status = prev.status === "running" ? "done" : prev.status
+        return { ...prev, stage: "done", status, result: buildResult(prev.seen, { fallback: prev.fallbackUsed, status }) }
+      })
+    }
     const action = mapEvent(ev, {
       onReady: () => {
         session.boot(launchRef.current).then((r) => {
@@ -769,21 +830,27 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
         setInfo(si)
         setReady(true)
         if (si.session_id) setSid(si.session_id)
+        gw.request<{ title: string; session_key?: string }>("session.title").then(r => {
+          setTitle(r.title ?? "")
+          const key = r.session_key ?? si.session_id ?? ""
+          if (key) { setGoalKey(key); refreshGoal(key) }
+          if (r.session_key) preferences.set("lastSessionId", r.session_key)
+        }).catch(() => {
+          if (si.session_id) { setGoalKey(si.session_id); refreshGoal(si.session_id) }
+        })
         const bad = (si.mcp_servers ?? []).filter(s => !s.connected)
         if (bad.length) dispatch({
           kind: "system",
           text: `MCP: ${bad.length} server(s) failed to connect — ${bad.map(s => s.name + (s.error ? ` (${s.error})` : "")).join(", ")}`,
         })
-        gw.request<{ title: string; session_key?: string }>("session.title").then(r => {
-          setTitle(r.title ?? "")
-          if (r.session_key) preferences.set("lastSessionId", r.session_key)
-        }).catch(() => {})
       },
       onUsage: (u) => setUsage(u),
       onTurnComplete: () => {
         setStatus("")
         spawnHistory.flush(gw, sidRef.current)
-        goalHook.check(sidRef.current)
+        goalHook.check(goalKeyRef.current)
+        refreshGoal(goalKeyRef.current)
+        setTimeout(() => refreshGoal(goalKeyRef.current), 300)
       },
       onBackground: (tid, text) => {
         const head = text.split("\n")[0].slice(0, 80)
@@ -822,7 +889,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     flush()
     if (action.kind === "error") setErrorPulse(true)
     dispatch(action)
-  }, [session, dialog, toast, gw, flush, goalHook])
+  }, [session, dialog, toast, gw, flush, goalHook, refreshGoal, ocActivity])
 
   useGatewayEvent(handle)
 
@@ -1019,6 +1086,10 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
                 queue={queue}
                 attachments={attachments}
                 cmds={cmds}
+                profile={activeProfileName()}
+                model={info?.model ?? undefined}
+                usage={usage}
+                info={info ?? undefined}
                 onSend={onSend} onSlash={slash}
                 onAttach={onAttach}
                 onEnqueue={onEnqueue}
@@ -1030,10 +1101,10 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
           </box>
           {dims.width >= (tab === CHAT_TAB ? 120 : 140) && !hideSidebar ? (
             <Profiler id="sidebar" onRender={perf.onRender}>
-              <Sidebar agentState={agentState} info={info} usage={usage} eikon={eikon} profile={activeProfileName()}
-                       title={title}
-                       cloud={tab === 0 && cloud} pulse={turn.streaming}
-                       onAvatar={onAvatar} onAvatarHold={onAvatarHold} />
+               <Sidebar agentState={agentState} info={info} eikon={eikon}
+                         cloud={tab === 0 && cloud} pulse={turn.streaming}
+                         onAvatar={onAvatar} onAvatarHold={onAvatarHold}
+                         goal={goal} usage={usage} ocActivity={ocActivity} />
             </Profiler>
           ) : null}
         </box>

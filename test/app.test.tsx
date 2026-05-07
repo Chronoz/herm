@@ -5,6 +5,8 @@ import * as prefs from "../src/utils/preferences"
 import * as exit from "../src/app/exit"
 import { DOUBLE_TAB_MS } from "../src/app/useAppKeys"
 import type { GatewayEvent } from "../src/utils/gateway-types"
+import { openStateDb } from "./fixtures/state-db"
+import { resetDb } from "../src/utils/sessions-db"
 
 describe("app", () => {
   test("boots and renders chat tab with status bar", async () => {
@@ -228,16 +230,16 @@ describe("app", () => {
   test("sidebar hides below 120 cols", async () => {
     const t = await mount({ width: 160, height: 48 })
     await until(t, () => t.frame().includes("Ready"))
-    // Sidebar renders the Profile row as the identity header.
-    expect(t.frame()).toMatch(/Profile\s+default/)
+    expect(t.frame()).toContain("default | test-model")
+    expect(t.frame()).toContain("╔")
 
     t.resize(100, 48)
     await t.settle(); await t.settle()
-    expect(t.frame()).not.toMatch(/Profile\s+default/)
+    expect(t.frame()).not.toContain("╔")
 
     t.resize(160, 48)
     await t.settle(); await t.settle()
-    expect(t.frame()).toMatch(/Profile\s+default/)
+    expect(t.frame()).toContain("╔")
     t.destroy()
   })
 
@@ -248,12 +250,12 @@ describe("app", () => {
     const t = await mount({ gw, width: 130, height: 40 })
     await until(t, () => t.frame().includes("Ready"))
     // Chat tab: sidebar visible at 130.
-    expect(t.frame()).toMatch(/Profile\s+default/)
+    expect(t.frame()).toContain("╔")
 
     act(() => { t.keys.pressKey("x", { ctrl: true }); t.keys.pressKey("3") })
     await until(t, () => t.frame().includes("Sessions (1)"))
     // Sidebar dropped, detail pane kept.
-    expect(t.frame()).not.toMatch(/Profile\s+default/)
+    expect(t.frame()).not.toContain("╔")
     expect(t.frame()).toContain("Session Detail")
     t.destroy()
   })
@@ -584,11 +586,11 @@ describe("app", () => {
     t.destroy()
   })
 
-  test("sidebar shows Profile row", async () => {
+  test("sidebar shows avatar plinth", async () => {
     const t = await mount({ width: 160 })
     await until(t, () => t.frame().includes("Hermes"))
-    // preload.ts sets HERMES_HOME to a sandbox that isn't under profiles/
-    expect(t.frame()).toMatch(/Profile\s+default/)
+    expect(t.frame()).toContain("default | test-model")
+    expect(t.frame()).toContain("╔")
     t.destroy()
   })
 
@@ -596,21 +598,21 @@ describe("app", () => {
   test("<leader>b toggles the sidebar", async () => {
     const t = await mount({ width: 160 })
     await until(t, () => t.frame().includes("Ready"))
-    expect(t.frame()).toMatch(/Profile\s+default/)
+    expect(t.frame()).toContain("╔")
 
     // Arm leader, then 'b' → hide
     act(() => t.keys.pressKey("x", { ctrl: true }))
     await t.settle()
     await act(async () => { await t.keys.typeText("b") })
     await t.settle()
-    expect(t.frame()).not.toMatch(/Profile\s+default/)
+    expect(t.frame()).not.toContain("╔")
 
     // Again → show
     act(() => t.keys.pressKey("x", { ctrl: true }))
     await t.settle()
     await act(async () => { await t.keys.typeText("b") })
     await t.settle()
-    expect(t.frame()).toMatch(/Profile\s+default/)
+    expect(t.frame()).toContain("╔")
     t.destroy()
   })
 
@@ -1004,6 +1006,436 @@ describe("app", () => {
     act(() => t.gw.push({ type: "message.start" }))
     act(() => t.gw.push({ type: "tool.start", payload: { tool_id: "y", name: "read_file", context: "" } }))
     await until(t, () => t.frame().includes("Reading file"))
+    t.destroy()
+  })
+
+  test("sidebar shows goal dashboard when state_meta has goal row for active sid", async () => {
+    const db = openStateDb()
+    db.run("CREATE TABLE IF NOT EXISTS state_meta (key TEXT PRIMARY KEY, value TEXT)")
+    db.run("INSERT OR REPLACE INTO state_meta VALUES (?, ?)", [
+      "goal:test-sid",
+      JSON.stringify({ goal: "write tests", status: "active", turn_count: 2, max_turns: 5 }),
+    ])
+    db.close()
+    resetDb()
+
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    const f = t.frame()
+    expect(f).toContain("Status     active")
+    expect(f).toContain("Turns 2 / 5")
+    expect(f).toContain("Objective")
+    expect(f).toContain("write tests")
+
+
+    // Push updated session.info with context → context line appears
+    act(() => t.gw.push({
+      type: "session.info",
+      payload: {
+        model: "test-model", session_id: "test-sid", tools: {}, skills: {},
+        context_used: 2400, context_max: 200000,
+      },
+    }))
+    await until(t, () => t.frame().includes("2.4K / 200K (1%)"))
+    expect(t.frame()).toContain("2.4K / 200K (1%)")
+
+    t.destroy()
+  })
+
+  test("sidebar shows goal dashboard using session_key when it differs from session_id", async () => {
+    const db = openStateDb()
+    db.run("CREATE TABLE IF NOT EXISTS state_meta (key TEXT PRIMARY KEY, value TEXT)")
+    db.run("INSERT OR REPLACE INTO state_meta VALUES (?, ?)", [
+      "goal:real-key",
+      JSON.stringify({ goal: "ship it", status: "active", turn_count: 1, max_turns: 3 }),
+    ])
+    db.close()
+    resetDb()
+
+    const gw = new MockGateway({
+      "session.title": () => ({ title: "test", session_key: "real-key" }),
+    })
+    const t = await mount({ gw, width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    const f = t.frame()
+    expect(f).toContain("Status     active")
+    expect(f).toContain("Turns 1 / 3")
+    expect(f).toContain("Objective")
+    expect(f).toContain("ship it")
+    t.destroy()
+  })
+
+  test("/goal routes via command.dispatch, not shell.exec", async () => {
+    const gw = new MockGateway({
+      "commands.catalog": () => ({ pairs: [["/goal", "Set/control the session goal"]] }),
+      "slash.exec": () => { throw new Error("not handled") },
+      "command.dispatch": () => ({ type: "exec", output: "⊙ goal set" }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/goal ship it") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("command.dispatch") !== undefined)
+
+    expect(t.gw.last("command.dispatch")?.params).toMatchObject({ name: "goal", arg: "ship it" })
+    expect(t.gw.calls.some(c => c.method === "shell.exec")).toBe(false)
+    expect(t.frame()).toContain("⊙ goal set")
+    t.destroy()
+  })
+
+  test("/goal command.dispatch type=send with notice", async () => {
+    const gw = new MockGateway({
+      "commands.catalog": () => ({ pairs: [["/goal", "Set/control the session goal"]] }),
+      "slash.exec": () => { throw new Error("not handled") },
+      "command.dispatch": () => ({ type: "send", notice: "Goal paused", message: "resume when ready" }),
+    })
+    const t = await mount({ gw })
+    await until(t, () => t.frame().includes("Ready"))
+
+    await act(async () => { await t.keys.typeText("/goal pause") })
+    act(() => t.keys.pressEnter())
+    await until(t, () => t.gw.last("prompt.submit") !== undefined)
+
+    expect(t.gw.last("command.dispatch")?.params).toMatchObject({ name: "goal", arg: "pause" })
+    expect(t.frame()).toContain("Goal paused")
+    expect(t.gw.last("prompt.submit")?.params.text).toBe("resume when ready")
+    t.destroy()
+  })
+
+  test("goal dashboard refreshes after turn completion when DB updates late", async () => {
+    const db = openStateDb()
+    db.run("CREATE TABLE IF NOT EXISTS state_meta (key TEXT PRIMARY KEY, value TEXT)")
+    db.run("INSERT OR REPLACE INTO state_meta VALUES (?, ?)", [
+      "goal:test-sid",
+      JSON.stringify({ goal: "write tests", status: "active", turn_count: 2, max_turns: 5 }),
+    ])
+    db.close()
+    resetDb()
+
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Start a turn
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    act(() => t.gw.push({ type: "message.start" }))
+    await until(t, () => t.frame().includes("Generating"))
+
+    // During the turn, update the DB goal to done
+    const db2 = openStateDb()
+    db2.run("UPDATE state_meta SET value = ? WHERE key = ?", [
+      JSON.stringify({ goal: "write tests", status: "done", turn_count: 5, max_turns: 5 }),
+      "goal:test-sid",
+    ])
+    db2.close()
+    resetDb()
+
+    // Complete the turn
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "done", usage: { input: 1, output: 1, total: 2 } },
+    }))
+
+    // The sidebar should eventually show the updated goal status
+    await until(t, () => t.frame().includes("Status     done"), 3000)
+    expect(t.frame()).toContain("Turns 5 / 5")
+
+    t.destroy()
+  })
+
+  test("goal dashboard refreshes on status.update goal event after message.complete", async () => {
+    const db = openStateDb()
+    db.run("CREATE TABLE IF NOT EXISTS state_meta (key TEXT PRIMARY KEY, value TEXT)")
+    db.run("INSERT OR REPLACE INTO state_meta VALUES (?, ?)", [
+      "goal:test-sid",
+      JSON.stringify({ goal: "write tests", status: "active", turn_count: 2, max_turns: 5 }),
+    ])
+    db.close()
+    resetDb()
+
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    // Start a turn
+    await act(async () => { await t.keys.typeText("go") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    act(() => t.gw.push({ type: "message.start" }))
+    await until(t, () => t.frame().includes("Generating"))
+
+    // Complete the turn BEFORE the DB goal is updated
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "done", usage: { input: 1, output: 1, total: 2 } },
+    }))
+    await until(t, () => t.frame().includes("Ready"))
+
+    // At this point the sidebar still shows active because the DB hasn't updated yet
+    expect(t.frame()).toContain("Status     active")
+
+    // Now the gateway evaluates the goal and updates the DB
+    const db2 = openStateDb()
+    db2.run("UPDATE state_meta SET value = ? WHERE key = ?", [
+      JSON.stringify({ goal: "write tests", status: "done", turn_count: 5, max_turns: 5 }),
+      "goal:test-sid",
+    ])
+    db2.close()
+    resetDb()
+
+    // Emit the goal status event — this should trigger a refresh
+    act(() => t.gw.push({ type: "status.update", payload: { kind: "goal", text: "✓ Goal achieved: write tests" } }))
+
+    // The sidebar should now show the updated goal status
+    await until(t, () => t.frame().includes("Status     done"), 3000)
+    expect(t.frame()).toContain("Turns 5 / 5")
+
+    t.destroy()
+  })
+
+  test("composer footer shows context bar when usage data is present", async () => {
+    const t = await mount()
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({
+      type: "session.info",
+      payload: {
+        model: "test-model", session_id: "test-sid", tools: {}, skills: {},
+        context_used: 50000, context_max: 100000,
+      },
+    }))
+    await until(t, () => t.frame().includes("[█████░░░░░]"))
+    expect(t.frame()).toContain("50K / 100K (50%)")
+
+    t.destroy()
+  })
+
+  test("OpenCode card appears on terminal tool.start with opencode run", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({
+      type: "message.start",
+    }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run fix the sidebar" },
+    }))
+    await until(t, () => t.frame().includes("OpenCode"))
+    const f = t.frame()
+    expect(f).toMatch(/OpenCode\s+\[running\]/)
+    expect(f).toContain("Objective  fix the sidebar")
+
+    t.destroy()
+  })
+
+  test("OpenCode model parsed from explicit --model flag", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run --model anthropic/claude-3 do work" },
+    }))
+    await until(t, () => t.frame().includes("OpenCode"))
+    expect(t.frame()).toContain("claude-3")
+
+    t.destroy()
+  })
+
+  test("OpenCode model falls back to config default", async () => {
+    const { mkdtempSync, writeFileSync, mkdirSync } = await import("fs")
+    const { join } = await import("path")
+    const { tmpdir } = await import("os")
+    const dir = mkdtempSync(join(tmpdir(), "herm-test-"))
+    const prev = process.env.HOME
+    process.env.HOME = dir
+    mkdirSync(join(dir, ".config", "opencode"), { recursive: true })
+    writeFileSync(join(dir, ".config", "opencode", "opencode.json"), JSON.stringify({ model: "fallback/model-v1" }))
+
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run some task" },
+    }))
+    await until(t, () => t.frame().includes("OpenCode"))
+    expect(t.frame()).toContain("model-v1")
+
+    t.destroy()
+    process.env.HOME = prev
+  })
+
+  test("OpenCode activity persists through stage changes", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run fix things" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+    expect(t.frame()).toContain("Objective  fix things")
+
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t2", name: "terminal", context: "bun test src/app" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+    expect(t.frame()).toContain("Objective  fix things")
+
+    t.destroy()
+  })
+
+  test("OpenCode card stays done after message.complete and clears on next send", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run a task" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "ok", usage: { input: 1, output: 1, total: 2 } },
+    }))
+    await until(t, () => t.frame().includes("OpenCode"))
+    const f = t.frame()
+    expect(f).toMatch(/OpenCode\s+\[done\]/)
+    expect(f).not.toContain("Time")
+    expect(f).not.toContain("Stage")
+
+    await act(async () => { await t.keys.typeText("next prompt") })
+    act(() => t.keys.pressEnter())
+    await t.settle()
+    expect(t.frame()).not.toContain("OpenCode")
+
+    t.destroy()
+  })
+
+  test("OpenCode done mode shows result summary when stages were seen", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run a task" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t2", name: "write_file", context: "edit" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t3", name: "terminal", context: "bun test" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "ok", usage: { input: 1, output: 1, total: 2 } },
+    }))
+    await until(t, () => t.frame().includes("Result"))
+    expect(t.frame()).toContain("Result     edited + tested")
+
+    t.destroy()
+  })
+
+  test("OpenCode blocked status on gateway stderr failure", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run a task" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "gateway.stderr",
+      payload: { line: "HTTP 500: Internal Server Error" },
+    }))
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "ok", usage: { input: 1, output: 1, total: 2 } },
+    }))
+    await until(t, () => t.frame().includes("[blocked]"))
+    expect(t.frame()).toMatch(/OpenCode\s+\[blocked\]/)
+
+    t.destroy()
+  })
+
+  test("OpenCode error status on tool.complete with error", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run a task" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "tool.complete",
+      payload: { tool_id: "t1", name: "terminal", error: "process exited with code 1" },
+    }))
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "ok", usage: { input: 1, output: 1, total: 2 } },
+    }))
+    await until(t, () => t.frame().includes("[error]"))
+    expect(t.frame()).toMatch(/OpenCode\s+\[error\]/)
+
+    t.destroy()
+  })
+
+  test("OpenCode fallback result when Hermes continues after error", async () => {
+    const t = await mount({ width: 160 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    act(() => t.gw.push({ type: "message.start" }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "terminal", context: "opencode run a task" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "tool.complete",
+      payload: { tool_id: "t1", name: "terminal", error: "process exited with code 1" },
+    }))
+    act(() => t.gw.push({
+      type: "tool.start",
+      payload: { tool_id: "t2", name: "write_file", context: "edit" },
+    }))
+    await until(t, () => t.frame().includes("[running]"))
+
+    act(() => t.gw.push({
+      type: "message.complete",
+      payload: { text: "ok", usage: { input: 1, output: 1, total: 2 } },
+    }))
+    await until(t, () => t.frame().includes("Result"))
+    const f = t.frame()
+    expect(f).toContain("[error]")
+    expect(f).toContain("OpenCode error; Hermes edited")
+
     t.destroy()
   })
 })
