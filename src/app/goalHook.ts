@@ -1,12 +1,17 @@
-// Goal-completion hook. Polls state_meta['goal:<sid>'] after each turn
-// and, on transition to status=done, performs the onGoalDone pref
-// action. The judge that *writes* that status lives elsewhere:
-//   - hermes_cli cli.py / gateway/run.py today
-//   - herm's own drive loop once option-B lands (herm-2ku)
-// This module is the reactor, not the driver.
+// Goal-completion reactor. Polls state_meta['goal:<sid>'] after each
+// turn and, on transition to status=done, performs the onGoalDone
+// pref action. The judge that *writes* that status and the
+// continuation loop itself live in stock tui_gateway/server.py (post-
+// turn Ralph hook in _run_prompt_submit); setting/controlling the
+// goal goes through the standard slash.exec → command.dispatch
+// fallback in app.tsx's slash() — tui_gateway rejects /goal from the
+// slash-worker (_PENDING_INPUT_COMMANDS) and command.dispatch's
+// handler drives GoalManager directly, including returning
+// {type:"send", notice, message: goal} on set so herm renders the
+// notice and submits the kickoff prompt. Nothing to do here except
+// react to completion.
 
 import type { DialogContext } from "../ui/dialog"
-import type { Gateway } from "./gateway"
 import * as prefs from "../utils/preferences"
 import { openCountdown } from "../dialogs/countdown"
 import { io } from "../io"
@@ -29,7 +34,7 @@ const run = (cmd: string) =>
 // switch calls rehome() which starts a fresh sid anyway.
 const fired = new Map<string, string>()
 
-export function makeGoalHook(gw: Gateway, dialog: DialogContext, toast: Toast): GoalHook {
+export function makeGoalHook(dialog: DialogContext, toast: Toast): GoalHook {
   const act = (goal: string) => {
     const pref = (prefs.get("onGoalDone") ?? "toast").trim()
     const head = goal.length > 60 ? goal.slice(0, 57) + "…" : goal

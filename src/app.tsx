@@ -99,7 +99,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const renderer = useRenderer()
   const session = useSession()
   const dims = useTerminalDimensions()
-  const goalHook = useMemo(() => makeGoalHook(gw, dialog, toast), [gw, dialog, toast])
+  const goalHook = useMemo(() => makeGoalHook(dialog, toast), [dialog, toast])
 
   const [turn, dispatch] = useReducer(turnReducer, initialTurn)
   const [ready, setReady] = useState(false)
@@ -614,9 +614,17 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
         if (res?.output) dispatch({ kind: "system", text: res.output })
       })
       .catch(() => {
-        type Dispatch = { type?: string; output?: string; target?: string; message?: string; name?: string; notice?: string }
+        type Dispatch = {
+          type?: string; output?: string; target?: string
+          message?: string; notice?: string; name?: string
+        }
         gw.request<Dispatch>("command.dispatch", { name: c.name, arg })
           .then(d => {
+            // `notice` is an optional system line attached to a `send`
+            // payload — e.g. /goal set returns {type:send, notice:"⊙
+            // Goal set (…)", message: goal} so the user sees the set
+            // confirmation before the kickoff prompt fires.
+            if (d.notice) dispatch({ kind: "system", text: d.notice })
             if (d.type === "exec" || d.type === "plugin")
               return dispatch({ kind: "system", text: d.output || "(no output)" })
             if (d.type === "alias" && d.target)
@@ -941,7 +949,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   useAppKeys({
     tab, tabMax: TAB_MAX, chatTab: CHAT_TAB, setTab, focusRegion, setFocusRegion,
     streaming: turn.streaming,
-    dialogOpen: dialog.stack.length > 0,
+    dialogOpen: dialog.open,
     composer,
     // Route keys to the pending inline prompt card before anything
     // else. Card returns true when the key was consumed; the shell

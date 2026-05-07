@@ -57,13 +57,14 @@ export function handleListKey(keys: Keys, key: ParsedKey, o: ListOpts): boolean 
 }
 
 export function useListKeys(o: ListOpts & {
-  active: boolean
+  active: boolean | (() => boolean)
   /** Tab-scoped actions; runs if no list.* action matched. */
   also?: (key: ParsedKey, keys: Keys) => void
 }): Keys {
   const keys = useKeys()
   useKeyboard(key => {
-    if (!o.active) return
+    const on = typeof o.active === "function" ? o.active() : o.active
+    if (!on) return
     if (handleListKey(keys, key, o)) return
     o.also?.(key, keys)
   })

@@ -358,7 +358,7 @@ export const Skills = memo((props: { focused?: boolean }) => {
 
   const keys = useKeys();
   useKeyboard((key) => {
-    if (!props.focused || dialog.stack.length > 0) return;
+    if (!props.focused || dialog.open()) return;
 
     if (searching) {
       if (key.name === "escape") { exit(); return }

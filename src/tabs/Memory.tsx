@@ -82,7 +82,7 @@ export const Memory = memo((props: { focused?: boolean }) => {
   }
 
   const keys = useListKeys({
-    active: !!props.focused && dialog.stack.length === 0,
+    active: () => !!props.focused && !dialog.open(),
     count: providers.length, setSel,
     onToggle: toggle,
     onRefresh: () => {

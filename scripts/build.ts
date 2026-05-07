@@ -107,6 +107,11 @@ await Bun.write("dist/package.json", JSON.stringify({
 }, null, 2) + "\n")
 
 await $`cp README.md LICENSE dist/`
+// Runtime fs-read assets (eikon avatars). These aren't `with {type:
+// "file"}` imports — listEikons() readdirs the directory — so the
+// directory has to ship alongside index.js. bundled.ts resolves it
+// by walking up from import.meta.dir, which in the bundle is dist/.
+await $`cp -r assets dist/`
 
 const sizes = result.outputs
   .map(o => [o.path.replace(/^.*\/dist\//, ""), (o.size / 1024).toFixed(0) + " KB"])
