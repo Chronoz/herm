@@ -227,6 +227,62 @@ describe("app", () => {
     t.destroy()
   })
 
+  test("Chat: first Command+Up jump moves to the previous user message", async () => {
+    const t = await mount({ width: 80, height: 14 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    for (let i = 1; i <= 8; i++) {
+      await act(async () => { await t.keys.typeText(`u${i}`) })
+      act(() => t.keys.pressEnter())
+      await until(t, () => t.gw.last("prompt.submit")?.params.text === `u${i}`)
+      act(() => t.gw.push({
+        type: "message.complete",
+        payload: { text: `a${i}`, usage: { input: 1, output: 1, total: 2 } },
+      }))
+      await t.settle()
+    }
+
+    expect(t.frame()).toContain("u8")
+    expect(t.frame()).not.toContain("u7")
+
+    act(() => t.keys.pressArrow("up", { super: true }))
+    await until(t, () => t.frame().includes("u7"))
+
+    const f = t.frame()
+    expect(f).toContain("u7")
+    expect(f).not.toContain("u6")
+
+    t.destroy()
+  })
+
+  test("Shift+Up triggers previous-user jump from bottom of chat", async () => {
+    const t = await mount({ width: 80, height: 14 })
+    await until(t, () => t.frame().includes("Ready"))
+
+    for (let i = 1; i <= 8; i++) {
+      await act(async () => { await t.keys.typeText(`u${i}`) })
+      act(() => t.keys.pressEnter())
+      await until(t, () => t.gw.last("prompt.submit")?.params.text === `u${i}`)
+      act(() => t.gw.push({
+        type: "message.complete",
+        payload: { text: `a${i}`, usage: { input: 1, output: 1, total: 2 } },
+      }))
+      await t.settle()
+    }
+
+    expect(t.frame()).toContain("u8")
+    expect(t.frame()).not.toContain("u7")
+
+    act(() => t.keys.pressArrow("up", { shift: true }))
+    await until(t, () => t.frame().includes("u7"))
+
+    const f = t.frame()
+    expect(f).toContain("u7")
+    expect(f).not.toContain("u6")
+
+    t.destroy()
+  })
+
   test("sidebar hides below 120 cols", async () => {
     const t = await mount({ width: 160, height: 48 })
     await until(t, () => t.frame().includes("Ready"))
@@ -294,7 +350,7 @@ describe("app", () => {
     const call = t.gw.last("prompt.submit")
     expect(call?.params.text).toBe("hello gateway")
     // User messages render inside a left-side gutter.
-    expect(t.frame()).toMatch(/│ hello gateway/)
+    expect(t.frame()).toMatch(/[│┃] hello gateway/)
 
     t.destroy()
   })

@@ -53,6 +53,8 @@ export const DEFAULTS = {
   "session.timeline":  def("<leader>g",            "Session timeline",                   "global"),
   "theme.pick":        def("<leader>t",            "Switch theme",                       "global"),
   "model.pick":        def("<leader>m",            "Switch model",                       "global"),
+  "message.prevUser":  def("meta+up,super+up,shift+up",   "Jump to previous user message",      "global"),
+  "message.nextUser":  def("meta+down,super+down,shift+down", "Jump to next user message",          "global"),
   // "tool.details":      def("<leader>d",            "Cycle tool-trail detail",            "global"), // ø tool_details=none k: I need to see if it warrants a shortcut. defer
   "status.open":       def("<leader>s",            "Show status",                        "global"),
 

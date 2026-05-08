@@ -1,8 +1,9 @@
-import { memo, useMemo } from "react"
+import { memo, useMemo, type RefObject } from "react"
 import { MessageItem, type PromptWire } from "./MessageItem"
 import { TypingIndicator } from "./TypingIndicator"
 import { useTheme } from "../../theme"
 import type { Message } from "../../types/message"
+import type { ScrollBoxRenderable } from "@opentui/core"
 
 type Props = {
   messages: Message[]
@@ -10,9 +11,11 @@ type Props = {
   prompt?: PromptWire
   onRewind?: (m: Message) => void
   onPick?: (m: Message) => void
+  highlightId?: string
+  scrollRef?: RefObject<ScrollBoxRenderable | null>
 }
 
-export const MessageList = memo(({ messages, streaming, prompt, onRewind, onPick }: Props) => {
+export const MessageList = memo(({ messages, streaming, prompt, onRewind, onPick, highlightId, scrollRef }: Props) => {
   const theme = useTheme().theme
 
   const style = useMemo(() => ({
@@ -25,9 +28,6 @@ export const MessageList = memo(({ messages, streaming, prompt, onRewind, onPick
     },
   }), [theme])
 
-  // Empty transcript is covered by the overlay Splash (ui/Splash.tsx);
-  // when the splash is intentionally suppressed (--no-splash, /clear)
-  // the bare box is the correct blank canvas.
   if (messages.length === 0) return <box flexGrow={1} />
 
   const last = messages[messages.length - 1]
@@ -35,6 +35,7 @@ export const MessageList = memo(({ messages, streaming, prompt, onRewind, onPick
 
   return (
     <scrollbox
+      ref={scrollRef}
       flexGrow={1}
       scrollY
       stickyScroll
@@ -50,6 +51,7 @@ export const MessageList = memo(({ messages, streaming, prompt, onRewind, onPick
             prompt={prompt}
             onRewind={onRewind}
             onPick={onPick}
+            highlighted={msg.id === highlightId}
           />
         ))}
         {streaming && last?.role !== "assistant" && <TypingIndicator />}

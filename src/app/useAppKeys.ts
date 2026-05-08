@@ -20,6 +20,8 @@ import { editInEditor } from "../utils/editor"
 import { useKeys, conflicts } from "../keys"
 import { print as chordPrint } from "../keys/chord"
 import type { ComposerHandle } from "../components/chat/Composer"
+import type { Message } from "../types/message"
+import type { ScrollBoxRenderable } from "@opentui/core"
 
 const INTERRUPT_MS = 5000
 export const DOUBLE_TAB_MS = 400
@@ -36,10 +38,7 @@ type Opts = {
   streaming: boolean
   dialogOpen: () => boolean
   composer: RefObject<ComposerHandle | null>
-  /** Offer the key to a pending inline prompt card. Return true to
-   *  consume + stopPropagation; false to fall through to the shell. */
   onPromptKey?: (key: ParsedKey) => boolean
-  /** Idle-mode Esc, before focus bounce. Return true to consume. */
   onEscape?: () => boolean
   onInterrupt: () => void
   onInterruptNotice: () => void
@@ -48,10 +47,13 @@ type Opts = {
   onQuit: () => void
   onCopyLast: () => void
   onAttachClipboard: () => void
-  /** Remove the last pending attachment (backspace on empty composer). */
   onDetachLast: () => boolean
   onNotice: (text: string) => void
   onToggleSidebar: () => void
+  messages: Message[]
+  scrollRef: RefObject<ScrollBoxRenderable | null>
+  highlightId?: string | null
+  onJumpUser?: (id: string | null) => void
 }
 
 export function useAppKeys(o: Opts) {
@@ -216,6 +218,31 @@ export function useAppKeys(o: Opts) {
       } else {
         lastTab.current = now
       }
+      return
+    }
+
+    if (keys.match("message.prevUser", key) && o.tab === o.chatTab) {
+      const users = o.messages.filter(m => m.role === "user")
+      if (!users.length) return
+      const idx = users.findIndex(m => m.id === o.highlightId)
+      const at = idx >= 0 ? idx : users.length - 1
+      const target = at > 0 ? users[at - 1] : users[0]
+      o.scrollRef.current?.scrollChildIntoView(target.id)
+      o.onJumpUser?.(target.id)
+      o.setFocusRegion("content")
+      key.stopPropagation()
+      return
+    }
+    if (keys.match("message.nextUser", key) && o.tab === o.chatTab) {
+      const users = o.messages.filter(m => m.role === "user")
+      if (!users.length) return
+      const idx = users.findIndex(m => m.id === o.highlightId)
+      const at = idx >= 0 ? idx : users.length - 1
+      const target = at < users.length - 1 ? users[at + 1] : users[at]
+      o.scrollRef.current?.scrollChildIntoView(target.id)
+      o.onJumpUser?.(target.id)
+      o.setFocusRegion("content")
+      key.stopPropagation()
       return
     }
 

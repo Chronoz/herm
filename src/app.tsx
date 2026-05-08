@@ -1,5 +1,6 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { Profiler, useState, useEffect, useRef, useCallback, useMemo, useReducer } from "react"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import * as perf from "./utils/perf"
 import * as spawnHistory from "./app/spawnHistory"
 import { setBridge, enabled as controlEnabled } from "./utils/control"
@@ -150,6 +151,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const [cloudH, setCloudH] = useState(CLOUD_MIN)
   const [pick, setPick] = useState<Message | undefined>(undefined)
   const [skin, setSkin] = useState<SkinState>(() => deriveSkin(undefined))
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
   const inflight = useRef(false)
   // Client-side interrupt latch: flipped on Esc×2 before the gateway has
   // confirmed the stop. Stream-mutation events still in the stdio pipe
@@ -981,6 +984,10 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     },
     onNotice: (text) => dispatch({ kind: "system", text }),
     onToggleSidebar: () => setHideSidebar(v => !v),
+    messages: turn.messages,
+    scrollRef,
+    highlightId,
+    onJumpUser: (id) => setHighlightId(id),
   })
 
   // ── Control bridge ────────────────────────────────────────────────
@@ -1031,7 +1038,8 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
         case 0: return <Chat messages={turn.messages} streaming={turn.streaming}
                              prompt={promptWire}
                              cloud={cloud} cloudH={cloudH} pick={pick}
-                             onResize={setCloudH} onPick={onPick} onClose={closeCloud} onRewind={msgMenu} />
+                             onResize={setCloudH} onPick={onPick} onClose={closeCloud} onRewind={msgMenu}
+                             highlightId={highlightId ?? undefined} scrollRef={scrollRef} />
         case 1: return <Context description={TABS[tab].description} messages={turn.messages}
                                sessionStart={sessionStart.current} info={info ?? undefined}
                                focused={contentFocused} />

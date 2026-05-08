@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, useState, type RefObject } from "react"
-import type { RGBA, MouseEvent } from "@opentui/core"
+import { RGBA, type MouseEvent } from "@opentui/core"
 import type { Message, Part, TextPart, ToolPart, PromptPart } from "../../types/message"
 import { ErrorBlock } from "./ErrorBlock"
 import { MediaChip, classify, splitContent } from "./MediaChip"
@@ -116,22 +116,23 @@ export type PromptWire = {
   onAnswer: (id: string, label: string, ok: boolean) => void
 }
 
-export const MessageItem = memo(({ message, streaming, prompt, onRewind, onPick }: {
+export const MessageItem = memo(({ message, streaming, prompt, onRewind, onPick, highlighted }: {
   message: Message
   streaming: boolean
   prompt?: PromptWire
   onRewind?: (m: Message) => void
   onPick?: (m: Message) => void
+  highlighted?: boolean
 }) => {
   if (message.role === "system") return <SystemMessage message={message} />
-  if (message.role === "user") return <UserMessage message={message} onRewind={onRewind} />
+  if (message.role === "user") return <UserMessage message={message} onRewind={onRewind} highlighted={highlighted} />
   return <AssistantMessage message={message} streaming={streaming} prompt={prompt} onPick={onPick} />
 })
 
 const SystemMessage = memo(({ message }: { message: Message }) => {
   const theme = useTheme().theme
   return (
-    <box marginBottom={1}>
+    <box id={message.id} marginBottom={1}>
       <Gutter color={theme.textMuted} glyph="·">
         <box minHeight={1}>
           <text fg={theme.textMuted} wrapMode="word">{extract(message)}</text>
@@ -141,7 +142,7 @@ const SystemMessage = memo(({ message }: { message: Message }) => {
   )
 })
 
-const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: (m: Message) => void }) => {
+const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: (m: Message) => void; highlighted?: boolean }) => {
   const theme = useTheme().theme
   const [hover, setHover] = useState(false)
   const click = useClick(onRewind && (() => onRewind(message)))
@@ -151,14 +152,15 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
   )
   return (
     <box
+      id={message.id}
       flexDirection="column"
-      marginBottom={1}
-      backgroundColor={hover ? theme.backgroundElement : undefined}
+      marginTop={1}
+      marginBottom={2}
       onMouseOver={() => setHover(true)}
       onMouseOut={() => setHover(false)}
       {...click}
     >
-      <Gutter color={theme.primary} side="left">
+      <Gutter color={hover ? theme.accent : theme.secondary} glyph="┃" side="left">
         <box minHeight={1} flexDirection="column">
           {message.parts.map((p, i) => {
             const seg = segs[i]
@@ -176,7 +178,7 @@ const UserMessage = memo(({ message, onRewind }: { message: Message; onRewind?: 
               if ("code" in s) return (
                 <CodeBlock key={`${k}-c${j}`} code={s.code} lang={s.lang} />
               )
-              return <text key={`${k}-${j}`} fg={theme.text} wrapMode="word">{s.md}</text>
+              return <text key={`${k}-${j}`} fg={theme.secondary} wrapMode="word">{s.md}</text>
             })
           })}
         </box>
@@ -259,7 +261,7 @@ const AssistantMessage = memo(({ message, streaming, prompt, onPick }: {
   }
 
   return (
-    <box flexDirection="column" marginBottom={1}
+    <box id={message.id} flexDirection="column" marginBottom={1}
          backgroundColor={hover ? theme.backgroundElement : undefined}
          onMouseOver={() => setHover(true)}
          onMouseOut={() => setHover(false)}
