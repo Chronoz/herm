@@ -44,4 +44,21 @@ describe("ProfileRail", () => {
 
     t.destroy()
   })
+
+  test("clicking a dot profile calls onSwitch", async () => {
+    const seen: string[] = []
+    const t = await mountNode(
+      <ProfileRail profiles={[prof("default", true), prof("terry"), prof("kat")]} active="default"
+                   onSwitch={(_, name) => seen.push(name)} />,
+      { width: 48, height: 28 },
+    )
+    await act(async () => {})
+
+    // Click the first non-active row (terry) in the list.
+    await act(async () => { await t.mouse.click(2, 11) })
+    await act(async () => {})
+
+    expect(seen).toEqual(["terry"])
+    t.destroy()
+  })
 })

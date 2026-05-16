@@ -44,8 +44,8 @@ export const ProfileRail = memo((props: Props) => {
     <box width={W + 4} flexDirection="column" paddingX={1} paddingTop={1}
          backgroundColor={theme.background}>
       <box width={W} height={H} flexDirection="column" marginLeft={1}
-           backgroundColor={theme.backgroundElement}
-           border borderColor={theme.hermAvatar} customBorderChars={BUBBLE}>
+            backgroundColor={theme.backgroundElement}
+            border borderColor={theme.primary} customBorderChars={BUBBLE}>
         <box flexGrow={1} flexDirection="column" justifyContent="center" alignItems="center" paddingX={1}>
           <box height={1}>
             <text>

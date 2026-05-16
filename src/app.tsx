@@ -281,7 +281,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // under the new env, and re-run the boot path. prefs.reload (inside
   // rehome) retints theme/eikon/keys via usePref; home.reset repaints
   // tabs. The session is NOT preserved — it belongs to the old
-  // profile's state.db. Confirm step lives in the Agents tab.
+  // profile's state.db.
   const switchProfile = useCallback((newHome: string, name: string) => {
     rehome(newHome)
     reset()
@@ -300,6 +300,16 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     goToTab(CHAT_TAB)
     gwRestart()
   }, [reset, goToTab, gwRestart, toast, gw])
+
+  const confirmSwitchProfile = useCallback(async (newHome: string, name: string) => {
+    const ok = await openConfirm(dialog, {
+      title: `Switch to '${name}'?`,
+      body: "The gateway restarts under this profile's HERMES_HOME. "
+          + "The current session ends (it stays in the outgoing profile's history).",
+      yes: "switch",
+    })
+    if (ok) switchProfile(newHome, name)
+  }, [dialog, switchProfile])
 
   const loadProfiles = useCallback(() => {
     gw.request<{ home?: string }>("config.get", { key: "profile" })
@@ -1093,7 +1103,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
         <TabBar tabs={TABS} activeTab={tab} onTabChange={goToTab} />
         <box flexGrow={1} flexDirection="row">
           {showProfileRail ? (
-            <ProfileRail profiles={profiles} active={activeProfileName()} onSwitch={switchProfile} />
+            <ProfileRail profiles={profiles} active={activeProfileName()} onSwitch={confirmSwitchProfile} />
           ) : null}
           <box flexGrow={1} flexDirection="column">
             <box flexGrow={1} position="relative">
