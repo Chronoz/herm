@@ -13,6 +13,7 @@ import { CLOUD_MIN } from "./components/chat/ThoughtCloud"
 import type { AvatarState } from "./components/avatar/states"
 import { TabBar } from "./components/tabs/TabBar"
 import { Sidebar } from "./components/sidebar/Sidebar"
+import { ProfileRail } from "./components/profile/ProfileRail"
 import { Chat } from "./tabs/Chat"
 import { Context } from "./tabs/Context"
 import { Sessions } from "./tabs/Sessions"
@@ -66,11 +67,12 @@ import { SkinProvider, deriveSkin, SKINS, type SkinState } from "./app/skin"
 import { useAppKeys, redraw } from "./app/useAppKeys"
 import { quit } from "./app/exit"
 import { TABS, TAB_MAX, CHAT_TAB, TAB_SLASH } from "./app/tabs"
-import { activeProfileName } from "./utils/hermes-profiles"
+import { activeProfileName, listProfiles, type ProfileInfo } from "./utils/hermes-profiles"
 import { rehome } from "./home/rehome"
 import { makeGoalHook } from "./app/goalHook"
 import type { Launch } from "./app/launch"
 import { parseModel, parseTask, deriveStage, buildResult, readDefaultModel, type OpenCodeActivity } from "./app/opencode"
+import { resetTerminalModes } from "./utils/terminal-reset"
 
 type AppProps = { initialTheme?: string; gateway?: Gateway; launch?: Launch }
 
@@ -114,8 +116,10 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   const [goalKey, setGoalKey] = useState("")
   const goalKeyRef = useRef(goalKey); goalKeyRef.current = goalKey
   const [ocActivity, setOcActivity] = useState<OpenCodeActivity | null>(null)
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([])
   const ocModel = useRef<string | undefined>(undefined)
   const ocToolId = useRef<string | undefined>(undefined)
+  const gwHome = useRef<string | undefined>(undefined)
 
   const refreshGoal = useCallback((id: string) => {
     io.goalState(id).then(setGoal).catch(() => setGoal(null))
@@ -296,6 +300,15 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     goToTab(CHAT_TAB)
     gwRestart()
   }, [reset, goToTab, gwRestart, toast, gw])
+
+  const loadProfiles = useCallback(() => {
+    gw.request<{ home?: string }>("config.get", { key: "profile" })
+      .then(r => { gwHome.current = r.home; return listProfiles(r.home) })
+      .then(setProfiles)
+      .catch(() => listProfiles(gwHome.current).then(setProfiles).catch(() => setProfiles([])))
+  }, [gw])
+
+  useEffect(loadProfiles, [loadProfiles])
 
   // Compress wrapper — toasts on start, dispatches a transcript system
   // message carrying the headline + token line from the gateway's
@@ -536,6 +549,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
         case "mouse": {
           const want = arg === "on" ? true : arg === "off" ? false : !renderer.useMouse
           renderer.useMouse = want
+          if (!want) resetTerminalModes()
           preferences.set("mouse", want)
           toast.show({ variant: "info", message: `mouse ${want ? "on" : "off"}` })
           return
@@ -839,6 +853,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
       },
       onSessionInfo: (si) => {
         setInfo(si)
+        loadProfiles()
         setReady(true)
         if (si.session_id) setSid(si.session_id)
         gw.request<{ title: string; session_key?: string }>("session.title").then(r => {
@@ -900,7 +915,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
     flush()
     if (action.kind === "error") setErrorPulse(true)
     dispatch(action)
-  }, [session, dialog, toast, gw, flush, goalHook, refreshGoal, ocActivity])
+  }, [session, dialog, toast, gw, flush, goalHook, refreshGoal, ocActivity, loadProfiles])
 
   useGatewayEvent(handle)
 
@@ -1068,6 +1083,7 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
   // (a card's own <input focused> would otherwise leave it blurred).
   // Keys still reach the card via onPromptKey on the global bus.
   const inputFocused = focusRegion === "input" && !prompt
+  const showProfileRail = dims.width >= (tab === CHAT_TAB ? 136 : 156) && profiles.length > 0
 
   return (
     <Profiler id="shell" onRender={perf.onRender}>
@@ -1076,6 +1092,9 @@ const AppInner = ({ launch: launch0 }: { launch: Launch }) => {
            backgroundColor={theme.background} onMouseUp={onMouseUp}>
         <TabBar tabs={TABS} activeTab={tab} onTabChange={goToTab} />
         <box flexGrow={1} flexDirection="row">
+          {showProfileRail ? (
+            <ProfileRail profiles={profiles} active={activeProfileName()} onSwitch={switchProfile} />
+          ) : null}
           <box flexGrow={1} flexDirection="column">
             <box flexGrow={1} position="relative">
               {content()}

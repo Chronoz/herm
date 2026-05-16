@@ -52,7 +52,7 @@ interface TuiPreferences {
 }
 
 const DEFAULTS: Required<Pick<TuiPreferences, "mouse" | "targetFps">> = {
-  mouse: true,
+  mouse: false,
   targetFps: 30,
 }
 

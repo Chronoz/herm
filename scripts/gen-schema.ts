@@ -172,7 +172,7 @@ const EXTRA: Record<string, { type: string; default: unknown; doc: string }> = {
   "display.tool_progress": { type: "str", default: "all", doc: "Tool-progress verbosity: off | new | all | verbose." },
   "display.tui_compact": { type: "bool", default: false, doc: "Ink-TUI compact layout." },
   "display.tui_statusbar": { type: "str", default: "top", doc: "Ink-TUI statusbar placement: top | bottom | off." },
-  "display.tui_mouse": { type: "bool", default: true, doc: "Ink-TUI mouse support." },
+  "display.tui_mouse": { type: "bool", default: false, doc: "Ink-TUI mouse support." },
 }
 
 const RPC_LIVE = new Set([
